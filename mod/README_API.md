@@ -1,0 +1,41 @@
+# TF2 Co-op: verifizierte API und Grenzen
+
+Stand: 6. September 2026. Diese Lua-Komponente ist der **Positions- und Planungskanal**. Sie synchronisiert selbst keine Simulation und kann den getrennt mitgelieferten nativen Multiplayer-Kern ergänzen. Dessen Lockstep-Anzeige ist für den Synchronisierungsstatus maßgeblich; ein verbundener Positionskanal belegt keinen synchronen Spielstand. Netzwerk, Spiel-API und zwei echte laufende Spielinstanzen müssen getrennt validiert werden. Erfolgreiche Lua-Tests ersetzen keinen Spieltest.
+
+## Implementierte API-Nutzung
+
+| Funktion | Beleg | Verwendung |
+|---|---|---|
+| `api.gui.util.getGameUI():getMainRendererComponent():getTerrainPos()` | [Offizielle GUI-Referenz](https://wiki.transportfever2.com/api/modules/api.gui.html) | Echte Position unter dem Mauszeiger als `{x,y,z}`. |
+| `RendererComponent:getCameraController():getCameraData()`; Fallback `game.gui.getCamera()` | [Offizielle GUI-Referenz](https://wiki.transportfever2.com/api/modules/api.gui.html#util.CameraController:getCameraData); Original `mods/urbangames_campaign_mission_01_1/res/scripts/part1.lua`, Kamera-Aufgabe ab Zeile 130 | Liest die Kameradistanz aus dem dritten Wert der fünfteiligen Kameraposition. Vergrößert Cursor beim Herauszoomen, bewegt keine Kamera. |
+| `Component:onStep(callback)` | [Offizielle UI-Dokumentation](https://wiki.transportfever2.com/doku.php?id=modding:userinterface) | GUI-Zeit in Mikrosekunden; Präsenz wird höchstens alle 100 ms geschrieben. |
+| `guiHandleEvent(id, name, param)`; `builder.proposalCreate`, `builder.apply` | [Offizielle UI-Dokumentation](https://wiki.transportfever2.com/doku.php?id=modding:userinterface) | Erfasst Bauvorschau, entfernt sie nach dem Anwenden. Erteilt keine Baubefehle. |
+| `game.interface.setZone(key, {polygon,draw,drawColor})` | Installiertes Originalspiel: `res/scripts/mission/taskutil.lua`, GUI-Update, Zeilen 566–570; `res/scripts/mission/colors.lua`; `res/scripts/mission/zone.lua` | Farbige Kreise und Streifen auf dem Terrain. Entfernen mit `setZone(key)`. |
+| `Window`, `TextView`, `Button`, `BoxLayout`, Stylesheets | [Offizielle GUI-Referenz](https://wiki.transportfever2.com/api/modules/api.gui.html) | Farbiges Mitspielerfenster mit Namen und Koordinaten; Co-op-Schalter in `gameInfo`. |
+| `Component.new(name)` gefolgt von `component:setId(id)` | Original `res/scripts/selectortooltip.lua`, Zeilen 121–123, Build 35924 | Der im Spiel mitgelieferte Konstruktor-Aufruf; die zuvor verwendete Form mit zwei String-Argumenten erzeugte im realen GUI-State einen `sol`-Bindungsfehler. |
+
+Die lokal geprüfte Installation liegt unter `X:/SteamLibrary/steamapps/common/Transport Fever 2/`. Originalressourcen wurden nur gelesen, nicht übernommen oder geändert.
+
+Das lokale Original `res/scripts/mission/proposalutil.lua` verwendet für GUI-Ereignisse **Legacy-Proposals**: `param.proposal.proposal.addedNodes`, `addedSegments`, `removedSegments`, Node-Felder `.entity` und `.comp.position`, Segment-Felder `.comp.node0/node1`; vorhandene Knoten über `game.interface.getEntity(id).position`. Konstruktionen liefern `param.proposal.toAdd[1].transf[13..15]`. Diese Struktur ist nicht identisch mit dem neueren `api.type.SimpleProposal`. Die Mod extrahiert nur Zahlen aus bekannten Feldern. Sie serialisiert keine Engine-Objekte.
+
+Die dargestellten Straßen/Gleise sind vereinfachte gerade Skizzen zwischen bekannten Knoten. Abzweigende zusätzliche Segmente werden ausgelassen, damit keine erfundenen Verbindungen entstehen. Kurven, Tunnelhöhe, Brücken, komplexe Bahnhofsgeometrie und exakte Blaupausen sind damit nicht abgebildet. Konstruktionen erscheinen als Markierung. Die Namen stehen im farbigen Fenster, nicht als frei projizierte Texte am Weltcursor. Die Weltmarkierung erhält die genaue Peer-Farbe; Text nutzt die nächstliegende von acht Stylefarben.
+
+Der Cursor besteht aus einem Punkt am exakten Ort, einem farbigen Ring mit heller und dunkler Kontur und einem größeren äußeren Ring. Der Hauptradius folgt der lokalen Kameradistanz (`Distanz × 0,022`, begrenzt auf 12–900 Meter); bei fehlenden Kameradaten bleibt ein Radius von 24 Metern. Die annähernd gleichbleibende Bildschirmgröße ist eine Darstellungshilfe, keine exakte Pixelprojektion. Vier einfache Bogenpolygone je Ringband lassen das Terrain in der Mitte frei. Die angrenzenden Bänder überlappen nicht und benötigen keine feste Zeichenreihenfolge. `capabilities.camera_scaling` und `telemetry.cursor_radius` machen das Ergebnis prüfbar. Die neue Darstellung und das korrigierte Fenster benötigen weiterhin die visuelle Bestätigung im Spiel.
+
+## Dateibrücke
+
+Installer-konfigurierte absolute `mailbox_dir`. Lua liest `peers.json` mit maximal 64 KiB. Für `game.json` nutzt die Mod eine geschlossene temporäre Datei, sofern `os.rename` und `os.remove` verfügbar sind; bei Windows gibt es beim Ersetzen kurzzeitig keine Zieldatei. Im tatsächlich beobachteten TF2-GUI-State fehlt jedoch `os.rename`, obwohl `io.open` funktioniert. Dort schreibt die Mod den kleinen Snapshot direkt nach `game.json`. Der Launcher verwirft fehlende, unvollständige oder ungültige JSON-Daten und versucht es beim nächsten Poll erneut. Schreib- und Schließfehler werden als fehlgeschlagener Mailbox-Schreibvorgang behandelt.
+
+Der Parser ist datenorientiert; es gibt kein `load`, `loadfile` oder `dofile` für empfangene Daten. `require 'tf2coop/config'` lädt nur die durch den lokalen Installer erzeugte Konfiguration. GUI-Fehler werden zusätzlich mit `capabilities.panel_error = { stage, message }` im Snapshot und im Spiel-Log sichtbar; ein fehlgeschlagenes Mitspielerfenster unterbricht den Positionskanal nicht. `Component.new(name)` mit getrenntem `setId(id)` folgt dem mitgelieferten Originalskript des unterstützten Builds 35924. Die [Online-Referenz](https://wiki.transportfever2.com/api/modules/api.gui.html) nennt zwar zwei Konstruktorargumente; diese Kombination scheiterte in der tatsächlichen Laufzeit. `Button.new(child, clickOnPress)` folgt der Referenz.
+
+Maximal acht Peers und 128 Vorschaupunkte werden akzeptiert; dargestellt werden höchstens 64 Streifen pro Peer. Snapshot-Alter über fünf Sekunden entfernt alle Remote-Markierungen. Der GUI-Engine-Save-State speichert keine Präsenz oder lokale Pfade. Capability-Felder werden im Spiel ermittelt; Fehler einer unbekannten Laufzeit-API dürfen nicht als Erfolg gemeldet werden.
+
+## Harte Grenzen der dokumentierten API
+
+- `api.engine` liefert **lesenden** Zugriff auf den Entity-Component-State. Ein universeller Setter, Live-Snapshot-Import oder atomarer kompletter Engine-State-Austausch ist in der untersuchten Referenz nicht dokumentiert. [Offizielle Engine-Referenz](https://wiki.transportfever2.com/api/modules/api.engine.html)
+- `api.cmd.make.buildProposal` und `sendCommand` erlauben lokale Spielbefehle. Unterschiedliches Thread-Timing, dynamisch vergebene Entity-IDs und die unabhängige Simulation werden dadurch nicht automatisch netzwerksynchron. [Command-Referenz](https://wiki.transportfever2.com/api/modules/api.cmd.html), [Entity-Typen](https://wiki.transportfever2.com/api/topics/types.md.html)
+- Script-`save/load` serialisiert den eigenen Script-State in `.sav.lua` und transportiert ihn zwischen GUI- und Engine-Lua-State. Das ist keine Live-Replikation des gesamten Spiels. [Game Scripts](https://wiki.transportfever2.com/doku.php?id=modding:gamescripts)
+- Die getrennten Lua-States und die durchschnittlich fünf Engine-Updates pro Sekunde dokumentieren keine netzwerkfähige deterministische Lockstep-Garantie. Nur identische Baubefehle wiederzugeben garantiert weder identisches Geld noch identische Fahrzeuge, Passagiere, Städte oder Produktion. [Lua States](https://wiki.transportfever2.com/api/topics/states.md.html)
+- Das Original `res/scripts/debugger.lua` verwendet `io.open`; die tatsächliche Lese-/Schreibfähigkeit im aktiven Mod-State muss trotzdem zur Laufzeit geprüft werden. Ein Socket- oder Steam-Lobby-Modul wurde in der offiziellen Lua-API nicht gefunden. Die vorhandene `steam_api64.dll` allein belegt keine Lua-Steam-Netzwerkschnittstelle.
+
+Für eine vollständige Koop-Mod wird daher eine zusätzlich geprüfte native Integration oder eine andere vollständige Simulations-Replikation benötigt. Die Planungsschicht behauptet diese Funktionen ausdrücklich nicht.

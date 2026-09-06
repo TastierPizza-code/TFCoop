@@ -1,0 +1,41 @@
+-- A small immutable test road. The BuildProposal callback identifies this
+-- construction, whose frozenEdges then identify every actual created road.
+-- Do not make its nodes free: this test needs an authoritative owned graph.
+function data()
+  return {
+    type='STREET_CONSTRUCTION',
+    description={name=_('TF2 Koop Teststrasse'),description=_('Strasse fuer den automatischen Koop-Bautest.')},
+    availability={yearFrom=0,yearTo=0},
+    order=100000,
+    updateFn=function(params)
+      return {
+        models={},
+        edgeLists={{
+          type='STREET',
+          params={type='standard/town_medium_old.lua',tramTrackType='NO',hasBus=false},
+          edges={
+            {{-80,0,0},{80,0,0}}, {{0,0,0},{80,0,0}},
+            {{0,0,0},{80,0,0}}, {{80,0,0},{80,0,0}},
+            {{0,0,0},{0,40,0}}, {{0,40,0},{0,40,0}},
+          },
+          snapNodes={0,3,5},
+          freeNodes={},
+        }},
+        -- This pad is part of the jointly ordered road construction. It covers
+        -- the actual stock station/depot faces (including their optional
+        -- skirts), with at least 10 m margin. At the permitted sampled height
+        -- span of 8 m, a midpoint level needs at most 4 m cut/fill at samples;
+        -- a 0.6 slope needs less than the 20 m clearance to the checked box.
+        terrainAlignmentLists={{
+          type='EQUAL',
+          faces={{{-140,-40,0},{140,-40,0},{140,120,0},{-140,120,0}}},
+          slopeLow=0.6,
+          slopeHigh=0.6,
+          optional=false,
+        }},
+        groundFaces={},
+        cost=0,
+      }
+    end,
+  }
+end

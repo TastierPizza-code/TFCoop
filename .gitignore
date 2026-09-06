@@ -1,0 +1,16 @@
+__pycache__/
+*.pyc
+.venv/
+.test-deps/
+runtime/
+dist/
+native/out/
+build/
+*.log
+*.sav
+*.sav.lua
+.publish/
+*.key
+*.dmp
+.env
+.env.*

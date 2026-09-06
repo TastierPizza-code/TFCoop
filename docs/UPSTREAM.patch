@@ -1,0 +1,1574 @@
+diff --git a/bridge/src/activation_pipe.h b/bridge/src/activation_pipe.h
+new file mode 100644
+index 0000000..68e58be
+--- /dev/null
++++ b/bridge/src/activation_pipe.h
+@@ -0,0 +1,80 @@
++// Process-bound activation proof for the game's restricted Lua runtime.
++// Lua's os.getenv can be absent or can retain a pre-Steam environment snapshot.
++// An OS pipe cannot outlive its owner, and another game process is rejected.
++#pragma once
++#include <windows.h>
++#include <cstdio>
++#include <string>
++
++namespace tf2coop {
++static const wchar_t* const ActivationPipeName = L"\\\\.\\pipe\\TF2CoopActivation";
++
++inline std::string ToUtf8(const std::wstring& value) {
++    if (value.empty()) return std::string();
++    int size = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, value.data(), int(value.size()), nullptr, 0, nullptr, nullptr);
++    if (size <= 0) return std::string();
++    std::string result(size, '\0');
++    if (!WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, value.data(), int(value.size()), &result[0], size, nullptr, nullptr)) return std::string();
++    return result;
++}
++
++inline bool SendActivation(HANDLE pipe, DWORD authorizedPid, const std::string& payload) {
++    ULONG clientPid = 0;
++    if (!GetNamedPipeClientProcessId(pipe, &clientPid) || clientPid != authorizedPid || payload.empty() || payload.size() > 4096) return false;
++    char length[5];
++    _snprintf_s(length, sizeof(length), _TRUNCATE, "%04u", unsigned(payload.size()));
++    std::string frame(length, 4); frame += payload;
++    DWORD written = 0;
++    if (!WriteFile(pipe, frame.data(), DWORD(frame.size()), &written, nullptr) || written != frame.size()) return false;
++    // Disconnect discards unread pipe bytes. The approved local Lua client
++    // reads exactly the framed byte count then closes, so flushing finishes.
++    return FlushFileBuffers(pipe) != FALSE;
++}
++
++struct ActivationWorker {
++    HANDLE pipe;
++    DWORD authorizedPid;
++    std::string payload;
++};
++inline DWORD WINAPI ActivationWorkerMain(LPVOID value) {
++    ActivationWorker* worker = static_cast<ActivationWorker*>(value);
++    for (;;) {
++        bool connected = ConnectNamedPipe(worker->pipe, nullptr) || GetLastError() == ERROR_PIPE_CONNECTED;
++        if (connected) SendActivation(worker->pipe, worker->authorizedPid, worker->payload);
++        else if (GetLastError() != ERROR_NO_DATA) break;
++        DisconnectNamedPipe(worker->pipe);
++    }
++    CloseHandle(worker->pipe); delete worker; return 0;
++}
++
++inline HANDLE NewActivationPipe(const wchar_t* name, bool first) {
++    return CreateNamedPipeW(name, PIPE_ACCESS_OUTBOUND | (first ? FILE_FLAG_FIRST_PIPE_INSTANCE : 0),
++        PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS,
++        8, 8192, 0, 50, nullptr);
++}
++
++inline bool StartActivationPipes(const std::string& payload) {
++    if (payload.empty() || payload.size() > 4096) return false;
++    HANDLE first = INVALID_HANDLE_VALUE;
++    // Steam can launch the final process slightly before its bootstrap exits.
++    // The old process's pipe disappears with it; no stale file can authorize us.
++    for (unsigned attempt = 0; attempt < 1200; ++attempt) {
++        first = NewActivationPipe(ActivationPipeName, true);
++        if (first != INVALID_HANDLE_VALUE) break;
++        DWORD error = GetLastError();
++        if (error != ERROR_ACCESS_DENIED && error != ERROR_PIPE_BUSY) return false;
++        Sleep(100);
++    }
++    if (first == INVALID_HANDLE_VALUE) return false;
++    unsigned started = 0;
++    for (unsigned i = 0; i < 8; ++i) {
++        HANDLE pipe = i ? NewActivationPipe(ActivationPipeName, false) : first;
++        if (pipe == INVALID_HANDLE_VALUE) continue;
++        auto worker = new ActivationWorker{pipe, GetCurrentProcessId(), payload};
++        HANDLE thread = CreateThread(nullptr, 0, ActivationWorkerMain, worker, 0, nullptr);
++        if (thread) { CloseHandle(thread); ++started; }
++        else { CloseHandle(pipe); delete worker; }
++    }
++    return started != 0;
++}
++} // namespace tf2coop
+diff --git a/bridge/src/bridge_main.cpp b/bridge/src/bridge_main.cpp
+index 0322e7c..a5d3adc 100644
+--- a/bridge/src/bridge_main.cpp
++++ b/bridge/src/bridge_main.cpp
+@@ -170,7 +170,7 @@ static void LoadConfig(const wchar_t* dllPath, const wchar_t* dataDir, Config& c
+     wcscpy_s(dir, dllPath);
+     wchar_t* slash = wcsrchr(dir, L'\\');
+     if (slash) *slash = 0;
+-    const std::wstring dirs[] = { std::wstring(dir) + L"\\", std::wstring(dataDir) };
++    const std::wstring dirs[] = { std::wstring(dataDir), std::wstring(dir) + L"\\" };
+ 
+     // Sidecar lookup. This used to build only "tpf2_mp_<basename>.cfg", which
+     // for a dll named tpf2_bridge_a6.dll means "tpf2_mp_tpf2_bridge_a6.cfg" --
+@@ -444,6 +444,8 @@ static bool         g_saveServerUp = false;
+ static void ApplySaveRole(const std::string& inst, const char* why)
+ {
+     std::lock_guard<std::mutex> lk(g_xferMtx);
++    // TF2 Co-op exchanges only explicitly exported save files via the companion.
++    if (g_xferPort == 0) return;
+     if (inst == "a") {
+         if (g_saveServerUp) return;
+         if (g_saveDir.empty()) {
+diff --git a/bridge/src/launch_lease.h b/bridge/src/launch_lease.h
+new file mode 100644
+index 0000000..30db8a7
+--- /dev/null
++++ b/bridge/src/launch_lease.h
+@@ -0,0 +1,148 @@
++// Launcher-owned, short-lived permission for a Steam-restarted game process.
++// This contains data only. No DLL paths or executable configuration are read.
++#pragma once
++#include <windows.h>
++#include <cstdint>
++#include <cstdio>
++#include <map>
++#include <string>
++
++namespace tf2coop {
++struct LaunchLease {
++    DWORD launcherPid = 0;
++    uint64_t launcherCreated = 0;
++    uint64_t expires = 0;
++    std::wstring gameExe;
++    std::wstring dataDir;
++    std::string nonce;
++};
++
++inline uint64_t FileTimeValue(const FILETIME& value) {
++    return (uint64_t(value.dwHighDateTime) << 32) | value.dwLowDateTime;
++}
++inline uint64_t UnixNow() {
++    FILETIME value; GetSystemTimeAsFileTime(&value);
++    return (FileTimeValue(value) - 116444736000000000ULL) / 10000000ULL;
++}
++inline bool Decimal(const std::string& text, uint64_t& out) {
++    if (text.empty()) return false;
++    uint64_t value = 0;
++    for (char ch : text) {
++        if (ch < '0' || ch > '9') return false;
++        unsigned digit = ch - '0';
++        if (value > (UINT64_MAX - digit) / 10) return false;
++        value = value * 10 + digit;
++    }
++    out = value; return true;
++}
++inline bool Utf8(const std::string& text, std::wstring& out) {
++    if (text.empty() || text.find('\0') != std::string::npos) return false;
++    int n = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, text.data(), int(text.size()), nullptr, 0);
++    if (n <= 0) return false;
++    out.resize(n);
++    return MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, text.data(), int(text.size()), &out[0], n) == n;
++}
++inline bool AbsolutePath(const std::wstring& path) {
++    if (path.size() < 3 || path.size() >= MAX_PATH - 40) return false;
++    // Drive-absolute and UNC paths are supported; drive-relative/root-relative
++    // paths depend on inherited working-directory state and are rejected.
++    bool drive = ((path[0] >= L'A' && path[0] <= L'Z') || (path[0] >= L'a' && path[0] <= L'z'))
++        && path[1] == L':' && (path[2] == L'\\' || path[2] == L'/');
++    bool unc = path[0] == L'\\' && path[1] == L'\\' && path[2] != L'?' && path[2] != L'.';
++    return drive || unc;
++}
++inline bool CanonicalPath(const std::wstring& path, std::wstring& result) {
++    if (!AbsolutePath(path)) return false;
++    wchar_t resolved[MAX_PATH];
++    DWORD n = GetFullPathNameW(path.c_str(), MAX_PATH, resolved, nullptr);
++    if (!n || n >= MAX_PATH) return false;
++    result.assign(resolved, n);
++    while (result.size() > 3 && result.back() == L'\\') result.pop_back();
++    return true;
++}
++inline bool ParseLaunchLease(const std::string& text, LaunchLease& out) {
++    if (text.empty() || text.size() > 4096 || text.find('\0') != std::string::npos) return false;
++    std::map<std::string, std::string> fields;
++    size_t pos = 0;
++    while (pos < text.size()) {
++        size_t end = text.find('\n', pos);
++        if (end == std::string::npos) end = text.size();
++        std::string line = text.substr(pos, end - pos);
++        if (!line.empty() && line.back() == '\r') line.pop_back();
++        size_t equal = line.find('=');
++        if (equal == std::string::npos || equal == 0 || line.find('\r') != std::string::npos) return false;
++        if (!fields.emplace(line.substr(0, equal), line.substr(equal + 1)).second) return false;
++        pos = end + 1;
++    }
++    const char* expected[] = {"format", "launcher_pid", "launcher_created", "expires", "game_exe", "data_dir", "nonce"};
++    if (fields.size() != 7) return false;
++    for (auto key : expected) if (!fields.count(key)) return false;
++    if (fields["format"] != "1") return false;
++    LaunchLease parsed;
++    uint64_t pid = 0;
++    if (!Decimal(fields["launcher_pid"], pid) || !pid || pid > MAXDWORD
++        || !Decimal(fields["launcher_created"], parsed.launcherCreated) || !parsed.launcherCreated
++        || !Decimal(fields["expires"], parsed.expires)) return false;
++    parsed.launcherPid = DWORD(pid);
++    std::wstring game, data;
++    if (!Utf8(fields["game_exe"], game) || !CanonicalPath(game, parsed.gameExe)
++        || !Utf8(fields["data_dir"], data) || !CanonicalPath(data, parsed.dataDir)) return false;
++    parsed.nonce = fields["nonce"];
++    if (parsed.nonce.size() != 32) return false;
++    for (char c : parsed.nonce) if (!(c >= '0' && c <= '9') && !(c >= 'a' && c <= 'f')) return false;
++    out = parsed; return true;
++}
++inline bool ReadSmallFile(const std::wstring& path, std::string& data) {
++    // Launcher writes through atomic replacement, so either complete generation
++    // is visible. File sharing also allows revocation while the game reads it.
++    HANDLE file = CreateFileW(path.c_str(), GENERIC_READ,
++        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
++    if (file == INVALID_HANDLE_VALUE) return false;
++    LARGE_INTEGER size;
++    bool ok = GetFileSizeEx(file, &size) && size.QuadPart > 0 && size.QuadPart <= 4096;
++    if (ok) {
++        data.resize(size_t(size.QuadPart));
++        DWORD read = 0;
++        ok = ReadFile(file, &data[0], DWORD(data.size()), &read, nullptr) && read == data.size();
++    }
++    CloseHandle(file); return ok;
++}
++inline bool StatePath(const wchar_t* name, std::wstring& path) {
++    wchar_t local[MAX_PATH];
++    DWORD n = GetEnvironmentVariableW(L"LOCALAPPDATA", local, MAX_PATH);
++    if (!n || n >= MAX_PATH) return false;
++    path = std::wstring(local) + L"\\TF2Coop\\" + name;
++    return path.size() < MAX_PATH;
++}
++inline bool CurrentExe(std::wstring& out) {
++    wchar_t exe[MAX_PATH];
++    DWORD n = GetModuleFileNameW(nullptr, exe, MAX_PATH);
++    return n && n < MAX_PATH && CanonicalPath(std::wstring(exe, n), out);
++}
++inline bool IsFile(const std::wstring& path) {
++    DWORD attr = GetFileAttributesW(path.c_str());
++    return attr != INVALID_FILE_ATTRIBUTES && !(attr & FILE_ATTRIBUTE_DIRECTORY);
++}
++inline bool ValidateLaunchLease(const LaunchLease& lease, const std::wstring& actualExe, uint64_t now) {
++    if (lease.expires < now || lease.expires - now > 180 || _wcsicmp(lease.gameExe.c_str(), actualExe.c_str()) != 0) return false;
++    HANDLE launcher = OpenProcess(SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION, FALSE, lease.launcherPid);
++    if (!launcher) return false;
++    FILETIME created, exited, kernel, user;
++    bool live = WaitForSingleObject(launcher, 0) == WAIT_TIMEOUT
++        && GetProcessTimes(launcher, &created, &exited, &kernel, &user)
++        && FileTimeValue(created) == lease.launcherCreated;
++    CloseHandle(launcher);
++    if (!live) return false;
++    DWORD attr = GetFileAttributesW(lease.dataDir.c_str());
++    if (attr == INVALID_FILE_ATTRIBUTES || !(attr & FILE_ATTRIBUTE_DIRECTORY)) return false;
++    for (auto name : {L"tpf2_bridge_mp.cfg", L"tpf2_slice.cfg", L"tpf2_instance.txt"})
++        if (!IsFile(lease.dataDir + L"\\" + name)) return false;
++    return true;
++}
++inline bool ReadValidLaunchLease(LaunchLease& lease) {
++    std::wstring path, actual;
++    std::string data;
++    return StatePath(L"launch.cfg", path) && CurrentExe(actual) && ReadSmallFile(path, data)
++        && ParseLaunchLease(data, lease) && ValidateLaunchLease(lease, actual, UnixNow());
++}
++} // namespace tf2coop
+diff --git a/bridge/src/net.cpp b/bridge/src/net.cpp
+index 67fc59b..8d4e9e9 100644
+--- a/bridge/src/net.cpp
++++ b/bridge/src/net.cpp
+@@ -3,7 +3,8 @@
+ #include <ws2tcpip.h>
+ #include <windows.h>
+ #include <cstdio>
+-#include <cstring>
++#include <cstring>
++#include <deque>
+ #include <map>
+ #include <mutex>
+ #include <queue>
+@@ -18,8 +19,9 @@ static const int RESEND_MS = 250;
+ struct Header {
+     uint32_t magic;
+     uint32_t session;   // sender instance id; receiver resets seq state on change
+-    uint32_t seq;
+-    uint32_t ack;
++    uint32_t seq;
++    uint32_t ackSession; // ACKs are valid only for this receiver stream epoch
++    uint32_t ack;
+     uint32_t ackBits;
+     uint8_t  type;      // 0 = keepalive/ack-only, 1 = event
+ };
+@@ -34,18 +36,24 @@ static SOCKET g_sock = INVALID_SOCKET;
+ // (g_mtx is not recursive), and Net_SetPeer may swap the address at any time.
+ static sockaddr_in g_peer{};
+ static std::mutex g_peerMtx;
+-static bool g_peerSet = false;
++static bool g_peerSet = false;
++static sockaddr_in g_requestedPeer{};
++static bool g_peerUpdatePending = false;
+ static uint16_t g_localPort = 0;   // set once in Net_Init, after a successful bind
+-static void (*g_deliver)(const char*) = nullptr;
+-static std::string g_rxAccum;   // partial line being reassembled from chunks
++static void (*g_deliver)(const char*) = nullptr;
++static std::string g_rxAccum;   // partial line being reassembled from chunks
++static uint16_t g_rxChunkCount = 0;
++static uint16_t g_rxNextChunk = 0;
+ 
+ static HANDLE g_thread = nullptr;
+ static volatile bool g_running = false;
+ 
+-static uint32_t g_nextSeq = 0;
+-static uint32_t g_expectedSeq = 0;
++// Sequence zero is reserved: ACK 0 unambiguously means no event received yet.
++static uint32_t g_nextSeq = 1;
++static uint32_t g_expectedSeq = 1;
+ static uint32_t g_session = 0;          // our id (set at init)
+-static uint32_t g_peerSession = 0;      // last seen peer id
++static uint32_t g_peerSession = 0;      // last seen peer id
++static std::deque<uint32_t> g_retiredPeerSessions;
+ static std::map<uint32_t, Packet> g_pending;        // sent, awaiting ack
+ static std::map<uint32_t, uint64_t> g_lastSent;     // seq -> last send time
+ static std::map<uint32_t, Packet> g_early;          // received out of order
+@@ -62,7 +70,10 @@ static uint32_t g_receivedBits = 0;
+ // so the right behaviour is to drop them.
+ static const uint32_t PEER_TIMEOUT_MS   = 10000;
+ static const uint32_t KEEPALIVE_MS      = 500;
+-static const size_t   MAX_PENDING       = 512;
++static const size_t   MAX_PENDING       = 512;
++// Match the bounded send window: a single line must fit without exhausting it.
++static const size_t   MAX_LINE_CHUNKS   = MAX_PENDING;
++static const size_t   MAX_LINE_BYTES    = MAX_LINE_CHUNKS * (NET_CHUNK_TEXT - 1);
+ static uint64_t g_lastRecvMs   = 0;
+ static bool     g_peerEverSeen = false;
+ static uint64_t g_droppedNoPeer = 0;
+@@ -90,7 +101,8 @@ static void SendRaw(uint32_t seq, uint32_t type, const NetEvent* ev)
+     Packet p{};
+     p.h.magic = MAGIC;
+     p.h.session = g_session;
+-    p.h.seq = seq;
++    p.h.seq = seq;
++    p.h.ackSession = g_peerSession;
+     p.h.ack = g_lastReceivedSeq;
+     p.h.ackBits = g_receivedBits;
+     p.h.type = (uint8_t)type;
+@@ -104,9 +116,10 @@ static void SendRaw(uint32_t seq, uint32_t type, const NetEvent* ev)
+            (sockaddr*)&peer, sizeof(peer));
+ }
+ 
+-static void ProcessAck(uint32_t ack, uint32_t bits)
+-{
+-    std::lock_guard<std::mutex> lk(g_mtx);
++static void ProcessAck(uint32_t ackSession, uint32_t ack, uint32_t bits)
++{
++    std::lock_guard<std::mutex> lk(g_mtx);
++    if (ackSession != g_session || ack == 0) return;
+     for (auto it = g_pending.begin(); it != g_pending.end();) {
+         uint32_t s = it->first;
+         bool acked = (s == ack) || (s < ack && ((ack - s) > 32)) ||
+@@ -116,17 +129,112 @@ static void ProcessAck(uint32_t ack, uint32_t bits)
+     }
+ }
+ 
+-// accumulate chunks; hand the callback a whole line once the last one lands.
+-// stream is reliable+ordered, so chunks arrive contiguously per line.
+-static void Reassemble(const NetEvent& ev)
+-{
+-    if (!g_deliver) return;
+-    size_t n = strnlen(ev.text, NET_CHUNK_TEXT);
+-    if (ev.chunkIdx == 0) g_rxAccum.clear();
+-    g_rxAccum.append(ev.text, n);
+-    if (ev.chunkIdx + 1 >= ev.chunkCount) {
+-        g_deliver(g_rxAccum.c_str());
+-        g_rxAccum.clear();
++static void ResetReassembly()
++{
++    g_rxAccum.clear();
++    g_rxChunkCount = 0;
++    g_rxNextChunk = 0;
++}
++
++static bool ValidChunk(const NetEvent& ev)
++{
++    if (ev.type != 1 || ev.chunkCount == 0 || ev.chunkCount > MAX_LINE_CHUNKS ||
++        ev.chunkIdx >= ev.chunkCount) return false;
++    // Never turn an unterminated or shortened intermediate chunk into a command.
++    const char* end = (const char*)memchr(ev.text, 0, NET_CHUNK_TEXT);
++    if (!end) return false;
++    return ev.chunkIdx + 1 == ev.chunkCount || end - ev.text == NET_CHUNK_TEXT - 1;
++}
++
++static bool ValidPacket(const Packet& p, int bytes)
++{
++    if (bytes < (int)sizeof(Header) || p.h.magic != MAGIC || p.h.session == 0) return false;
++    if (p.h.type == 0) return bytes == (int)sizeof(Header);
++    return p.h.type == 1 && p.h.seq != 0 && bytes == (int)sizeof(Packet) && ValidChunk(p.ev);
++}
++
++// Caller holds g_mtx. A deliberately discarded backlog must create a new
++// stream epoch; otherwise the next sequence leaves an unrecoverable hole.
++static void ResetSender()
++{
++    if (g_session == 0) g_session = (uint32_t)(GetTickCount64() ^ (uintptr_t)&g_session);
++    else ++g_session;
++    if (g_session == 0) g_session = 1;
++    g_nextSeq = 1;
++    g_pending.clear();
++    g_lastSent.clear();
++    while (!g_outQueue.empty()) g_outQueue.pop();
++}
++
++static void ResetReceiver(uint32_t session)
++{
++    g_peerSession = session;
++    // A keepalive advertises the sender's next sequence, NOT a received prefix.
++    // Waiting for 1 prevents skipping a lost first command or first chunk.
++    g_expectedSeq = 1;
++    g_lastReceivedSeq = 0;
++    g_receivedBits = 0;
++    g_early.clear();
++    ResetReassembly();
++}
++
++static bool AcceptSession(uint32_t session)
++{
++    if (session == g_peerSession) return true;
++    for (uint32_t old : g_retiredPeerSessions) if (session == old) return false;
++    if (g_peerSession != 0) {
++        g_retiredPeerSessions.push_back(g_peerSession);
++        if (g_retiredPeerSessions.size() > 8) g_retiredPeerSessions.pop_front();
++    }
++    ResetReceiver(session);
++    return true;
++}
++
++// Apply address changes on the network thread before sending any queued data.
++// Updating g_peer directly on the caller's thread could leak an old-session
++// command to the new address between dequeuing and SendRaw.
++static void ApplyPeerUpdate()
++{
++    bool changed = false;
++    {
++        std::lock_guard<std::mutex> lk(g_peerMtx);
++        if (g_peerUpdatePending) {
++            g_peer = g_requestedPeer;
++            g_peerSet = true;
++            g_peerUpdatePending = false;
++            changed = true;
++        }
++    }
++    if (changed) {
++        std::lock_guard<std::mutex> lk(g_mtx);
++        g_droppedNoPeer += g_pending.size() + g_outQueue.size();
++        ResetSender();
++        ResetReceiver(0);
++        g_retiredPeerSessions.clear();
++        g_peerEverSeen = false;
++        g_lastRecvMs = 0;
++    }
++}
++
++// Only a complete, consistently indexed, bounded line may reach the callback.
++static void Reassemble(const NetEvent& ev)
++{
++    if (!g_deliver || !ValidChunk(ev)) { ResetReassembly(); return; }
++    if (ev.chunkIdx == 0) {
++        ResetReassembly();
++        g_rxChunkCount = ev.chunkCount;
++    }
++    if (ev.chunkCount != g_rxChunkCount || ev.chunkIdx != g_rxNextChunk) {
++        ResetReassembly();
++        return;
++    }
++    size_t n = strnlen(ev.text, NET_CHUNK_TEXT);
++    if (n > MAX_LINE_BYTES - g_rxAccum.size()) { ResetReassembly(); return; }
++    g_rxAccum.append(ev.text, n);
++    ++g_rxNextChunk;
++    if (g_rxNextChunk == g_rxChunkCount) {
++        g_deliver(g_rxAccum.c_str());
++        ResetReassembly();
+     }
+ }
+ 
+@@ -167,7 +275,7 @@ static void NoteReceived(uint32_t s)
+     }
+ }
+ 
+-static void DeliverInOrder(const Packet& p)
++static void DeliverInOrder(const Packet& p)
+ {
+     uint32_t s = p.h.seq;
+     if (s < g_expectedSeq) {                    // duplicate
+@@ -194,7 +302,19 @@ static void DeliverInOrder(const Packet& p)
+         g_early.erase(it);
+         g_expectedSeq++;
+     }
+-}
++}
++
++static void ProcessIncoming(const Packet& p)
++{
++    if (!AcceptSession(p.h.session)) return;
++    {
++        std::lock_guard<std::mutex> lk(g_mtx);
++        g_lastRecvMs = GetTickCount64();
++        g_peerEverSeen = true;
++    }
++    ProcessAck(p.h.ackSession, p.h.ack, p.h.ackBits);
++    if (p.h.type == 1) DeliverInOrder(p);
++}
+ 
+ static DWORD WINAPI NetThread(LPVOID)
+ {
+@@ -203,23 +323,22 @@ static DWORD WINAPI NetThread(LPVOID)
+         // Net_SignalShutdown closes the socket and publishes INVALID_SOCKET to
+         // break us out of select(); re-reading it here keeps FD_SET off a
+         // handle that has already been closed.
+-        SOCKET sock = g_sock;
+-        if (sock == INVALID_SOCKET) break;
++        SOCKET sock = g_sock;
++        if (sock == INVALID_SOCKET) break;
++        ApplyPeerUpdate();
+         // 1. flush outbound queue
+         for (;;) {
+-            NetEvent ev;
+-            {
+-                std::lock_guard<std::mutex> lk(g_mtx);
+-                if (g_outQueue.empty()) break;
+-                ev = g_outQueue.front();
+-                g_outQueue.pop();
+-            }
+-            uint32_t seq = g_nextSeq++;
+-            Packet p{};
+-            p.h.magic = MAGIC; p.h.seq = seq; p.h.type = 1; p.ev = ev;
+-            {
+-                std::lock_guard<std::mutex> lk(g_mtx);
+-                g_pending[seq] = p;
++            NetEvent ev;
++            uint32_t seq;
++            {
++                std::lock_guard<std::mutex> lk(g_mtx);
++                if (g_outQueue.empty()) break;
++                ev = g_outQueue.front();
++                g_outQueue.pop();
++                seq = g_nextSeq++;
++                Packet p{};
++                p.h.magic = MAGIC; p.h.seq = seq; p.h.type = 1; p.ev = ev;
++                g_pending[seq] = p;
+                 g_lastSent[seq] = GetTickCount64();
+             }
+             SendRaw(seq, 1, &ev);
+@@ -232,9 +351,8 @@ static DWORD WINAPI NetThread(LPVOID)
+             // would stall the receiver forever -- so treat this as "peer gone"
+             // and discard the whole backlog.
+             if (g_pending.size() > MAX_PENDING) {
+-                g_droppedOverflow += g_pending.size();
+-                g_pending.clear();
+-                g_lastSent.clear();
++                g_droppedOverflow += g_pending.size() + g_outQueue.size();
++                ResetSender();
+                 g_peerEverSeen = false;   // force rediscovery via keepalives
+             }
+             for (auto& kv : g_pending) {
+@@ -264,26 +382,15 @@ static DWORD WINAPI NetThread(LPVOID)
+         if (n > 0 && FD_ISSET(sock, &fds)) {
+             Packet p{};
+             sockaddr_in from{}; int fromLen = sizeof(from);
+-            int got = recvfrom(sock, (char*)&p, sizeof(p), 0,
+-                               (sockaddr*)&from, &fromLen);
+-            if (got >= (int)sizeof(Header) && p.h.magic == MAGIC) {
+-                {
+-                    std::lock_guard<std::mutex> lk(g_mtx);
+-                    g_lastRecvMs = GetTickCount64();
+-                    g_peerEverSeen = true;
+-                }
+-                if (p.h.session != g_peerSession) {
+-                    // new sender session: reset receiver state so a peer that
+-                    // restarted (seq back to 0) isn't dropped as duplicates
+-                    g_peerSession = p.h.session;
+-                    g_expectedSeq = p.h.seq;
+-                    g_lastReceivedSeq = p.h.seq ? p.h.seq - 1 : 0;
+-                    g_receivedBits = 0;
+-                    g_early.clear();
+-                    g_rxAccum.clear();   // drop any half-reassembled line
+-                }
+-                ProcessAck(p.h.ack, p.h.ackBits);
+-                if (p.h.type == 1) DeliverInOrder(p);
++            int got = recvfrom(sock, (char*)&p, sizeof(p), 0,
++                               (sockaddr*)&from, &fromLen);
++            {
++                // The configured Hamachi/LAN peer is the only accepted source.
++                std::lock_guard<std::mutex> lk(g_peerMtx);
++                if (from.sin_addr.s_addr != g_peer.sin_addr.s_addr || from.sin_port != g_peer.sin_port) continue;
++            }
++            if (ValidPacket(p, got)) {
++                ProcessIncoming(p);
+             }
+         }
+     }
+@@ -346,11 +453,19 @@ bool Net_Init(uint16_t localPort, const char* peerIp, uint16_t peerPort,
+         g_peer = sockaddr_in{};
+         g_peer.sin_family = AF_INET;
+         g_peer.sin_port = htons(peerPort);
+-        inet_pton(AF_INET, peerIp, &g_peer.sin_addr);
+-        g_peerSet = true;
+-    }
+-    g_deliver = deliverCb;
+-    g_session = (uint32_t)(GetTickCount64() ^ (uintptr_t)&g_session);
++        inet_pton(AF_INET, peerIp, &g_peer.sin_addr);
++        g_peerSet = true;
++        g_peerUpdatePending = false;
++    }
++    g_deliver = deliverCb;
++    {
++        std::lock_guard<std::mutex> lk(g_mtx);
++        ResetSender();
++        ResetReceiver(0);
++        g_retiredPeerSessions.clear();
++        g_peerEverSeen = false;
++        g_lastRecvMs = 0;
++    }
+     g_running = true;
+     g_thread = CreateThread(nullptr, 0, NetThread, nullptr, 0, nullptr);
+     return g_thread != nullptr;
+@@ -358,11 +473,13 @@ bool Net_Init(uint16_t localPort, const char* peerIp, uint16_t peerPort,
+ 
+ // split a line of any length into chunk events. Queued under one lock so a
+ // line's chunks stay contiguous in the stream even with concurrent callers.
+-void Net_QueueLine(const char* line)
+-{
+-    size_t len = strlen(line);
+-    size_t chunks = (len / (NET_CHUNK_TEXT - 1)) + 1;   // >=1, even for ""
+-    std::lock_guard<std::mutex> lk(g_mtx);
++void Net_QueueLine(const char* line)
++{
++    std::lock_guard<std::mutex> lk(g_mtx);
++    if (!line) { g_droppedOversize++; return; }
++    size_t len = strnlen(line, MAX_LINE_BYTES + 1);
++    if (len > MAX_LINE_BYTES) { g_droppedOversize++; return; }
++    size_t chunks = len ? (len + NET_CHUNK_TEXT - 2) / (NET_CHUNK_TEXT - 1) : 1;
+     // REFUSE, do not clamp.
+     //
+     // This used to be `if (chunks > 0xFFFF) chunks = 0xFFFF`, which cut the
+@@ -370,13 +487,17 @@ void Net_QueueLine(const char* line)
+     // reassembled the truncated text, saw the last chunk arrive, and handed it
+     // to Lua as a complete line. A silently shortened command is far worse than
+     // a missing one: it parses, and it replays as something the player never
+-    // did. The cap is ~67 MB of text, so hitting it means a bug upstream, not a
+-    // big station.
+-    if (chunks > 0xFFFF) { g_droppedOversize++; return; }
++    // did. The limit now matches the bounded sender window as well.
++    if (chunks > MAX_LINE_CHUNKS) { g_droppedOversize++; return; }
+     // Nobody is listening: drop rather than queue forever. A joiner that
+     // connects later starts from a transferred save, so a replay of everything
+     // that happened before it existed would be wrong as well as expensive.
+-    if (!PeerAlive()) { g_droppedNoPeer++; return; }
++    if (!PeerAlive()) { g_droppedNoPeer++; return; }
++    // Reserve the complete line or refuse it; never enqueue a partial command.
++    if (chunks + g_outQueue.size() + g_pending.size() > MAX_PENDING) {
++        g_droppedOverflow++;
++        return;
++    }
+     for (size_t i = 0; i < chunks; ++i) {
+         NetEvent ev{};
+         ev.type = 1;
+@@ -400,17 +521,8 @@ bool Net_SetPeer(const char* ip, int port)
+     if (inet_pton(AF_INET, ip, &a.sin_addr) != 1) return false;
+     {
+         std::lock_guard<std::mutex> lk(g_peerMtx);
+-        g_peer = a;
+-        g_peerSet = true;
+-    }
+-    {
+-        // Same reasoning as the overflow path in NetThread: the backlog was
+-        // addressed to the old peer, and a hole is not allowed in the ordered
+-        // stream, so the whole thing goes. Keepalives rediscover the new peer.
+-        std::lock_guard<std::mutex> lk(g_mtx);
+-        g_pending.clear();
+-        g_lastSent.clear();
+-        g_peerEverSeen = false;
++        g_requestedPeer = a;
++        g_peerUpdatePending = true;
+     }
+     return true;
+ }
+@@ -459,8 +571,9 @@ void Net_Shutdown()
+         std::lock_guard<std::mutex> lk(g_mtx);
+         g_pending.clear();
+         g_lastSent.clear();
+-        g_early.clear();
+-        g_rxAccum.clear();
++        ResetReceiver(0);
++        g_retiredPeerSessions.clear();
++        while (!g_outQueue.empty()) g_outQueue.pop();
+         g_peerEverSeen = false;
+     }
+ }
+diff --git a/bridge/src/proxy_alut.cpp b/bridge/src/proxy_alut.cpp
+index 334f3d7..fc9b2da 100644
+--- a/bridge/src/proxy_alut.cpp
++++ b/bridge/src/proxy_alut.cpp
+@@ -4,17 +4,17 @@
+ // a save is loaded, so injecting into a running game is far too late to touch
+ // it. alut.dll is a *static* import of TransportFever2.exe, so the loader maps
+ // it before the exe's entry point runs. Dropping ourselves in its place gets us
+-// running earlier than anything else we can do, in both the normal and the
+-// sandboxed instance, with no launcher and no timing race.
++// running early enough to install the hooks before a save is loaded. Ordinary
++// Steam launches forward audio only; the companion opts in a co-op session.
+ //
+ // Install: rename the stock alut.dll to alut_real.dll and put this beside it.
+ // Every export is forwarded straight through, so the game's audio is untouched.
+ //
+-// This is deliberately a thin loader: it only pulls in the real bridge dll from
+-// the workshop out dir, so the bridge can be rebuilt without touching any file
+-// inside the game installation.
++// The native libraries are resolved only beside this proxy in the installation.
+ #include <windows.h>
+ #include <cstdio>
++#include "launch_lease.h"
++#include "activation_pipe.h"
+ 
+ #pragma comment(linker, "/export:alutCreateBufferFromFile=alut_real.alutCreateBufferFromFile")
+ #pragma comment(linker, "/export:alutCreateBufferFromFileImage=alut_real.alutCreateBufferFromFileImage")
+@@ -37,25 +37,12 @@
+ #pragma comment(linker, "/export:alutSleep=alut_real.alutSleep")
+ #pragma comment(linker, "/export:alutUnloadWAV=alut_real.alutUnloadWAV")
+ 
+-// Where our shipped files live, in order of preference. Portable first, the
+-// original dev workshop path last so the existing rig keeps working untouched.
+-static const wchar_t* FALLBACK_DIR =
+-    L"C:\\Program Files (x86)\\Steam\\steamapps\\workshop\\content\\1066780"
+-    L"\\3710243057\\recon\\m4\\out";
+-
+-// Resolve a shipped file by name: %LOCALAPPDATA%\tpf2mp\<name>, then next to THIS
+-// proxy dll (the game dir), then the dev workshop path. Writes the first that
+-// exists (or the fallback if none) into out.
++// Resolve a shipped file beside THIS proxy DLL in the installation.
+ #include "datadir.h"
+ 
+ static void resolveShipped(const wchar_t* name, wchar_t* out, size_t cch)
+ {
+     wchar_t buf[MAX_PATH];
+-    wchar_t la[MAX_PATH];
+-    if (GetEnvironmentVariableW(L"LOCALAPPDATA", la, MAX_PATH)) {
+-        _snwprintf_s(buf, MAX_PATH, _TRUNCATE, L"%s\\tpf2mp\\%s", la, name);
+-        if (GetFileAttributesW(buf) != INVALID_FILE_ATTRIBUTES) { wcscpy_s(out, cch, buf); return; }
+-    }
+     HMODULE self = nullptr;
+     GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                        (LPCWSTR)&resolveShipped, &self);
+@@ -64,7 +51,8 @@ static void resolveShipped(const wchar_t* name, wchar_t* out, size_t cch)
+         if (s) { s[1] = 0; wcscat_s(buf, MAX_PATH, name);
+                  if (GetFileAttributesW(buf) != INVALID_FILE_ATTRIBUTES) { wcscpy_s(out, cch, buf); return; } }
+     }
+-    _snwprintf_s(out, cch, _TRUNCATE, L"%s\\%s", FALLBACK_DIR, name);
++    // No user profile/workshop fallback may substitute an unrelated DLL.
++    out[0] = 0;
+ }
+ 
+ static void Log(const char* fmt, ...)
+@@ -84,10 +72,37 @@ static void Log(const char* fmt, ...)
+ }
+ 
+ // Loading a dll from inside DllMain would deadlock on the loader lock, so the
+-// real work happens on its own thread. It still lands well before the menu is
+-// built -- the exe has not even reached its entry point yet.
++// real work happens on its own thread during process startup.
+ static DWORD WINAPI LoadBridge(LPVOID)
+ {
++    // Steam may replace the launcher child with a new process whose parent is
++    // Steam itself. A live launcher can authorize that exact installation for
++    // at most 180 seconds. This never changes the user's global environment.
++    wchar_t session[8] = L"";
++    bool childSession = GetEnvironmentVariableW(L"TF2COOP_SESSION", session, 8) == 1 && session[0] == L'1';
++    tf2coop::LaunchLease lease;
++    bool validLease = tf2coop::ReadValidLaunchLease(lease);
++    if (!childSession && !validLease) return 0;
++    if (validLease) {
++        if (!SetEnvironmentVariableW(L"TPF2MP_DATADIR", lease.dataDir.c_str())
++            || !SetEnvironmentVariableW(L"TF2COOP_SESSION", L"1")) return 0;
++        Log("[coop] launcher lease accepted for pid=%lu\n", GetCurrentProcessId());
++    } else {
++        wchar_t data[MAX_PATH];
++        DWORD n = GetEnvironmentVariableW(L"TPF2MP_DATADIR", data, MAX_PATH);
++        if (!n || n >= MAX_PATH || !tf2coop::CanonicalPath(data, lease.dataDir)
++            || !tf2coop::CurrentExe(lease.gameExe)) return 0;
++        lease.nonce.assign(32, '0');
++    }
++    auto base = reinterpret_cast<const unsigned char*>(GetModuleHandleW(nullptr));
++    auto dos = reinterpret_cast<const IMAGE_DOS_HEADER*>(base);
++    if (!base || dos->e_magic != IMAGE_DOS_SIGNATURE) return 0;
++    auto nt = reinterpret_cast<const IMAGE_NT_HEADERS64*>(base + dos->e_lfanew);
++    if (nt->Signature != IMAGE_NT_SIGNATURE || nt->FileHeader.TimeDateStamp != 0x675abcc6 ||
++        nt->OptionalHeader.SizeOfImage != 0x046ce000) {
++        Log("[coop] unsupported game build; native hooks disabled\n");
++        return 0;
++    }
+     wchar_t bridgePath[MAX_PATH], menuPath[MAX_PATH], slicePath[MAX_PATH];
+     resolveShipped(L"tpf2_bridge_mp.dll", bridgePath, MAX_PATH);
+     resolveShipped(L"tpf2_menu.dll",      menuPath,   MAX_PATH);
+@@ -95,14 +110,19 @@ static DWORD WINAPI LoadBridge(LPVOID)
+     HMODULE h = LoadLibraryW(bridgePath);
+     Log("[proxy] pid=%lu bridge load %s (err %lu) from %ls\n",
+         GetCurrentProcessId(), h ? "OK" : "FAILED", h ? 0 : GetLastError(), bridgePath);
+-    HMODULE hm = LoadLibraryW(menuPath);
+-    Log("[proxy] pid=%lu menu load %s (err %lu) from %ls\n",
+-        GetCurrentProcessId(), hm ? "OK" : "FAILED", hm ? 0 : GetLastError(), menuPath);
++    // The local companion owns the lobby. Do not load another menu/network app.
+     // The slice dll (command capture/replay) is optional: a missing file just
+     // means no replication this run, the menu + bridge still come up.
+     HMODULE hs = LoadLibraryW(slicePath);
+     Log("[proxy] pid=%lu slice load %s (err %lu) from %ls\n",
+         GetCurrentProcessId(), hs ? "OK" : "FAILED", hs ? 0 : GetLastError(), slicePath);
++    if (h && hs) {
++        std::string payload = "format=1\nactive=1\ngame_pid=" + std::to_string(GetCurrentProcessId())
++            + "\ngame_exe=" + tf2coop::ToUtf8(lease.gameExe) + "\ndata_dir=" + tf2coop::ToUtf8(lease.dataDir)
++            + "\nnonce=" + lease.nonce + "\n";
++        bool pipe = tf2coop::StartActivationPipes(payload);
++        Log("[coop] process-bound Lua activation pipe %s pid=%lu\n", pipe ? "ready" : "FAILED", GetCurrentProcessId());
++    }
+     return 0;
+ }
+ 
+diff --git a/bridge/src/slice_hook.cpp b/bridge/src/slice_hook.cpp
+index 9c7b5fb..edf5575 100644
+--- a/bridge/src/slice_hook.cpp
++++ b/bridge/src/slice_hook.cpp
+@@ -195,9 +195,15 @@ static bool Readable(const void* p, size_t n)
+ // '#' or ';' are comments and can never flip a switch -- the matching is a
+ // substring test, so without this a commented-out "# suppress=1" would still
+ // cancel builds.
+-static FILE* OpenCfg()
+-{
+-    char p[MAX_PATH];
++static FILE* OpenCfg()
++{
++    char p[MAX_PATH];
++    // TF2 Co-op launcher creates one fresh, explicit configuration per run.
++    if (g_dataDir[0]) {
++        snprintf(p, sizeof(p), "%stpf2_slice.cfg", g_dataDir);
++        FILE* f = _fsopen(p, "r", _SH_DENYNO);
++        if (f) return f;
++    }
+     if (g_dllDir[0]) {
+         snprintf(p, sizeof(p), "%stpf2_slice.cfg", g_dllDir);
+         FILE* f = _fsopen(p, "r", _SH_DENYNO);
+diff --git a/mod/mp_lockstep_1/res/config/game_script/lockstep.lua b/mod/mp_lockstep_1/res/config/game_script/lockstep.lua
+index 8c785e1..85afe43 100644
+--- a/mod/mp_lockstep_1/res/config/game_script/lockstep.lua
++++ b/mod/mp_lockstep_1/res/config/game_script/lockstep.lua
+@@ -1,4 +1,54 @@
+--- MP Lockstep -- prototype.
++-- TF2 Co-op fork: never start replication during an ordinary Steam launch.
++-- Steam can restart the game without our environment, and TF2 can hide getenv.
++-- The active native proxy also serves a local pipe; it only answers clients
++-- whose Windows process ID equals its own. There is no stale activation file.
++-- Keep configuration in K rather than introducing more top-level locals: this
++-- upstream chunk is close to Lua's 200-live-local compiler limit.
++local K = {}
++K.ACTIVATION = (function()
++    local ok, value = pcall(function() return os.getenv("TF2COOP_SESSION") end)
++    if ok and value == "1" then return { source = "environment" } end
++    local file
++    local readOk, activation = pcall(function()
++        file = io.open("\\\\.\\pipe\\TF2CoopActivation", "rb")
++        if not file then return nil end -- absent/busy pipe returns immediately
++        -- A bounded exact-length frame avoids CRT broken-pipe EOF errors from
++        -- read('*a') or a read larger than the native response.
++        local header = file:read(4)
++        if type(header) ~= "string" or not header:match("^%d%d%d%d$") then return nil end
++        local size = tonumber(header)
++        if not size or size < 1 or size > 4096 then return nil end
++        local raw = file:read(size)
++        if type(raw) ~= "string" or #raw ~= size or raw:find("[%z\1-\8\11\12\14-\31]") then return nil end
++        local fields = {}
++        for line in (raw .. "\n"):gmatch("([^\n]*)\n") do
++            line = line:gsub("\r$", "")
++            if line ~= "" then
++                local key, text = line:match("^([a-z_]+)=(.*)$")
++                if not key or fields[key] then return nil end
++                fields[key] = text
++            end
++        end
++        local function absolute(path)
++            if type(path) ~= "string" or #path > 2048 or path:find("[%z\1-\31]") then return false end
++            local normalized = path:gsub("\\", "/")
++            return normalized:match("^%a:/") or normalized:match("^//[^/]+/[^/]+")
++        end
++        if fields.format ~= "1" or fields.active ~= "1"
++            or not absolute(fields.data_dir) or not absolute(fields.game_exe)
++            or not fields.game_pid or not fields.game_pid:match("^%d+$")
++            or tonumber(fields.game_pid) < 1
++            or not fields.nonce or #fields.nonce < 1 or #fields.nonce > 128 then return nil end
++        return { source = "native process pipe", data_dir = fields.data_dir }
++    end)
++    if file then pcall(function() file:close() end) end
++    if readOk then return activation end
++end)()
++if not K.ACTIVATION then
++    function data() return {} end
++    return
++end
++-- MP Lockstep -- prototype.
+ --
+ -- Replicates COMMANDS, not state. Every command carries the game time at which
+ -- all peers must execute it; nobody executes early, including the originator.
+@@ -45,25 +95,29 @@
+ -- Constants and the per-instance file paths live here rather than as two
+ -- dozen more top-level locals: Lua allows 200 per chunk, and this file has
+ -- already hit that ceiling once, where the mod silently fails to load.
+-local K = {}
+-
+-local CM = {}   -- the one catch-all state table; documented at its former home below
++local CM = {}   -- the one catch-all state table; documented at its former home below
+ K.BASE = (function()
+ 	local function env(name)
+ 		local ok, v = pcall(function() return os.getenv(name) end)
+ 		if ok and type(v) == "string" and #v > 0 then return v end
+ 		return nil
+ 	end
+-	local function dir(p)
+-		p = p:gsub("\\", "/")
+-		if p:sub(-1) ~= "/" then p = p .. "/" end
+-		return p
+-	end
++	local function dir(p)
++		p = p:gsub("\\", "/")
++		if p:sub(-1) ~= "/" then p = p .. "/" end
++		return p
++	end
++	if K.ACTIVATION.data_dir then
++		local path = dir(K.ACTIVATION.data_dir)
++		CM.baseSource = "native process pipe"
++		CM.baseCandidates = { path }
++		return path
++	end
+ 	local cands = {}
+ 	local function add(source, p)
+ 		if p then cands[#cands + 1] = { source = source, path = dir(p) } end
+ 	end
+-	add("TPF2MP_DATADIR", env("TPF2MP_DATADIR"))
++	add("TPF2MP_DATADIR", env("TPF2MP_DATADIR"))
+ 	local lad = env("LOCALAPPDATA")
+ 	add("LOCALAPPDATA", lad and (lad .. "/tpf2mp/data"))
+ 	add("workshop", "C:/Program Files (x86)/Steam/steamapps/workshop/content/1066780/3710243057/recon/m4/out/")
+@@ -3850,13 +3904,59 @@ local function buildLineObject(c)
+ 	return lineObj, n
+ end
+ 
+-local function execLine(c)
++-- A create callback and the subsequent key poll are asynchronous. When a
++-- player edits a newly-created line while paused, LCREATE and all LUPDATEs
++-- can share one stamp. The updates must survive until that line is bound.
++-- Keep the original stamp/sequence so the queue preserves their edit order.
++CM.lineDependencyWaiters = {}
++CM.lineUpdatesInFlight = {}
++function CM.lineDependencyBlocked(c, key)
++	for _, waiting in pairs(CM.lineDependencyWaiters[key] or {}) do
++		if waiting ~= c and cmdLess(waiting, c) then return true end
++	end
++	return false
++end
++function CM.finishLineDependency(c)
++	local waiting = CM.lineDependencyWaiters[c.key]
++	if waiting then
++		waiting[cmdKey(c)] = nil
++		if next(waiting) == nil then CM.lineDependencyWaiters[c.key] = nil end
++	end
++end
++function CM.retryLineDependency(c, reason)
++	c.lineDependencyTries = (tonumber(c.lineDependencyTries) or 0) + 1
++	if c.lineDependencyTries > 60 then
++		CM.finishLineDependency(c)
++		log(string.format("%s seq=%s: %s after 60 dependency retries -- NOT applied (DIVERGENCE)",
++			tostring(c.op), tostring(c.seq), reason))
++		return
++	end
++	if (c.op == "LUPDATE" or c.op == "LDELETE") and c.key then
++		CM.lineDependencyWaiters[c.key] = CM.lineDependencyWaiters[c.key] or {}
++		CM.lineDependencyWaiters[c.key][cmdKey(c)] = c
++	end
++	-- retryQueue is merged once at the next script update. Keep the original
++	-- simulation target: async callbacks can finish while the game is paused,
++	-- and moving a due command to a later step would strand it until unpause.
++	CM.retryQueue = CM.retryQueue or {}
++	CM.retryQueue[#CM.retryQueue + 1] = c
++	if c.lineDependencyTries == 1 or c.lineDependencyTries % 20 == 0 then
++		log(string.format("%s seq=%s: %s -- dependency retry %d (step %d)",
++			tostring(c.op), tostring(c.seq), reason, c.lineDependencyTries, c.notBeforeStep or CM.stepOf(c.at)))
++	end
++end
++
++local function execLine(c)
+ 	if c.origin == K.INSTANCE then
+ 		log(string.format("%s seq=%s: originator already applied locally, skipping", c.op, tostring(c.seq)))
+ 		return
+-	end
+-	local ok, err = pcall(function()
+-		if c.op == "LCREATE" then
++	end
++	local ok, err = pcall(function()
++		if (c.op == "LUPDATE" or c.op == "LDELETE") and CM.lineDependencyBlocked(c, c.key) then
++			CM.retryLineDependency(c, "an earlier edit of line " .. tostring(c.key) .. " is pending")
++			return
++		end
++		if c.op == "LCREATE" then
+ 			local lineObj, n = buildLineObject(c)
+ 			local r, g, b = tostring(c.color or ""):match("^([^,]+),([^,]+),([^,]+)$")
+ 			local color = api.type.Vec3f.new(tonumber(r) or 0.9, tonumber(g) or 0.2, tonumber(b) or 0.2)
+@@ -3868,17 +3968,32 @@ local function execLine(c)
+ 						tostring(c.seq), tostring(c.origin), tostring(c.at), name, n, tostring(success)))
+ 					if success then pendingLineKeys[#pendingLineKeys + 1] = { key = key, sig = c.stops, since = gameTime() or 0, company = c.company and tonumber(c.company) or nil } end
+ 				end)
+-		elseif c.op == "LUPDATE" then
+-			local lid = lineIdFor(c.key)
+-			if not lid then log(string.format("LUPDATE seq=%s: unknown line key %s", tostring(c.seq), tostring(c.key))); return end
+-			local lineObj, n = buildLineObject(c)
+-			api.cmd.sendCommand(api.cmd.make.updateLine(lid, lineObj), function(res, success)
+-				log(string.format("EXEC LUPDATE seq=%s origin=%s at=%s %s stops=%d success=%s",
+-					tostring(c.seq), tostring(c.origin), tostring(c.at), tostring(c.key), n, tostring(success)))
+-			end)
+-		elseif c.op == "LDELETE" then
+-			local lid = lineIdFor(c.key)
+-			if not lid then log(string.format("LDELETE seq=%s: unknown line key %s", tostring(c.seq), tostring(c.key))); return end
++		elseif c.op == "LUPDATE" then
++			local lid = lineIdFor(c.key)
++			if not lid then CM.retryLineDependency(c, "line key " .. tostring(c.key) .. " not bound"); return end
++			CM.finishLineDependency(c)
++			local lineObj, n = buildLineObject(c)
++			local command = api.cmd.make.updateLine(lid, lineObj)
++			CM.lineUpdatesInFlight[lid] = (CM.lineUpdatesInFlight[lid] or 0) + 1
++			local completed = false
++			local function finish()
++				if completed then return end
++				completed = true
++				local remaining = (CM.lineUpdatesInFlight[lid] or 1) - 1
++				CM.lineUpdatesInFlight[lid] = remaining > 0 and remaining or nil
++			end
++			local sent, sendErr = pcall(function()
++				api.cmd.sendCommand(command, function(res, success)
++					finish()
++					log(string.format("EXEC LUPDATE seq=%s origin=%s at=%s %s stops=%d success=%s",
++						tostring(c.seq), tostring(c.origin), tostring(c.at), tostring(c.key), n, tostring(success)))
++				end)
++			end)
++			if not sent then finish(); error(sendErr) end
++		elseif c.op == "LDELETE" then
++			local lid = lineIdFor(c.key)
++			if not lid then CM.retryLineDependency(c, "line key " .. tostring(c.key) .. " not bound"); return end
++			CM.finishLineDependency(c)
+ 			api.cmd.sendCommand(api.cmd.make.deleteLine(lid), function(res, success)
+ 				log(string.format("EXEC LDELETE seq=%s origin=%s at=%s %s success=%s",
+ 					tostring(c.seq), tostring(c.origin), tostring(c.at), tostring(c.key), tostring(success)))
+@@ -3963,20 +4078,19 @@ local function execVehCmd(c)
+ 	-- left the vehicle unassigned on the peer while the host assigned it, and a
+ 	-- setLine on the unresolved id crashed both peers on GetComponentDataIndex
+ 	-- (2026-09-01). Same retry the "line not here yet" path uses.
+-	if c.op == "VLINE" and c.origin ~= K.INSTANCE then
++	if c.op == "VLINE" then
+ 		local haveAll = true
+ 		if c.key and not vehIdFor(c.key) then haveAll = false end
+ 		if not haveAll then
+ 			c.tries = (c.tries or 0) + 1
+ 			if c.tries <= 30 then
+-				-- advance by a FIXED number of steps from this command's own
+-				-- (agreed) target, never from local game-time: the retry schedule
+-				-- is then the same sim-steps on every instance
+-				c.notBeforeStep = (c.notBeforeStep or CM.stepOf(c.at)) + K.VLINE_RETRY_STEPS
++				-- The command is already due; a key callback may finish while
++				-- paused. Retry next script update without advancing its original
++				-- target (including any batch-buy guard established by the pump).
+ 				CM.retryQueue = CM.retryQueue or {}
+ 				CM.retryQueue[#CM.retryQueue + 1] = c
+ 				if c.tries == 1 or c.tries % 10 == 0 then
+-					log(string.format("VLINE seq=%s: vehicle key not bound yet -- retry %d (step %d)", tostring(c.seq), c.tries, c.notBeforeStep))
++					log(string.format("VLINE seq=%s: vehicle key not bound yet -- retry %d (step %d)", tostring(c.seq), c.tries, c.notBeforeStep or CM.stepOf(c.at)))
+ 				end
+ 				return
+ 			end
+@@ -4012,30 +4126,27 @@ local function execVehCmd(c)
+ 			-- this instance for good (seen live 2026-08-31: the line's stop could
+ 			-- not be resolved, the line was dropped, and every VLINE for it then
+ 			-- failed).
+-			if id and not line then
+-				c.tries = (tonumber(c.tries) or 0) + 1
+-				if c.tries <= 20 then
+-					local nowG = gameTime() or 0
+-					c.at = nowG + 1.0
+-					-- NOT straight back onto `queue`: this runs from inside the
+-					-- pump's loop over that table, which rebuilds it afterwards
+-					-- (`queue = keep`) and would discard the append -- and the
+-					-- pump also remembers this seq as executed. The retry list is
+-					-- merged in, and the seq forgiven, at the top of the next pump.
+-					CM.retryQueue = CM.retryQueue or {}
+-					CM.retryQueue[#CM.retryQueue + 1] = c
+-					if c.tries == 1 or c.tries % 10 == 0 then
+-						log(string.format("VLINE seq=%s: line %s not here yet -- retry %d",
+-							tostring(c.seq), tostring(c.line), c.tries))
+-					end
+-				else
+-					log(string.format("VLINE seq=%s: line %s never arrived -- vehicle %s left unassigned (DIVERGENCE)",
+-						tostring(c.seq), tostring(c.line), tostring(c.key)))
+-				end
+-				return
+-			end
+-			if id and line then
+-				-- Types, because a wrong one here surfaced as an unreadable Lua
++			if id and not line then
++				CM.retryLineDependency(c, "line key " .. tostring(c.line) .. " not bound")
++				return
++			end
++			if id and line then
++				if CM.lineDependencyBlocked(c, c.line) or CM.lineUpdatesInFlight[line] then
++					CM.retryLineDependency(c, "an earlier edit of line " .. tostring(c.line) .. " is pending")
++					return
++				end
++				-- setLine on an empty LINE triggers a native engine assertion,
++				-- even inside pcall (observed with same-stamp LCREATE/LUPDATE).
++				-- Wait until the stop updates have actually reached the engine.
++				local okLine, hasStops = pcall(function()
++					local lc = api.engine.getComponent(line, api.type.ComponentType.LINE)
++					return lc ~= nil and lc.stops ~= nil and #lc.stops > 0
++				end)
++				if not okLine or not hasStops then
++					CM.retryLineDependency(c, "line " .. tostring(c.line) .. " has no readable stops")
++					return
++				end
++				-- Types, because a wrong one here surfaced as an unreadable Lua
+ 				-- error ("execVLINE error: function: 0000018D4AC0FF60") with
+ 				-- nothing to say which argument was wrong.
+ 				-- A stop of -1 means "engine, pick one", which is what the UI sends when a
+@@ -5830,10 +5941,16 @@ end
+ local comparedAt = {}
+ -- One peer's hash for one stamp against ours. compareAt (below) runs this for
+ -- every peer that has reported the stamp, once each.
+-local function compareOne(stamp, origin, theirs, dt)
+-	local mine = myHashes[stamp]
+-	if not mine or not theirs then return end
+-	local pr = peerFor(origin)
++local function compareOne(stamp, origin, theirs, dt)
++	local mine = myHashes[stamp]
++	if not mine or not theirs then return end
++	-- TF2 Co-op: timestamps refer to an actual comparison, never merely a
++	-- fresh dashboard write. Keep current equality separate from the upstream
++	-- three-strike DESYNC verdict, which can still say SYNC during early lag.
++	CM.lastComparison = { t = stamp, wall = os.time(), peer = origin, match = mine == theirs }
++	CM.moneyGapWall = CM.moneyGapWall or {}
++	CM.moneyGapWall[origin] = nil -- missing account details are unknown, not zero
++	local pr = peerFor(origin)
+ 	-- MONEY / LOAN ride in the DETAIL, not the verdict: balances can diverge with
+ 	-- no geometry difference at all (a stop that cost the originator its native
+ 	-- price but a peer only its cheaper edge-rebuild, a delivery timed slightly
+@@ -5841,14 +5958,16 @@ local function compareOne(stamp, origin, theirs, dt)
+ 	-- silently. Compare them here on EVERY stamp and log only when the GAP
+ 	-- CHANGES, so each event that widens or closes the split is timestamped --
+ 	-- which is what tells a stop-cost asymmetry from a vehicle-income one.
+-	do
+-		local dm = myDetails[stamp]
+-		if dm and dt then
+-			CM.moneyGap = CM.moneyGap or {}
+-			for lane, tag in pairs({ m = "MONEY", l = "LOAN" }) do
++	do
++		local dm = myDetails[stamp]
++		if dm and dt then
++			CM.moneyGap = CM.moneyGap or {}
++			local validLanes = 0
++			for lane, tag in pairs({ m = "MONEY", l = "LOAN" }) do
+ 				local a = dm:match(lane .. ":(%-?%d+)")
+ 				local b = dt:match(lane .. ":(%-?%d+)")
+-				if a and b and a ~= "-" and b ~= "-" then
++				if a and b and a ~= "-" and b ~= "-" then
++					validLanes = validLanes + 1
+ 					local d = (tonumber(a) or 0) - (tonumber(b) or 0)
+ 					local gkey = lane .. origin
+ 					if CM.moneyGap[gkey] ~= d then
+@@ -5859,10 +5978,11 @@ local function compareOne(stamp, origin, theirs, dt)
+ 								tag, stamp, origin, a, b, d, was ~= nil and tostring(was) or "0"))
+ 						end
+ 					end
+-				end
+-			end
+-		end
+-	end
++				end
++			end
++			if validLanes == 2 then CM.moneyGapWall[origin] = CM.lastComparison.wall end
++		end
++	end
+ 	if mine == theirs then
+ 		pr.streak = 0
+ 		pr.verdict = "SYNC"
+@@ -5944,20 +6064,12 @@ local function onLine(line)
+ 			local hi = tonumber(line:match(" hi=(%d+)"))
+ 			if hi then pcall(CM.rxAdvertise, o, hi) end
+ 		end
+-	elseif op == "LSSPEED" then
+-		-- The other player moved the speed lever: follow. Speed is local pacing,
+-		-- not simulated state, so it is applied on arrival, not at a stamp.
+-		local v = tonumber(line:match("v=(%d+)"))
+-		if v then
+-			local s0
+-			pcall(function() s0 = game.interface.getGameSpeed() end)
+-			if s0 ~= v then
+-				CM.baseSpeed = v
+-				CM.catchingUp = false
+-				CM.lastSeenSpeed = v      -- so shareSpeed does not echo it back
+-				CM.setSpeed(v, "the other player set it")
+-			end
+-		end
++	elseif op == "LSSPEED" then
++		local v = tonumber(line:match(" v=(%S+)"))
++		local o = line:match(" o=(%S+)")
++		local rawRevision = line:match(" rev=(%S+)")
++		local revision = rawRevision and rawRevision:match("^%d+$") and tonumber(rawRevision)
++		CM.receiveSpeed(v, o, revision)
+ 	elseif op == "LSNACK" then
+ 		local o = line:match(" o=(%a)")
+ 		local seq = tonumber(line:match(" seq=(%d+)"))
+@@ -6961,7 +7073,7 @@ function CM.cfgFlag(key, default)
+ 	if CM.cfgCache == nil then
+ 		CM.cfgCache = {}
+ 		pcall(function()
+-			local f = io.open("tpf2_slice.cfg", "r")
++			local f = io.open(K.BASE .. "tpf2_slice.cfg", "r")
+ 			if not f then return end
+ 			for line in f:lines() do
+ 				local k, v = tostring(line):match("^%s*([%w_]+)%s*=%s*(%S+)")
+@@ -9256,26 +9368,59 @@ CM.pacedTopWarned = false  -- log the "no notch left" case once, not per tick
+ -- than a person can react to what it did.
+ CM.PACE_COOLDOWN = 16         -- ticks between changes we make: a tick is ~0.19 s, so ~3 s
+ 
+-function CM.setSpeed(v, why)
+-	-- TWO SLOTS, not one. A single remembered value is enough only while at most
+-	-- one of our commands is in flight; the moment corrections come faster than
+-	-- the engine applies them, the engine reports the OLDER one, shareSpeed
+-	-- fails to recognise it as ours, concludes the PLAYER moved the lever, and
+-	-- broadcasts our own throttle to every peer as their choice.
+-	CM.prevSetSpeed = CM.lastSetSpeed
+-	CM.lastSetSpeed = v
+-	CM.paceSetTick = ticks
+-	CM.paceApplied = false
++function CM.setSpeed(v, why)
++	-- Keep our pending engine commands separate from the last OBSERVED speed.
++	-- A peer's pause can take multiple update callbacks to land. During those
++	-- callbacks the old running speed is neither an acknowledgement nor a new
++	-- player input. The queue also accounts for multiple commands in flight.
++	CM.speedPending = CM.speedPending or {}
++	CM.speedPending[#CM.speedPending + 1] = { value = v, at = ticks }
++	CM.lastSetSpeed = v
++	CM.paceSetTick = ticks
++	CM.paceApplied = false
+ 	-- The pacing dwell, NOT PACE_COOLDOWN. This is checked before the pacer's
+ 	-- own dwell, so leaving it at the 16-tick cooldown made that dwell inert:
+ 	-- corrections stayed ~3 s apart and each one moved the lead ~5 units, which
+ 	-- is larger than any workable deadband and is why adjustments overshot.
+ 	CM.paceQuietUntil = ticks + (CM.PACE_DWELL or CM.PACE_COOLDOWN)
+-	pcall(function() api.cmd.sendCommand(api.cmd.make.setGameSpeed(v)) end)
+-	log(string.format("PACE: speed -> %s (%s)", tostring(v), why))
+-end
+-
+--- ONE SPEED FOR THE SESSION. Each instance used to run at whatever its player
++	local ok, err = pcall(function() api.cmd.sendCommand(api.cmd.make.setGameSpeed(v)) end)
++	if not ok then
++		table.remove(CM.speedPending)
++		log("SPEED: engine command failed: " .. tostring(err))
++		return
++	end
++	log(string.format("PACE: speed -> %s (%s)", tostring(v), why))
++end
++
++-- Player intents have a logical revision and origin tie-break. Without a
++-- shared order, two concurrent opposite inputs make each peer adopt the
++-- OTHER input and stay opposite. No wall clock participates in this order.
++CM.speedClock = 0
++CM.SPEED_REV_MAX = 2147483647
++function CM.receiveSpeed(v, origin, revision)
++	if v ~= 0 and v ~= 1 and v ~= 2 and v ~= 4 then return end
++	if type(origin) ~= "string" or not origin:match("^[a-h]$")
++		or type(revision) ~= "number" or revision < 1
++		or revision > CM.SPEED_REV_MAX or revision ~= math.floor(revision) then return end
++	CM.speedClock = math.max(CM.speedClock, revision)
++	local current = CM.speedIntent
++	if current and (revision < current.revision
++		or (revision == current.revision and origin <= current.origin)) then return end
++	CM.speedIntent = { revision = revision, origin = origin, value = v }
++	-- Intent and observed engine speed are different things. Remember a pause
++	-- even while a barrier already holds us at 0. Never assign lastSeenSpeed:
++	-- setGameSpeed is asynchronous and the old engine value is not player input.
++	CM.baseSpeed = v
++	CM.catchingUp = false
++	local s0
++	pcall(function() s0 = game.interface.getGameSpeed() end)
++	if not CM.lgHolding and (v == 0 or not paused)
++		and (s0 ~= v or (CM.speedPending and #CM.speedPending > 0)) then
++		CM.setSpeed(v, "the other player set it")
++	end
++end
++
++-- ONE SPEED FOR THE SESSION. Each instance used to run at whatever its player
+ -- chose, and the barrier and pacer then fought to keep two clocks together that
+ -- were being driven apart on purpose: one side at 4 racing ahead, the other at 1
+ -- being paused and released in turn. A speed change the PLAYER makes is now
+@@ -9286,20 +9431,55 @@ end
+ -- release, or a speed we adopted from the peer) are recognised because setSpeed
+ -- recorded them, and are never re-broadcast -- that is what stops the two
+ -- instances echoing one change back and forth forever.
+-function CM.shareSpeed()
+-	local s
+-	if not pcall(function() s = game.interface.getGameSpeed() end) or s == nil then return end
+-	local prev = CM.lastSeenSpeed
+-	CM.lastSeenSpeed = s
+-	if prev == nil or s == prev then return end
+-	if CM.lastSetSpeed ~= nil and s == CM.lastSetSpeed then return end   -- ours, not the player's
+-	-- ...and the one before it, while our newest has not been observed yet.
+-	if not CM.paceApplied and CM.prevSetSpeed ~= nil and s == CM.prevSetSpeed then return end
+-	CM.baseSpeed = s
+-	CM.catchingUp = false
+-	broadcast(string.format("LSSPEED v=%d o=%s", s, K.INSTANCE))
+-	log(string.format("SPEED: player set %d -- shared with the peer", s))
+-end
++function CM.shareSpeed()
++	local s
++	if not pcall(function() s = game.interface.getGameSpeed() end) or s == nil then return end
++	local prev = CM.lastSeenSpeed
++	CM.lastSeenSpeed = s
++	if CM.baseSpeed == nil then CM.baseSpeed = s end
++	local pending = CM.speedPending or {}
++	while pending[1] and ticks - pending[1].at > 30 do
++		table.remove(pending, 1)
++		log("SPEED: engine acknowledgement timed out")
++	end
++	-- An unchanged old value cannot acknowledge a newer command which returns
++	-- to that value (pause and play can both be in flight). Otherwise the
++	-- intermediate pause would later look like a fresh player input.
++	if s == prev then
++		for _, command in ipairs(pending) do
++			if command.value ~= s then return end
++		end
++	end
++	-- Consume through the FIRST matching pending command. Repeated values may
++	-- still have different transitions between them waiting in the engine.
++	local ack
++	for i, command in ipairs(pending) do
++		if command.value == s then ack = i; break end
++	end
++	if ack then
++		for _ = 1, ack do table.remove(pending, 1) end
++		CM.paceApplied = (#pending == 0)
++		return
++	end
++	if prev == nil or s == prev then return end
++	if s ~= 0 and s ~= 1 and s ~= 2 and s ~= 4 then return end
++	if CM.speedClock >= CM.SPEED_REV_MAX then
++		log("SPEED: logical revision exhausted; restart the session")
++		return
++	end
++	CM.speedClock = CM.speedClock + 1
++	CM.speedIntent = { revision = CM.speedClock, origin = K.INSTANCE, value = s }
++	CM.baseSpeed = s
++	CM.catchingUp = false
++	CM.lastSetSpeed = nil
++	CM.paceMovedAt = nil
++	CM.paceQuietUntil = ticks + CM.PACE_COOLDOWN
++	broadcast(string.format("LSSPEED v=%d o=%s rev=%d", s, K.INSTANCE, CM.speedClock))
++	log(string.format("SPEED: player set %d -- shared with the peer", s))
++	-- A genuine player change may overtake an older command which has not
++	-- landed yet. Queue their choice last, so that old command cannot undo it.
++	if #pending > 0 then CM.setSpeed(s, "player input supersedes pending speed") end
++end
+ 
+ -- `ahead` is the lead over the FASTEST peer (the catch-up signal, unchanged).
+ -- `lead` is the lead over the SLOWEST peer -- the quantity K.BARRIER_AHEAD
+@@ -9307,8 +9487,10 @@ end
+ function CM.pace(ahead, lead)
+ 	-- The load gate owns the speed until every player is in. Without this the
+ 	-- pacer would see one peer, floor itself at 1 and fight the gate's 0.
+-	if CM.lgHolding then return end
+-	if paused then return end                       -- the barrier owns the speed
++	if CM.lgHolding then return end
++	if paused then return end                       -- the barrier owns the speed
++	if CM.baseSpeed == 0 then return end              -- the shared player pause owns it
++	if CM.speedPending and #CM.speedPending > 0 then return end
+ 	local behind = -ahead
+ 	-- A gap this size is not pacing: it is two instances on different saves, or
+ 	-- one still loading. Seen live at 55156 units. Speeding up cannot fix that
+@@ -9316,42 +9498,9 @@ function CM.pace(ahead, lead)
+ 	if behind > 60 or behind < -60 then return end
+ 	local s
+ 	if not pcall(function() s = game.interface.getGameSpeed() end) or s == nil then return end
+-	if s == 0 then                                   -- player paused on purpose
+-		-- If we were mid-catch-up, the game will come back at OUR 2, not the
+-		-- player's speed; remember to hand it back the moment it does.
+-		if CM.catchingUp then CM.restoreAfterPause = CM.baseSpeed or 1 end
+-		CM.catchingUp = false
+-		CM.lastSetSpeed = nil
+-		return
+-	end
+-	if CM.restoreAfterPause then
+-		local back = CM.restoreAfterPause
+-		CM.restoreAfterPause = nil
+-		CM.setSpeed(back, "player's speed restored after their pause")
+-		return
+-	end
+-	-- setGameSpeed is a COMMAND: the engine applies it a tick or more after we
+-	-- send it. On the tick in between, the speed still reads the old value --
+-	-- which the check below would take for the player moving the lever, adopt
+-	-- as their choice, and cancel the very catch-up we just started. So a
+-	-- mismatch only counts as the player's once our own change has been seen
+-	-- to land, or after a grace period in case it never does (review,
+-	-- 2026-08-31).
+-	if CM.lastSetSpeed and s == CM.lastSetSpeed then CM.paceApplied = true end
+-	local settled = CM.paceApplied or (ticks > (CM.paceSetTick or 0) + 8)   -- ~1.5 s
+-	-- The player moved the lever: that is now the speed they want. Adopt it,
+-	-- stop any catch-up in progress, and do not argue.
+-	if CM.lastSetSpeed and settled and s ~= CM.lastSetSpeed then
+-		if CM.catchingUp then
+-			log(string.format("PACE: player set speed %s while catching up -- theirs wins", tostring(s)))
+-		end
+-		CM.baseSpeed = s
+-		CM.catchingUp = false
+-		CM.paceMovedAt = nil      -- their lever outranks our pacing; react at once
+-		CM.lastSetSpeed = nil
+-		CM.paceQuietUntil = ticks + CM.PACE_COOLDOWN
+-		return
+-	end
++	if s == 0 then return end
++	-- shareSpeed is the sole observer of player input. A second independent
++	-- observer here used to turn delayed internal commands into new intent.
+ 	-- (The old "caught up -> snap back to the player's speed" branch lived here.
+ 	-- It fired on `behind`, the FASTEST-peer signal, and jumped straight to the
+ 	-- ceiling -- re-accelerating us into the next throttle and completing the
+@@ -9456,8 +9605,7 @@ local function applyBarrier(now)
+ 	end
+ 
+ 	local ahead = now - slowT          -- the barrier holds against the SLOWEST peer
+-	CM.shareSpeed()
+-	-- The pacer gets the PRECISE lead over the slowest peer; the barrier above
++	-- The pacer gets the PRECISE lead over the slowest peer; the barrier above
+ 	-- keeps the coarse peerBounds value it was tuned against.
+ 	local slowP = peerSlowPrecise()
+ 	CM.pace(now - fastT, slowP and (now - slowP) or ahead)
+@@ -9502,17 +9650,10 @@ local function applyBarrier(now)
+ 	end
+ end
+ 
+--- A loaded save starts at speed 0. The barrier only ever calls setGameSpeed
+--- when RELEASING a hold, so with nothing to release the clock would sit frozen
+--- forever, and a command stamped in the future would never come due -- an
+--- experiment that looks like it ran and simply reports nothing. Both peers do
+--- this identically, and speed is local pacing rather than simulated state, so
+--- it cannot itself cause divergence.
+--- ONE SHOT, deliberately. Nudging the speed whenever it reads 0 would override
+--- a pause the player pressed on purpose, and fight them every time they stopped
+--- to look at something. Firing once after load gets an unattended test moving
+--- without taking the speed control away for the rest of the session. The
+--- barrier is unaffected: it sets speed 0 directly and is allowed to.
++-- The load gate may temporarily pause a running save while peers load. It
++-- restores the players' chosen speed afterwards and preserves a saved pause.
++-- Speed control remains an asynchronous approximation: this does not stop the
++-- native engine at an agreed simulation step or make command replay lockstep.
+ local didInitialUnpause = false
+ -- Numeric cfg value (CM.cfgFlag only answers yes/no). Shares its cache, so
+ -- calling this first also populates it.
+@@ -9601,13 +9742,8 @@ end
+ 
+ local function ensureRunning()
+ 	if didInitialUnpause or paused then return end
+-	-- The 100-tick "let the world finish loading" grace used to sit HERE, ahead
+-	-- of everything. That is ~18 s during which this instance simulates at the
+-	-- save's own speed with no gate at all -- and 18 s is longer than the gap
+-	-- between two players loading, so by the first time the gate looked, the
+-	-- others were already in and it released without ever holding
+-	-- ("LOADGATE: 2 peer(s) in -- releasing", straight after load). The grace
+-	-- now applies only to the ordinary unpause path, below.
++	-- Act promptly when a save restores a running speed; a long startup grace
++	-- lets one machine simulate alone before the other finishes loading.
+ 	if ticks < K.LOADGATE_MIN_TICKS then return end
+ 	local s
+ 	local ok = pcall(function() s = game.interface.getGameSpeed() end)
+@@ -9631,7 +9767,7 @@ local function ensureRunning()
+ 		elseif not CM.lgHeld then
+ 			CM.lgResumeSpeed = s        -- remember ONCE: the save's own speed
+ 			CM.lgHeld, CM.lgHeldAt, CM.lgHolding = true, ticks, true
+-			pcall(function() api.cmd.sendCommand(api.cmd.make.setGameSpeed(0)) end)
++			CM.setSpeed(0, "waiting for the other players to load")
+ 			log(string.format("LOADGATE: pausing (was speed %d) until the other players are in", s))
+ 		elseif CM.lgSawZero then
+ 			-- We held it at 0, saw that take effect, and it is running again:
+@@ -9643,7 +9779,7 @@ local function ensureRunning()
+ 			-- Never saw it reach 0, so the command was lost rather than
+ 			-- overridden. Re-send rather than mistaking this for the player.
+ 			CM.lgHeldAt = ticks
+-			pcall(function() api.cmd.sendCommand(api.cmd.make.setGameSpeed(0)) end)
++			CM.setSpeed(0, "load gate pause retry")
+ 			log("LOADGATE: pause did not take -- re-sending")
+ 		end
+ 		return
+@@ -9655,18 +9791,18 @@ local function ensureRunning()
+ 	if CM.lgHeld then
+ 		didInitialUnpause = true
+ 		CM.lgHolding = false
+-		local want = CM.lgResumeSpeed or 1
+-		if want == 0 then want = 1 end
+-		pcall(function() api.cmd.sendCommand(api.cmd.make.setGameSpeed(want)) end)
++		local want = CM.baseSpeed or CM.lgResumeSpeed or 0
++		CM.setSpeed(want, "all players loaded")
+ 		log(string.format("LOADGATE: releasing -- speed %d restored", want))
+ 		return
+ 	end
+-	if ticks < 100 then return end            -- let the world finish loading
+-	didInitialUnpause = true
+-	CM.lgHolding = false
+-	if s == 0 then
+-		pcall(function() api.cmd.sendCommand(api.cmd.make.setGameSpeed(1)) end)
+-		log("initial unpause (speed 0 -> 1); speed is yours from here")
++	didInitialUnpause = true
++	CM.lgHolding = false
++	if s == 0 then
++		-- A deliberately paused common save remains paused. The old unattended
++		-- test bootstrap pressed play after 100 callbacks, overriding a player's
++		-- pause and broadcasting that internal change as if they requested it.
++		log("LOADGATE: all players loaded; saved pause kept until a player presses play")
+ 	else
+ 		log("already running at speed " .. tostring(s))
+ 	end
+@@ -9752,7 +9888,11 @@ function data()
+ 
+ 			local now = gameTime()
+ 			if not now then return end
+-			local upd0 = os.clock()
++			local upd0 = os.clock()
++			-- Observe the actual speed BEFORE incoming intents enqueue asynchronous
++			-- engine changes. This also propagates a player's pause while clocks
++			-- are temporarily stale; the old barrier-only call skipped that case.
++			CM.shareSpeed()
+ 
+ 			-- Both every tick. pollInject at every 10th tick added up to 1.9s of
+ 			-- pure dead time before a build was even scheduled; a file stat per
+@@ -9923,7 +10063,27 @@ function data()
+ 							if #parts > 0 then vd = table.concat(parts, " ") end
+ 						end
+ 						f:write("vdrift=" .. vd .. "\n")
+-						f:write("money=" .. tostring(CM.dashMoney or "-") .. " / loan " .. tostring(CM.dashLoan or "-") .. "\n")
++						f:write("money=" .. tostring(CM.dashMoney or "-") .. " / loan " .. tostring(CM.dashLoan or "-") .. "\n")
++						-- TF2 Co-op diagnostics. SYNC alone excludes money/loan;
++						-- export observed gaps without changing either account.
++						do
++							local comparison = CM.lastComparison
++							f:write("comparison_t=" .. tostring(comparison and comparison.t or "-") .. "\n")
++							f:write("comparison_wall=" .. tostring(comparison and comparison.wall or "-") .. "\n")
++							f:write("comparison_peer=" .. tostring(comparison and comparison.peer or "-") .. "\n")
++							f:write("comparison_match=" .. (comparison and (comparison.match and "yes" or "no") or "-") .. "\n")
++							local gaps, walls = {}, {}
++							for origin in pairs(CM.peers) do
++								local wall = CM.moneyGapWall and CM.moneyGapWall[origin]
++								local money = wall and CM.moneyGap and CM.moneyGap["m" .. origin]
++								local loan = wall and CM.moneyGap and CM.moneyGap["l" .. origin]
++								gaps[#gaps + 1] = origin .. ":" .. tostring(money or "-") .. ":" .. tostring(loan or "-")
++								walls[#walls + 1] = origin .. ":" .. tostring(wall or "-")
++							end
++							table.sort(gaps); table.sort(walls)
++							f:write("money_gap=" .. (#gaps > 0 and table.concat(gaps, ",") or "-") .. "\n")
++							f:write("money_gap_wall=" .. (#walls > 0 and table.concat(walls, ",") or "-") .. "\n")
++						end
+ 						-- The GUI used to decide which columns exist by which
+ 						-- lockstep_dash_<x>.txt files it could open. That is wrong
+ 						-- across Sandboxie: each boxed instance writes its own copy and
+@@ -10098,7 +10258,8 @@ function data()
+ 					local box = api.gui.layout.BoxLayout.new("VERTICAL")
+ 					box:addItem(D.table)
+ 					box:addItem(D.verdict)
+-					local body = api.gui.comp.Component.new("mpDashboard")
++					local body = api.gui.comp.Component.new("mpDashboard")
++					body:setId("tf2coop.nativeDashboard.content")
+ 					body:setLayout(box)
+ 					D.win = api.gui.comp.Window.new("Multiplayer", body)
+ 					D.win:setPosition(20, 120)

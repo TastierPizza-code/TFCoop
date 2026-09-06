@@ -1,0 +1,579 @@
+#include "net.h"
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#include <windows.h>
+#include <cstdio>
+#include <cstring>
+#include <deque>
+#include <map>
+#include <mutex>
+#include <queue>
+#include <string>
+
+#pragma comment(lib, "ws2_32.lib")
+
+static const uint32_t MAGIC = 0x32545046;  // 'TPF2'
+static const int RESEND_MS = 250;
+
+#pragma pack(push, 1)
+struct Header {
+    uint32_t magic;
+    uint32_t session;   // sender instance id; receiver resets seq state on change
+    uint32_t seq;
+    uint32_t ackSession; // ACKs are valid only for this receiver stream epoch
+    uint32_t ack;
+    uint32_t ackBits;
+    uint8_t  type;      // 0 = keepalive/ack-only, 1 = event
+};
+struct Packet {
+    Header   h;
+    NetEvent ev;
+};
+#pragma pack(pop)
+
+static SOCKET g_sock = INVALID_SOCKET;
+// g_peer has its own lock: SendRaw runs both with and without g_mtx held
+// (g_mtx is not recursive), and Net_SetPeer may swap the address at any time.
+static sockaddr_in g_peer{};
+static std::mutex g_peerMtx;
+static bool g_peerSet = false;
+static sockaddr_in g_requestedPeer{};
+static bool g_peerUpdatePending = false;
+static uint16_t g_localPort = 0;   // set once in Net_Init, after a successful bind
+static void (*g_deliver)(const char*) = nullptr;
+static std::string g_rxAccum;   // partial line being reassembled from chunks
+static uint16_t g_rxChunkCount = 0;
+static uint16_t g_rxNextChunk = 0;
+
+static HANDLE g_thread = nullptr;
+static volatile bool g_running = false;
+
+// Sequence zero is reserved: ACK 0 unambiguously means no event received yet.
+static uint32_t g_nextSeq = 1;
+static uint32_t g_expectedSeq = 1;
+static uint32_t g_session = 0;          // our id (set at init)
+static uint32_t g_peerSession = 0;      // last seen peer id
+static std::deque<uint32_t> g_retiredPeerSessions;
+static std::map<uint32_t, Packet> g_pending;        // sent, awaiting ack
+static std::map<uint32_t, uint64_t> g_lastSent;     // seq -> last send time
+static std::map<uint32_t, Packet> g_early;          // received out of order
+static std::queue<NetEvent> g_outQueue;
+static std::mutex g_mtx;
+static uint32_t g_lastReceivedSeq = 0;
+static uint32_t g_receivedBits = 0;
+
+// --- peer liveness -----------------------------------------------------------
+// Without this, a host with no joiner queued every event forever: g_pending grew
+// without bound, each entry was resent every 250 ms, and the moment a peer
+// appeared it received the entire backlog at once. Events from before a joiner
+// existed are meaningless to it anyway -- it starts from a transferred save --
+// so the right behaviour is to drop them.
+static const uint32_t PEER_TIMEOUT_MS   = 10000;
+static const uint32_t KEEPALIVE_MS      = 500;
+static const size_t   MAX_PENDING       = 512;
+// Match the bounded send window: a single line must fit without exhausting it.
+static const size_t   MAX_LINE_CHUNKS   = MAX_PENDING;
+static const size_t   MAX_LINE_BYTES    = MAX_LINE_CHUNKS * (NET_CHUNK_TEXT - 1);
+static uint64_t g_lastRecvMs   = 0;
+static bool     g_peerEverSeen = false;
+static uint64_t g_droppedNoPeer = 0;
+static uint64_t g_droppedOverflow = 0;
+static uint64_t g_droppedOversize = 0;
+
+static bool PeerAlive()
+{
+    return g_peerEverSeen && (GetTickCount64() - g_lastRecvMs) < PEER_TIMEOUT_MS;
+}
+
+void Net_Stats(uint64_t* droppedNoPeer, uint64_t* droppedOverflow,
+               size_t* pending, bool* peerAlive, uint64_t* droppedOversize)
+{
+    std::lock_guard<std::mutex> lk(g_mtx);
+    if (droppedNoPeer)   *droppedNoPeer = g_droppedNoPeer;
+    if (droppedOverflow) *droppedOverflow = g_droppedOverflow;
+    if (pending)         *pending = g_pending.size();
+    if (peerAlive)       *peerAlive = PeerAlive();
+    if (droppedOversize) *droppedOversize = g_droppedOversize;
+}
+
+static void SendRaw(uint32_t seq, uint32_t type, const NetEvent* ev)
+{
+    Packet p{};
+    p.h.magic = MAGIC;
+    p.h.session = g_session;
+    p.h.seq = seq;
+    p.h.ackSession = g_peerSession;
+    p.h.ack = g_lastReceivedSeq;
+    p.h.ackBits = g_receivedBits;
+    p.h.type = (uint8_t)type;
+    if (ev) p.ev = *ev;
+    sockaddr_in peer;
+    {
+        std::lock_guard<std::mutex> lk(g_peerMtx);
+        peer = g_peer;
+    }
+    sendto(g_sock, (const char*)&p, ev ? sizeof(p) : sizeof(Header), 0,
+           (sockaddr*)&peer, sizeof(peer));
+}
+
+static void ProcessAck(uint32_t ackSession, uint32_t ack, uint32_t bits)
+{
+    std::lock_guard<std::mutex> lk(g_mtx);
+    if (ackSession != g_session || ack == 0) return;
+    for (auto it = g_pending.begin(); it != g_pending.end();) {
+        uint32_t s = it->first;
+        bool acked = (s == ack) || (s < ack && ((ack - s) > 32)) ||
+                     (s < ack && (bits & (1u << (ack - s - 1))));
+        if (acked) { g_lastSent.erase(s); it = g_pending.erase(it); }
+        else { ++it; }
+    }
+}
+
+static void ResetReassembly()
+{
+    g_rxAccum.clear();
+    g_rxChunkCount = 0;
+    g_rxNextChunk = 0;
+}
+
+static bool ValidChunk(const NetEvent& ev)
+{
+    if (ev.type != 1 || ev.chunkCount == 0 || ev.chunkCount > MAX_LINE_CHUNKS ||
+        ev.chunkIdx >= ev.chunkCount) return false;
+    // Never turn an unterminated or shortened intermediate chunk into a command.
+    const char* end = (const char*)memchr(ev.text, 0, NET_CHUNK_TEXT);
+    if (!end) return false;
+    return ev.chunkIdx + 1 == ev.chunkCount || end - ev.text == NET_CHUNK_TEXT - 1;
+}
+
+static bool ValidPacket(const Packet& p, int bytes)
+{
+    if (bytes < (int)sizeof(Header) || p.h.magic != MAGIC || p.h.session == 0) return false;
+    if (p.h.type == 0) return bytes == (int)sizeof(Header);
+    return p.h.type == 1 && p.h.seq != 0 && bytes == (int)sizeof(Packet) && ValidChunk(p.ev);
+}
+
+// Caller holds g_mtx. A deliberately discarded backlog must create a new
+// stream epoch; otherwise the next sequence leaves an unrecoverable hole.
+static void ResetSender()
+{
+    if (g_session == 0) g_session = (uint32_t)(GetTickCount64() ^ (uintptr_t)&g_session);
+    else ++g_session;
+    if (g_session == 0) g_session = 1;
+    g_nextSeq = 1;
+    g_pending.clear();
+    g_lastSent.clear();
+    while (!g_outQueue.empty()) g_outQueue.pop();
+}
+
+static void ResetReceiver(uint32_t session)
+{
+    g_peerSession = session;
+    // A keepalive advertises the sender's next sequence, NOT a received prefix.
+    // Waiting for 1 prevents skipping a lost first command or first chunk.
+    g_expectedSeq = 1;
+    g_lastReceivedSeq = 0;
+    g_receivedBits = 0;
+    g_early.clear();
+    ResetReassembly();
+}
+
+static bool AcceptSession(uint32_t session)
+{
+    if (session == g_peerSession) return true;
+    for (uint32_t old : g_retiredPeerSessions) if (session == old) return false;
+    if (g_peerSession != 0) {
+        g_retiredPeerSessions.push_back(g_peerSession);
+        if (g_retiredPeerSessions.size() > 8) g_retiredPeerSessions.pop_front();
+    }
+    ResetReceiver(session);
+    return true;
+}
+
+// Apply address changes on the network thread before sending any queued data.
+// Updating g_peer directly on the caller's thread could leak an old-session
+// command to the new address between dequeuing and SendRaw.
+static void ApplyPeerUpdate()
+{
+    bool changed = false;
+    {
+        std::lock_guard<std::mutex> lk(g_peerMtx);
+        if (g_peerUpdatePending) {
+            g_peer = g_requestedPeer;
+            g_peerSet = true;
+            g_peerUpdatePending = false;
+            changed = true;
+        }
+    }
+    if (changed) {
+        std::lock_guard<std::mutex> lk(g_mtx);
+        g_droppedNoPeer += g_pending.size() + g_outQueue.size();
+        ResetSender();
+        ResetReceiver(0);
+        g_retiredPeerSessions.clear();
+        g_peerEverSeen = false;
+        g_lastRecvMs = 0;
+    }
+}
+
+// Only a complete, consistently indexed, bounded line may reach the callback.
+static void Reassemble(const NetEvent& ev)
+{
+    if (!g_deliver || !ValidChunk(ev)) { ResetReassembly(); return; }
+    if (ev.chunkIdx == 0) {
+        ResetReassembly();
+        g_rxChunkCount = ev.chunkCount;
+    }
+    if (ev.chunkCount != g_rxChunkCount || ev.chunkIdx != g_rxNextChunk) {
+        ResetReassembly();
+        return;
+    }
+    size_t n = strnlen(ev.text, NET_CHUNK_TEXT);
+    if (n > MAX_LINE_BYTES - g_rxAccum.size()) { ResetReassembly(); return; }
+    g_rxAccum.append(ev.text, n);
+    ++g_rxNextChunk;
+    if (g_rxNextChunk == g_rxChunkCount) {
+        g_deliver(g_rxAccum.c_str());
+        ResetReassembly();
+    }
+}
+
+// How far past the next expected seq an out-of-order packet may be stashed.
+//
+// Bounded by the ACK BITMAP, not by memory. ProcessAck treats any seq more
+// than 32 below `ack` as acked, so if `ack` were allowed to run further than
+// that ahead of the first hole, the sender would stop resending the one packet
+// the receiver is still waiting for and the ordered stream would stall for
+// good. Keeping the stash within the window makes that unrepresentable. It was
+// 64, which only worked because early packets were never acked at all.
+static const uint32_t EARLY_WINDOW = 32;
+
+// Record that `s` arrived, in a bitmap the sender can actually read.
+//
+// This used to be `g_receivedBits = (g_receivedBits << 1) | 1` on each in-order
+// delivery -- i.e. permanently all-ones -- and it was not touched at all for a
+// packet stashed in g_early. An out-of-order packet was therefore never
+// acknowledged, so it stayed in the sender's g_pending and the WHOLE stash was
+// retransmitted every RESEND_MS until the hole finally filled.
+//
+// Bit k of ackBits means "seq (ack - k - 1) was received", which is the layout
+// ProcessAck has always decoded.
+static void NoteReceived(uint32_t s)
+{
+    if (s == g_lastReceivedSeq) return;
+    if (s > g_lastReceivedSeq) {
+        uint32_t shift = s - g_lastReceivedSeq;
+        // the old high-water mark moves down to bit (shift-1); anything that
+        // falls past bit 31 leaves the window and is simply no longer reported
+        if (shift > 32)       g_receivedBits = 0;
+        else if (shift == 32) g_receivedBits = 1u << 31;   // 1u<<32 is UB
+        else                  g_receivedBits = (g_receivedBits << shift) | (1u << (shift - 1));
+        g_lastReceivedSeq = s;
+    } else {
+        uint32_t back = g_lastReceivedSeq - s;             // >= 1
+        if (back <= 32) g_receivedBits |= (1u << (back - 1));
+    }
+}
+
+static void DeliverInOrder(const Packet& p)
+{
+    uint32_t s = p.h.seq;
+    if (s < g_expectedSeq) {                    // duplicate
+        NoteReceived(s);                        // our ack was lost; say so again
+        return;
+    }
+    if (s > g_expectedSeq) {                    // early: stash
+        // Only note what we actually KEEP. Acking a packet we then discarded
+        // would tell the sender to stop resending something we never had.
+        if (s - g_expectedSeq < EARLY_WINDOW) {
+            g_early[s] = p;
+            NoteReceived(s);
+        }
+        return;
+    }
+    if (p.h.type == 1) Reassemble(p.ev);
+    NoteReceived(s);
+    g_expectedSeq++;
+    for (;;) {
+        auto it = g_early.find(g_expectedSeq);
+        if (it == g_early.end()) break;
+        if (it->second.h.type == 1) Reassemble(it->second.ev);
+        NoteReceived(g_expectedSeq);            // already acked when stashed; idempotent
+        g_early.erase(it);
+        g_expectedSeq++;
+    }
+}
+
+static void ProcessIncoming(const Packet& p)
+{
+    if (!AcceptSession(p.h.session)) return;
+    {
+        std::lock_guard<std::mutex> lk(g_mtx);
+        g_lastRecvMs = GetTickCount64();
+        g_peerEverSeen = true;
+    }
+    ProcessAck(p.h.ackSession, p.h.ack, p.h.ackBits);
+    if (p.h.type == 1) DeliverInOrder(p);
+}
+
+static DWORD WINAPI NetThread(LPVOID)
+{
+    timeval tv{ 0, 20000 };  // 20ms recv slices
+    while (g_running) {
+        // Net_SignalShutdown closes the socket and publishes INVALID_SOCKET to
+        // break us out of select(); re-reading it here keeps FD_SET off a
+        // handle that has already been closed.
+        SOCKET sock = g_sock;
+        if (sock == INVALID_SOCKET) break;
+        ApplyPeerUpdate();
+        // 1. flush outbound queue
+        for (;;) {
+            NetEvent ev;
+            uint32_t seq;
+            {
+                std::lock_guard<std::mutex> lk(g_mtx);
+                if (g_outQueue.empty()) break;
+                ev = g_outQueue.front();
+                g_outQueue.pop();
+                seq = g_nextSeq++;
+                Packet p{};
+                p.h.magic = MAGIC; p.h.seq = seq; p.h.type = 1; p.ev = ev;
+                g_pending[seq] = p;
+                g_lastSent[seq] = GetTickCount64();
+            }
+            SendRaw(seq, 1, &ev);
+        }
+        // 2. resend unacked (sent-time tracked alongside)
+        {
+            std::lock_guard<std::mutex> lk(g_mtx);
+            // If the peer stops acking, pending grows without limit. We cannot
+            // drop individual entries -- delivery is strictly ordered, so a hole
+            // would stall the receiver forever -- so treat this as "peer gone"
+            // and discard the whole backlog.
+            if (g_pending.size() > MAX_PENDING) {
+                g_droppedOverflow += g_pending.size() + g_outQueue.size();
+                ResetSender();
+                g_peerEverSeen = false;   // force rediscovery via keepalives
+            }
+            for (auto& kv : g_pending) {
+                uint64_t& last = g_lastSent[kv.first];
+                if ((int)(GetTickCount64() - last) > RESEND_MS) {
+                    last = GetTickCount64();
+                    SendRaw(kv.first, 1, &kv.second.ev);
+                }
+            }
+        }
+
+        // 2b. keepalive: type 0 carries acks and proves we exist. Both sides
+        // send them, which is what lets each discover the other before either
+        // has any data to send.
+        {
+            static uint64_t lastKeepalive = 0;
+            uint64_t now = GetTickCount64();
+            if (now - lastKeepalive >= KEEPALIVE_MS) {
+                lastKeepalive = now;
+                std::lock_guard<std::mutex> lk(g_mtx);
+                SendRaw(g_nextSeq, 0, nullptr);
+            }
+        }
+        // 3. receive
+        fd_set fds; FD_ZERO(&fds); FD_SET(sock, &fds);
+        int n = select(0, &fds, nullptr, nullptr, &tv);
+        if (n > 0 && FD_ISSET(sock, &fds)) {
+            Packet p{};
+            sockaddr_in from{}; int fromLen = sizeof(from);
+            int got = recvfrom(sock, (char*)&p, sizeof(p), 0,
+                               (sockaddr*)&from, &fromLen);
+            {
+                // The configured Hamachi/LAN peer is the only accepted source.
+                std::lock_guard<std::mutex> lk(g_peerMtx);
+                if (from.sin_addr.s_addr != g_peer.sin_addr.s_addr || from.sin_port != g_peer.sin_port) continue;
+            }
+            if (ValidPacket(p, got)) {
+                ProcessIncoming(p);
+            }
+        }
+    }
+    return 0;
+}
+
+static bool g_wsaUp = false;
+
+static bool EnsureWsa()
+{
+    if (g_wsaUp) return true;
+    WSADATA wsa;
+    if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0) return false;
+    g_wsaUp = true;
+    return true;
+}
+
+bool Net_PortAvailable(uint16_t port)
+{
+    if (!EnsureWsa()) return false;
+    SOCKET s = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    if (s == INVALID_SOCKET) return false;
+    sockaddr_in a{};
+    a.sin_family = AF_INET;
+    a.sin_addr.s_addr = INADDR_ANY;
+    a.sin_port = htons(port);
+    bool ok = bind(s, (sockaddr*)&a, sizeof(a)) == 0;
+    closesocket(s);
+    return ok;
+}
+
+bool Net_Init(uint16_t localPort, const char* peerIp, uint16_t peerPort,
+              void (*deliverCb)(const char*))
+{
+    if (!EnsureWsa()) return false;
+    g_sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    if (g_sock == INVALID_SOCKET) return false;
+    sockaddr_in local{};
+    local.sin_family = AF_INET;
+    local.sin_addr.s_addr = INADDR_ANY;
+    local.sin_port = htons(localPort);
+    if (bind(g_sock, (sockaddr*)&local, sizeof(local)) != 0) {
+        // leave nothing behind, so a caller can retry on another port
+        closesocket(g_sock);
+        g_sock = INVALID_SOCKET;
+        return false;
+    }
+    {
+        // ask the socket rather than trusting the argument: this is what the
+        // lobby has to send to, so it must be the port that really got bound
+        sockaddr_in bound{}; int boundLen = sizeof(bound);
+        if (getsockname(g_sock, (sockaddr*)&bound, &boundLen) == 0)
+            g_localPort = ntohs(bound.sin_port);
+        else
+            g_localPort = localPort;
+    }
+
+    {
+        std::lock_guard<std::mutex> lk(g_peerMtx);
+        g_peer = sockaddr_in{};
+        g_peer.sin_family = AF_INET;
+        g_peer.sin_port = htons(peerPort);
+        inet_pton(AF_INET, peerIp, &g_peer.sin_addr);
+        g_peerSet = true;
+        g_peerUpdatePending = false;
+    }
+    g_deliver = deliverCb;
+    {
+        std::lock_guard<std::mutex> lk(g_mtx);
+        ResetSender();
+        ResetReceiver(0);
+        g_retiredPeerSessions.clear();
+        g_peerEverSeen = false;
+        g_lastRecvMs = 0;
+    }
+    g_running = true;
+    g_thread = CreateThread(nullptr, 0, NetThread, nullptr, 0, nullptr);
+    return g_thread != nullptr;
+}
+
+// split a line of any length into chunk events. Queued under one lock so a
+// line's chunks stay contiguous in the stream even with concurrent callers.
+void Net_QueueLine(const char* line)
+{
+    std::lock_guard<std::mutex> lk(g_mtx);
+    if (!line) { g_droppedOversize++; return; }
+    size_t len = strnlen(line, MAX_LINE_BYTES + 1);
+    if (len > MAX_LINE_BYTES) { g_droppedOversize++; return; }
+    size_t chunks = len ? (len + NET_CHUNK_TEXT - 2) / (NET_CHUNK_TEXT - 1) : 1;
+    // REFUSE, do not clamp.
+    //
+    // This used to be `if (chunks > 0xFFFF) chunks = 0xFFFF`, which cut the
+    // line short but still shipped chunkCount = 0xFFFF -- so the receiver
+    // reassembled the truncated text, saw the last chunk arrive, and handed it
+    // to Lua as a complete line. A silently shortened command is far worse than
+    // a missing one: it parses, and it replays as something the player never
+    // did. The limit now matches the bounded sender window as well.
+    if (chunks > MAX_LINE_CHUNKS) { g_droppedOversize++; return; }
+    // Nobody is listening: drop rather than queue forever. A joiner that
+    // connects later starts from a transferred save, so a replay of everything
+    // that happened before it existed would be wrong as well as expensive.
+    if (!PeerAlive()) { g_droppedNoPeer++; return; }
+    // Reserve the complete line or refuse it; never enqueue a partial command.
+    if (chunks + g_outQueue.size() + g_pending.size() > MAX_PENDING) {
+        g_droppedOverflow++;
+        return;
+    }
+    for (size_t i = 0; i < chunks; ++i) {
+        NetEvent ev{};
+        ev.type = 1;
+        ev.chunkIdx = (uint16_t)i;
+        ev.chunkCount = (uint16_t)chunks;
+        size_t off = i * (NET_CHUNK_TEXT - 1);
+        size_t n = len - off;
+        if (n > NET_CHUNK_TEXT - 1) n = NET_CHUNK_TEXT - 1;
+        memcpy(ev.text, line + off, n);
+        ev.text[n] = 0;
+        g_outQueue.push(ev);
+    }
+}
+
+bool Net_SetPeer(const char* ip, int port)
+{
+    if (!ip || port <= 0 || port > 0xFFFF) return false;
+    sockaddr_in a{};
+    a.sin_family = AF_INET;
+    a.sin_port = htons((uint16_t)port);
+    if (inet_pton(AF_INET, ip, &a.sin_addr) != 1) return false;
+    {
+        std::lock_guard<std::mutex> lk(g_peerMtx);
+        g_requestedPeer = a;
+        g_peerUpdatePending = true;
+    }
+    return true;
+}
+
+uint16_t Net_LocalPort()
+{
+    return g_localPort;
+}
+
+// Loader-lock-safe half of Net_Shutdown: signal and return, never block.
+//
+// The blocking version was being called straight from DllMain(PROCESS_DETACH),
+// where WaitForSingleObject waits on a thread whose own exit needs the loader
+// lock we are holding for every other DLL's DLL_THREAD_DETACH -- the classic
+// hang-on-exit. Closing the socket is what actually stops the thread: it makes
+// the 20 ms select() return immediately instead of at the end of its slice.
+void Net_SignalShutdown()
+{
+    g_running = false;
+    SOCKET s = g_sock;
+    if (s != INVALID_SOCKET) {
+        // publish INVALID first so NetThread's next pass bails out rather than
+        // calling select() on a handle we are about to close
+        g_sock = INVALID_SOCKET;
+        closesocket(s);
+    }
+}
+
+void Net_Shutdown()
+{
+    Net_SignalShutdown();
+    if (g_thread) {
+        WaitForSingleObject(g_thread, 2000);
+        CloseHandle(g_thread);
+        g_thread = nullptr;
+    }
+    // Reset BOTH, or a later Net_Init lies about succeeding: g_sock kept a
+    // stale non-INVALID value, and g_wsaUp stayed true across WSACleanup, so
+    // EnsureWsa() short-circuited and every socket call came back
+    // WSANOTINITIALISED on a transport that reported itself up.
+    g_sock = INVALID_SOCKET;
+    if (g_wsaUp) { WSACleanup(); g_wsaUp = false; }
+    g_deliver = nullptr;
+    g_localPort = 0;
+    {
+        std::lock_guard<std::mutex> lk(g_mtx);
+        g_pending.clear();
+        g_lastSent.clear();
+        ResetReceiver(0);
+        g_retiredPeerSessions.clear();
+        while (!g_outQueue.empty()) g_outQueue.pop();
+        g_peerEverSeen = false;
+    }
+}
