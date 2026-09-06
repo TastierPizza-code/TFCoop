@@ -34,7 +34,38 @@ function native_params(value,mode,seen)
 end
 local function v3(x,y,z)return{x=x,y=y,z=z}end
 local function v4(x,y,z,w)return{x=x,y=y,z=z,w=w}end
-local function mat(a,b,c,d)local cols={a,b,c,d};return setmetatable({},{__index=function(_,k)if k=='col'then return function(_,i)return cols[i+1]end end;error('Mat4f has no flat index')end})end
+local function mat(a,b,c,d)
+  local cols={a,b,c,d};local object=native_params({},'opaque')
+  getmetatable(object).__index=function(_,k)
+    if k=='col'then return function(_,i)return cols[i+1]end end
+    error('Mat4f has no flat index')
+  end
+  return object
+end
+function native_indexed(values)
+  local object=native_params(values,'opaque');local mt=getmetatable(object);local read=mt.__index
+  mt.__index=function(self,k)
+    if type(k)~='number'or k%1~=0 then error('native indexed value rejects named member')end
+    local value=read(self,k);if value==nil then error('native indexed value has no index '..k)end
+    return value
+  end
+  return object
+end
+function native_record(values)
+  local object=native_params({},'opaque');local mt=getmetatable(object)
+  mt.__index=function(_,key)
+    local value=values[key];if value==nil then error('native record has no member '..tostring(key))end
+    return value
+  end
+  return object
+end
+function observed_matrix(value)
+  local values,names={},{'x','y','z','w'}
+  for i=0,3 do local column=value:col(i)
+    for j=1,4 do values[#values+1]=column[names[j]]end
+  end
+  return native_indexed(values)
+end
 local function vecfields(fields)
   local stored=fields
   return setmetatable({},{__index=function(_,k)local v=stored[k];return type(v)=='table'and copy(v)or v end,
@@ -74,7 +105,7 @@ function apply_command(cmd,no_result)
   sent=sent+1;local result={}
   if cmd.op=='pause'then speed=cmd.value
   elseif cmd.op=='build'then
-    local c=cmd.proposal.constructionsToAdd[1];local id=fresh();local co={fileName=c.fileName,params=native_params(copy(c.params)),transf=c.transf,timeBuild=math.floor(now*1000),frozenEdges={},stations={},depots={}}
+    local c=cmd.proposal.constructionsToAdd[1];local id=fresh();local co={fileName=c.fileName,params=native_params(copy(c.params)),transf=observed_matrix(c.transf),timeBuild=math.floor(now*1000),frozenEdges={},stations={},depots={}}
     world[id]={CONSTRUCTION=co,NAME={name=c.name}}
     if c.fileName==assets.road_file then
       junction=node(0,0,10);roadends={node(-80,0,10),node(80,0,10),node(0,40,10)}
@@ -93,7 +124,7 @@ function apply_command(cmd,no_result)
   elseif cmd.op=='line'then
     local id=fresh();world[id]={LINE=cmd.line,NAME={name=cmd.name},COLOR={color=cmd.color}};result.resultEntity=id
   elseif cmd.op=='assign'then world[cmd.vehicle].TRANSPORT_VEHICLE.line=cmd.line end
-  return no_result and{}or result
+  return no_result and{}or native_record(result)
 end
 function advance()
   now=now+.2

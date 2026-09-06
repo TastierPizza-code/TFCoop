@@ -5,7 +5,10 @@ local M = {}
 function M.new(json)
   local E = {bindings={},reverse={},scene={stops={}},groups={},stations={}}
   local function need(v,msg) if v==nil then error(msg,0) end return v end
-  local function field(v,k) local ok,x=pcall(function()return v[k]end);if ok then return x end end
+  -- Native usertypes may throw for an absent member. Always return one value:
+  -- falling through returns zero values, which breaks type(field(...)) and
+  -- tonumber(field(...)) before the supported alternative can be inspected.
+  local function field(v,k) local ok,x=pcall(function()return v[k]end);if ok then return x end;return nil end
   local function num(v)
     local n=tonumber(v);if not n or n~=n or math.abs(n)>9007199254740991 then error('invalid finite build value',0)end;return n
   end
@@ -24,7 +27,7 @@ function M.new(json)
     local out=json.array()
     if type(field(v,'col'))=='function' then
       for i=0,3 do local col=vector(v:col(i),4);for j=1,4 do out[#out+1]=col[j]end end
-    else for i=1,16 do out[i]=dec(field(v,i))end end
+    else for i=1,16 do out[i]=dec(need(field(v,i),'build transform index '..i..' unavailable'))end end
     return out
   end
   local function clone(v,depth)

@@ -9,6 +9,7 @@ function M.new(json)
   local function field(v, key)
     local ok, result = pcall(function() return v[key] end)
     if ok then return result end
+    return nil  -- Missing native members must produce one value for callers.
   end
   local function number(v)
     local n = tonumber(v)

@@ -1,17 +1,17 @@
 # TFCoop für Transport Fever 2
 
-Experimenteller Koop-Prototyp für eine gemeinsame Firma. Der aktuelle Stand **Alpha5.2** ist ein automatischer Bautest mit zwei PCs über LAN oder Hamachi: gemeinsame Simulationsschritte, Straße, Depot, Haltestellen, Fahrzeugkauf, Linie und Abfahrt werden verglichen.
+Experimenteller Koop-Prototyp für eine gemeinsame Firma. Der aktuelle Stand **Alpha5.3** ist ein automatischer Bautest mit zwei PCs über LAN oder Hamachi: gemeinsame Simulationsschritte, Straße, Depot, Haltestellen, Fahrzeugkauf, Linie und Abfahrt werden verglichen.
 
 **Freies gleichzeitiges Bauen, Cursor und die normalen Pause-Tasten sind in diesem Test noch nicht freigeschaltet.** Der erfolgreiche Modelltest ersetzt keinen erfolgreichen Lauf auf zwei tatsächlichen TF2-Installationen.
 
 ## Download und Start
 
-1. Auf beiden PCs einmal [TFCoop-Windows.zip herunterladen](https://github.com/TastierPizza-code/TFCoop/releases/latest/download/TFCoop-Windows.zip), vollständig entpacken und `TF2-Coop.exe` öffnen. Git und Python werden dafür nicht benötigt.
+1. Zuerst auf beiden PCs TF2 und den laufenden Test schließen. Wer bereits Alpha5.2 verwendet, öffnet anschließend den vorhandenen Launcher und wartet auf das automatische Update auf **Alpha5.3**. Ein erneuter ZIP-Download ist dafür nicht nötig. Bei der ersten Einrichtung einmal [TFCoop-Windows.zip herunterladen](https://github.com/TastierPizza-code/TFCoop/releases/latest/download/TFCoop-Windows.zip), vollständig entpacken und `TF2-Coop.exe` öffnen. Git und Python werden dafür nicht benötigt.
 2. Der Launcher prüft beim Start GitHub auf neuere Releases und startet die vollständig geprüfte neue Version automatisch. TF2 und laufende Tests vorher schließen. Die vorhandene Version bleibt bei einem fehlgeschlagenen Download erhalten.
 3. Der gemeinsame Testspielstand wird lokal aus dem bisherigen Testlauf übernommen. Falls er fehlt: **Testspielstand übernehmen …** und aus dem alten privaten Paket `Testspielstand/initial.sav` auswählen; die zugehörige `.sav.lua` muss daneben liegen. Das öffentliche Release enthält keine Spielstände. Für die derzeitige Testreihe wird dieses vorhandene, übereinstimmende Spielstandpaar benötigt.
-4. Für Installation, Host/Client-Verbindung und den 240-Runden-Test die [Anleitung](prototype/ANLEITUNG.md) befolgen. Nach einem Update die Testdateien auf beiden PCs neu vorbereiten.
+4. Für Installation, Host/Client-Verbindung und den 240-Runden-Test die [Anleitung](prototype/ANLEITUNG.md) befolgen. Nach einem Update die bisherige Testinstallation wiederherstellen und auf beiden PCs mit frischem Sitzungscode neue Testdateien vorbereiten. Die neu erzeugte Testsave mit **TF2 Strict Sync - automatischer Bautest (Alpha5.3)** laden.
 
-In Alpha5.2 wurde der Abbruch `nonplain observed params` nach dem Straßenbau korrigiert. Details: [Parameterleser](prototype/docs/CONSTRUCTION_PARAMS_FIX.md), [Prüfstand](prototype/VERIFICATION.md).
+Alpha5.3 korrigiert den im echten Alpha5.2-Test beobachteten Lua-Abbruch `bad argument #1 to 'type' (value expected)` beim Lesen der Konstruktionstransformation nach dem Straßenbau. Der Feldleser liefert bei einem nicht verfügbaren Zugriff jetzt ausdrücklich einen fehlenden Wert zurück, damit der vorhandene alternative Leseweg greifen kann. Der vollständige Bauablauf muss erneut auf zwei tatsächlichen TF2-Installationen geprüft werden. Details zum bisherigen Parameterleser: [Konstruktionsparameter](prototype/docs/CONSTRUCTION_PARAMS_FIX.md); aktueller [Prüfstand](prototype/VERIFICATION.md).
 
 ## Entwicklung und Veröffentlichungen
 

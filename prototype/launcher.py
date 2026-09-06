@@ -141,7 +141,7 @@ class App:
         savebox.pack(fill="x", pady=10)
         ttk.Label(savebox, text="Im Spiel ausdrücklich diese Testsave wählen:").pack(anchor="w")
         ttk.Entry(savebox, textvariable=self.save_name, state="readonly").pack(fill="x", pady=3)
-        ttk.Label(savebox, text="Spiel laden → OPTIONEN AUSWÄHLEN / Mods: 'TF2 Strict Sync - automatischer Bautest (Alpha5.2)' aktivieren; alte Koop-Mods deaktivieren.",
+        ttk.Label(savebox, text="Spiel laden → OPTIONEN AUSWÄHLEN / Mods: 'TF2 Strict Sync - automatischer Bautest (Alpha5.3)' aktivieren; alte Koop-Mods deaktivieren.",
                   wraplength=900).pack(anchor="w")
         footer = ttk.Frame(outer)
         footer.pack(fill="x", pady=(7, 0))

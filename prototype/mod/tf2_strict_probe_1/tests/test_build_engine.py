@@ -158,6 +158,50 @@ class BuildEngineTests(unittest.TestCase):
         a.lua.globals().advance();b.lua.globals().advance()
         self.assertEqual(a.snapshot(),b.snapshot())
 
+    def test_native_indexed_transform_missing_col_member_is_a_supported_read(self):
+        h=Harness();s=h.apply('a:2',{'op':'PROBE_ROAD'})
+        h.lua.globals().road_id=h.e.local_bindings()['a:2']
+        self.assertEqual(h.lua.eval('type(world[road_id].CONSTRUCTION.transf)'), 'userdata')
+        self.assertFalse(h.lua.eval("pcall(function()return world[road_id].CONSTRUCTION.transf.col end)")[0])
+        self.assertEqual(s['coverage']['missing'],[])
+        self.assertEqual(s['objects'][0]['state']['transform'],
+                         ['1','0','0','0','0','1','0','0','0','0','1','0','0','0','10','1'])
+
+    def test_native_column_method_and_plain_indexed_transform_match_native_array(self):
+        h=Harness();expected=h.apply('a:2',{'op':'PROBE_ROAD'})
+        h.lua.globals().road_id=h.e.local_bindings()['a:2']
+        h.lua.execute('''
+          world[road_id].CONSTRUCTION.transf=api.type.Mat4f.new(
+            api.type.Vec4f.new(1,0,0,0),api.type.Vec4f.new(0,1,0,0),
+            api.type.Vec4f.new(0,0,1,0),api.type.Vec4f.new(0,0,10,1))
+        ''')
+        self.assertEqual(h.lua.eval('type(world[road_id].CONSTRUCTION.transf)'), 'userdata')
+        self.assertEqual(expected,h.snapshot())
+        h.lua.execute('world[road_id].CONSTRUCTION.transf={1,0,0,0,0,1,0,0,0,0,1,0,0,0,10,1}')
+        self.assertEqual(expected,h.snapshot())
+
+    def test_unreadable_mandatory_transform_value_still_invalidates_snapshot(self):
+        for setup in ('world[road_id].CONSTRUCTION.transf[7]=nil',
+                      "world[road_id].CONSTRUCTION.transf=native_params({},'opaque')"):
+            h=Harness();h.apply('a:2',{'op':'PROBE_ROAD'})
+            h.lua.globals().road_id=h.e.local_bindings()['a:2']
+            h.lua.execute(setup)
+            s=h.snapshot()
+            self.assertTrue(s['coverage']['missing'])
+            self.assertEqual(s['objects'][0]['state'],{'unavailable':True})
+            self.assertNotIn('bad argument #1', '\n'.join(s['coverage']['missing']))
+
+    def test_column_method_failure_cannot_fall_back_to_invented_matrix(self):
+        h=Harness();h.apply('a:2',{'op':'PROBE_ROAD'})
+        h.lua.globals().road_id=h.e.local_bindings()['a:2']
+        h.lua.execute('''
+          world[road_id].CONSTRUCTION.transf={col=function()error('actual column getter failed')end,
+            1,0,0,0,0,1,0,0,0,0,1,0,0,0,10,1}
+        ''')
+        s=h.snapshot()
+        self.assertTrue(any('actual column getter failed' in item for item in s['coverage']['missing']))
+        self.assertEqual(s['objects'][0]['state'],{'unavailable':True})
+
     def test_native_observed_params_preserve_nested_and_engine_added_values(self):
         h=Harness();h.apply('a:2',{'op':'PROBE_ROAD'})
         h.lua.globals().road_id=h.e.local_bindings()['a:2']
@@ -241,6 +285,39 @@ class BuildEngineTests(unittest.TestCase):
     def test_callback_output_need_not_exist_before_execution(self):
         h=Harness();h.build()  # Every fake maker omits all result fields.
         self.assertEqual(h.lua.globals().sent,8)
+
+    def test_native_callback_missing_unused_member_preserves_authoritative_id(self):
+        h=Harness()
+        h.lua.execute('''
+          local original=apply_command
+          apply_command=function(cmd,no_result)
+            local result=original(cmd,no_result)
+            assert(type(result)=='userdata')
+            if cmd.op=='buy'then
+              assert(not pcall(function()return result.resultEntity end))
+              assert(result.resultVehicleEntity>0)
+            elseif cmd.op=='line'then
+              assert(result.resultEntity>0)
+              assert(not pcall(function()return result.resultVehicleEntity end))
+            end
+            return result
+          end
+        ''')
+        s=h.build()
+        self.assertEqual(s['coverage']['missing'],[])
+        self.assertEqual(s['probe']['scene']['vehicle'],'b:3')
+        self.assertEqual(s['probe']['scene']['line'],'a:4')
+
+    def test_callback_without_any_readable_identity_does_not_bind_a_guess(self):
+        h=Harness()
+        for key,command in COMMANDS[:5]:h.apply(key,command)
+        plan=h.plan('b:3',{'op':'PROBE_VEHICLE'})
+        h.lua.globals().apply_command(plan.native,False)
+        result=h.lua.eval('native_record({})')
+        with self.assertRaisesRegex(Exception,'successful build callback lacks exact entity'):
+            h.e.finish(plan,result,True)
+        self.assertIsNone(h.e.local_bindings()['b:3'])
+        self.assertNotIn('vehicle',h.snapshot()['probe']['scene'])
 
     def test_missing_actual_callback_identity_refuses(self):
         h=Harness()

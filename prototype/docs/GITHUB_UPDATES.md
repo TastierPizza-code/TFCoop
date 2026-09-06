@@ -115,8 +115,8 @@ Der Ablauf für die Veröffentlichung ist:
    diese Version über den festen Download- und Updateweg.
 
 Die Schritt-für-Schritt-Anleitung für beide Spieler steht in
-[ANLEITUNG.md](../ANLEITUNG.md). Der aktuelle Alpha5.2-Bautest bleibt bei 240 Runden
+[ANLEITUNG.md](../ANLEITUNG.md). Der aktuelle Alpha5.3-Bautest bleibt bei 240 Runden
 mit automatisch vorgegebenen Bau-, Fahr- und Pausenbefehlen. Freies Bauen,
 Spielercursor und gemeinsame normale Pause-Tasten sind noch nicht angeschlossen.
-Die Korrektur für die von TF2 gelieferten Konstruktionsparameter muss im echten
-Spiel bestätigt werden.
+Die Korrektur für fehlende native Felder beim Lesen von Transformationen und
+Callback-Ergebnissen muss im echten Spiel bestätigt werden.

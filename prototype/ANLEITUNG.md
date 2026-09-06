@@ -1,12 +1,20 @@
-# TF2-Koop Alpha5.2-Bautest — Anleitung für beide Spieler
+# TF2-Koop Alpha5.3-Bautest — Anleitung für beide Spieler
 
-Beide laden **einmal** das vollständige Windows-Paket herunter:
+**Ihr habt schon Alpha5.2?** Auf beiden PCs den Test beenden, TF2 vollständig
+schließen und den vorhandenen Launcher normal neu öffnen. Die Updateprüfung
+lädt **Alpha5.3** und öffnet den aktualisierten Launcher automatisch. Sobald oben
+**Alpha5.3-Bautest** steht, **Bisherige Installation wiederherstellen** verwenden
+und mit einem neuen gemeinsamen Sitzungscode neu vorbereiten. Ihr braucht
+dafür keine neue ZIP von Hand herunterzuladen oder weiterzuschicken.
+
+**Bei der ersten Einrichtung** laden beide einmal das vollständige Windows-Paket herunter:
 **[TFCoop-Windows.zip — neueste Version](https://github.com/TastierPizza-code/TFCoop/releases/latest/download/TFCoop-Windows.zip)**.
 Ab Alpha5.2 prüft der Launcher beim Start selbst auf neue GitHub-Releases,
 lädt eine neuere Version herunter, prüft die Dateien und startet den aktualisierten
 Launcher. Ihr braucht weder Git noch Python und müsst neue ZIPs nicht mehr
 regelmäßig untereinander verschicken. Die Erstversion dieses Updatewegs ist
 [Alpha5.2 / v0.5.2](https://github.com/TastierPizza-code/TFCoop/releases/tag/v0.5.2).
+Diese Anleitung gehört zu [Alpha5.3 / v0.5.3](https://github.com/TastierPizza-code/TFCoop/releases/tag/v0.5.3).
 
 **Beim Wechsel von Alpha5.1 oder älter:** Auf beiden PCs den Test beenden, TF2
 vollständig schließen und **Bisherige Installation wiederherstellen** verwenden.
@@ -14,10 +22,11 @@ Das geht auch im neuen Launcher. Das neue Paket separat entpacken; den alten
 Paketordner zunächst behalten. Der Launcher übernimmt den passenden privaten
 Ausgangsspielstand normalerweise automatisch aus eurem letzten vorbereiteten Testlauf.
 
-**Neu in Alpha5.2:** Neben dem Updateweg korrigiert diese Version das Auslesen
-der von TF2 gelieferten Konstruktionsparameter. Das adressiert den Abbruch
-`capability_missing: a:2:nonplain observed params` nach dem Straßenbau.
-Die Korrektur muss im echten Zwei-PC-Test noch bestätigt werden.
+**Neu in Alpha5.3:** Der letzte Test baute die Straße und brach anschließend
+beim Lesen ihrer Konstruktionstransformation ab: `bad argument #1 to 'type' (value expected)`.
+Diese Version korrigiert den Umgang mit einem dort nicht verfügbaren Datenfeld,
+damit der vorgesehene alternative Leseweg genutzt werden kann. Die Korrektur
+und der weitere Bauablauf müssen im echten Zwei-PC-Test noch bestätigt werden.
 
 **Was diese Version macht:** Sie verbindet euch über LAN/Hamachi und führt einen
 automatischen Bautest **in euren beiden Spielen** aus: eine kleine Straße, ein
@@ -34,17 +43,21 @@ ist die Prüfung der tatsächlichen Bau- und Fahrzeugfunktionen in TF2.
 
 ## 1. Das machen beide zuerst
 
-1. Den bisherigen Test beenden, Transport Fever 2 vollständig schließen und
-   **Bisherige Installation wiederherstellen** verwenden. Den alten Launcher danach schließen.
-2. Die ZIP jeweils vollständig in einen eigenen Ordner entpacken, beispielsweise
+1. Den bisherigen Test beenden, Transport Fever 2 vollständig schließen und den
+   bisherigen Launcher schließen. Der Versionswechsel wartet, solange TF2 oder ein Messcontroller läuft.
+2. **Mit vorhandenem Alpha5.2-Launcher:** Den bisherigen Programmordner weiterverwenden;
+   nichts neu herunterladen oder entpacken. **Bei erster Einrichtung:** Die ZIP
+   jeweils vollständig in einen eigenen Ordner entpacken, beispielsweise
    `C:\Games\TFCoop`. **Nicht in den Spielordner und nicht über den alten Launcher
    entpacken.** `TF2-Coop.exe`, `_internal` und `package_manifest.json` zusammenlassen.
    Im neuen öffentlichen Paket gibt es absichtlich keinen Ordner `Testspielstand`.
 3. Bei Hamachi beide PCs in dasselbe Hamachi-Netz verbinden. Ihr verwendet die
    **IPv4-Adresse des Hosts**, normalerweise eine Adresse mit `25.` am Anfang.
    Im selben lokalen Netzwerk geht stattdessen die LAN-IP des Hosts.
-4. `TF2-Coop.exe` aus dem neuen Ordner starten und die Updateprüfung abwarten.
+4. `TF2-Coop.exe` starten und die Updateprüfung abwarten.
    Falls eine neuere Version vorliegt, öffnet sich der aktualisierte Launcher automatisch.
+   Oben muss **Alpha5.3-Bautest** stehen. Dann, falls noch ein vorheriger Test
+   installiert ist, **Bisherige Installation wiederherstellen** verwenden.
    Ihr könnt künftig dieselbe EXE oder eine Verknüpfung darauf verwenden.
    Der alte Alpha5.1-Launcher hat diese Updatefunktion noch nicht.
 5. Den **TF2-Installationsordner** prüfen. Jeder wählt seine eigene Steam-Installation
@@ -68,7 +81,8 @@ Dann den Fehlertext schicken, statt Dateien manuell auszutauschen.
 1. **Ich bin Host** auswählen.
 2. In **IP des Hosts (Hamachi/LAN)** deine eigene Hamachi- oder LAN-IPv4 eintragen.
    Nicht die Adresse deines Freundes und für zwei PCs nicht `127.0.0.1` verwenden.
-3. Neben **Gemeinsamer Sitzungscode** auf **Kopieren** klicken. Deinem Freund
+3. Für diesen neuen Versuch neben **Gemeinsamer Sitzungscode** auf **Neu** und
+   anschließend auf **Kopieren** klicken. Deinem Freund
    die Host-IP und diesen vollständigen Code schicken.
 4. **Test vorbereiten und installieren** klicken und die Fertigmeldung abwarten.
    Der Launcher sichert die zuvor vorhandenen Dateien, installiert den Messmodus
@@ -106,7 +120,7 @@ TCP 34208 für den Verbindungsstatus. Im Hamachi-Test ist keine Routerfreigabe v
 4. Vor dem Laden beim ausgewählten Spielstand die **Optionen** öffnen und zum
    Reiter **Mods** wechseln. Die offizielle englische Bezeichnung des Knopfs ist
    **SELECT OPTIONS**. Dort die Mod
-   **TF2 Strict Sync - automatischer Bautest (Alpha5.2)** aktivieren.
+   **TF2 Strict Sync - automatischer Bautest (Alpha5.3)** aktivieren.
    Der Knopf **OPTIONEN AUSWÄHLEN** steht rechts direkt über der Liste
    **Aktivierte Mods**, neben **GRUNDOPTIONEN**.
 5. Für diesen Test die bisherigen Koop-Mods deaktivieren, insbesondere
@@ -203,6 +217,7 @@ die ursprüngliche Alpha5.2-EXE kann auch eine schon gespeicherte neuere Version
 | Privater Testspielstand fehlt / Prüfsummen stimmen nicht | **Testspielstand übernehmen …** verwenden und die ursprüngliche `Testspielstand\initial.sav` aus einem alten privaten Paket auswählen; die `.sav.lua` muss daneben liegen. |
 | Update verschoben | TF2 und laufenden Test beenden, dann den Launcher neu starten. |
 | Update nicht erreichbar / nicht verfügbar | Der Launcher behält die vorhandene Version. Später bei Internetzugang neu starten; beide Versionsanzeigen vergleichen. |
+| Es steht weiterhin Alpha5.2 im Fenster | TF2 und Messcontroller schließen, den Launcher normal neu starten und die Updateprüfung abwarten. Falls das Update weiterhin nicht verfügbar ist, die aktuelle **TFCoop-Windows.zip** über den Downloadlink oben separat entpacken. |
 | Unterschiedliche Testdateien / Ausgangszustände | Auf beiden PCs dieselbe aktuelle Version starten; für einen neuen Versuch wiederherstellen und mit dem passenden lokalen Ausgangsspielstand neu vorbereiten. |
 | Native- oder Lua-Fehler | Testbericht von beiden PCs exportieren und Fehlertext schicken. Das kann eine Grenze der noch ungeprüften Engineanbindung zeigen. |
 | `build_site_unavailable` | Es wurde keine passende freie und ausreichend ebene Baustelle gefunden. Berichte schicken; nichts von Hand vorbauen. |

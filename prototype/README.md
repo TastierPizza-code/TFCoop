@@ -4,7 +4,7 @@ Dieser Ordner enthält den Synchronisationskern und die Komponenten des
 kontrollierten Engineversuchs. Der Launcher bereitet eine eigene Testinstallation
 vor und kann die vorherigen Dateien anschließend wiederherstellen.
 
-Für den gemeinsamen Versuch gibt es einen **Alpha5.2-Bautest-Launcher**
+Für den gemeinsamen Versuch gibt es einen **Alpha5.3-Bautest-Launcher**
 mit Host/Beitreten, Sitzungscode, Verbindungsprüfung vor dem Spielstart,
 reversibler Installation, Steam-Startknopf und Berichtsexport. Die Schritte für
 beide Spieler stehen in [ANLEITUNG.md](ANLEITUNG.md). Sein automatisches Profil
@@ -31,7 +31,9 @@ Messwerten abgeschlossen: 80 Schritte à 0,2 Sekunden und 20 Pausenrunden.
 Der Host bestätigt die Abschlusswerte beider Spielinstanzen. Der Alpha5-Bauablauf
 ist mit Ersatzengines geprüft. Echte Nutzertests erreichten bisher Abbrüche bei
 der Platzsuche beziehungsweise beim Lesen des Zustands nach dem Straßenbau.
-Die aktuelle Alpha5.2-Korrektur muss im echten Zwei-PC-Test bestätigt werden.
+Im Alpha5.2-Nutzertest wurde die Straße gebaut; anschließend brach das Lesen der
+Konstruktionstransformation in Runde 1 ab. Die aktuelle Alpha5.3-Korrektur und
+der weitere Bauablauf müssen im echten Zwei-PC-Test bestätigt werden.
 Normale Bauwerkzeuge und eine aktive gemeinsame Wirtschaft sind damit noch
 nicht umfassend geprüft oder vollständig an die neue Eingabesteuerung angeschlossen.
 
@@ -50,6 +52,21 @@ Der Zustandsvergleich bleibt an die tatsächlich beobachteten Werte gebunden.
 Der neue GitHub-Updateweg verändert weder das Testprofil noch dessen begrenzte
 Aussagekraft: 240 Runden, vorbereitete Testbefehle, keine normalen Bauwerkzeuge,
 keine Spielercursor und keine Weitergabe der normalen Pause-Taste.
+
+Alpha5.3 korrigiert den daraufhin im echten Spiel aufgetretenen Lua-Fehler
+`bad argument #1 to 'type' (value expected)`. Beim geschützten Zugriff auf ein
+nicht verfügbares Transformationsfeld gab der Hilfsleser bisher null Rückgabewerte
+zurück. Ein unmittelbarer Aufruf von `type(...)` erhielt dadurch kein Argument.
+Der Fehlerpfad liefert jetzt ausdrücklich ein `nil`, sodass die vorhandene
+Prüfung und der alternative Transformationsleser ausgeführt werden können.
+Das Testprofil und die Kriterien für einen erfolgreichen Abschluss bleiben gleich.
+
+Spieler mit Alpha5.2 erhalten Alpha5.3 über die vorhandene Updatefunktion:
+TF2 und Messcontroller schließen, den Launcher normal öffnen und auf die neue
+Versionsanzeige warten. Danach die bisherige Testinstallation wiederherstellen
+und mit einem frischen gemeinsamen Sitzungscode neu vorbereiten. Die neu
+importierte Testsave verwendet die Mod **TF2 Strict Sync - automatischer Bautest (Alpha5.3)**.
+Ein erneuter ZIP-Download ist bei funktionierender Updateprüfung nicht nötig.
 
 Alpha4.1 korrigiert den beim ersten echten Zweirechnertest beobachteten Abbruch:
 Der alte 0,1-Sekunden-Schritt verletzte die 0,2-Sekunden-Mindestgröße der Engine.
@@ -192,7 +209,7 @@ Kalenderdatum und dessen eingestellte Fortschrittsrate sind davon zu unterscheid
 
 Die frühere Vorbereitung unter `staged/time-probe-20260906` und
 `sessions/time-probe-20260906` ist ein historischer Stand mit damaligen Codehashes.
-Der Alpha5.2-Bautest-Launcher bereitet auf jedem PC eine neue Sitzung aus den
+Der Alpha5.3-Bautest-Launcher bereitet auf jedem PC eine neue Sitzung aus den
 aktuellen Programmdateien vor. Die öffentliche ZIP enthält **keinen Ausgangsspielstand**,
 keine lokalen Sitzungsdateien und keine Originaldateien des Spiels. Ihr Manifest
 enthält nur die SHA-256-Identität des benötigten privaten Save-Paars.

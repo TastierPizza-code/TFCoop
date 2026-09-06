@@ -1,5 +1,33 @@
 # Prüfstand vom 6. September 2026
 
+## Alpha5.3: fehlende native Felder und Lua-Rückgabewerte
+
+Der tatsächliche Alpha5.2-Bericht stoppt in Runde 1 beim Lesen der Transformation
+des gebauten Straßenobjekts: `bad argument #1 to 'type' (value expected)`.
+Der Hilfsleser lieferte nach einem fehlgeschlagenen nativen Feldzugriff keine
+Rückgabewerte statt eines `nil`. Derselbe Fehler betraf einen späteren
+`tonumber`-Aufruf beim Lesen der bestätigten Fahrzeug-/Linien-ID.
+Beide Fehler wurden mit der bisherigen Implementierung reproduziert.
+Details: `docs/FIELD_LOOKUP_FIX.md`.
+
+Die beiden Feldleser liefern jetzt ausdrücklich genau einen fehlenden Wert.
+Unlesbare Pflichtwerte werden weiterhin zurückgewiesen; bei einer fehlenden
+Matrixkomponente nennt der Fehler deren Index. Die erweiterten Fixtures bilden
+native Transformationen, Parameter und Callback-Ergebnisse mit fehlschlagenden
+Zugriffen auf unbekannte Felder nach.
+
+**128 Literal-Lua-Bautests** bestehen über Lua 5.1 bis 5.4. Zusätzlich bestehen
+**116 Literal-Lua-Adaptertests** sowie **112 Python-Prüfungen** für Launcher,
+Update-Handoff, Updater, lokalen Spielstand und Veröffentlichung. Der vollständige
+Datei-Mailboxtest mit zwei getrennten Lua-Peers besteht ebenfalls: zwei Fälle
+in 156,583 Sekunden, einschließlich aller 240 gemeinsamen Runden und abschließendem
+Bewegungsnachweis mit unterschiedlichen lokalen Objektkennungen.
+
+Die nativen DLLs, gemeinsame Ausgangssave und der Bau-/Pausenablauf bleiben
+unverändert. Diese Tests führen Produktions-Lua und Dateiaustausch mit einer
+nachgebildeten Spiel-API aus. Die tatsächliche Alpha5.3-Bauausführung auf zwei
+TF2-Installationen ist weiterhin offen.
+
 ## Alpha5.2: Parameterleser und GitHub-Verteilung
 
 Der tatsächliche Alpha5.1-Lauf findet einen Bauplatz und erstellt das Straßenobjekt.
