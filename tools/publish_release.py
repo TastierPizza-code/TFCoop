@@ -230,7 +230,10 @@ def publish(archive, report):
         raise ValueError("Uploaded asset hash/size mismatch; release remains a draft.")
     finished = api.call("PATCH", f"/repos/{REPO}/releases/{release['id']}", {
         "draft": False, "prerelease": False, "make_latest": "true", "body": notes})
-    return {"release": finished["html_url"], "download": asset["browser_download_url"],
+    # The upload response belongs to the draft and can still contain GitHub's
+    # temporary untagged URL. Publication exposes the asset under the real tag.
+    download = f"https://github.com/{REPO}/releases/download/{RELEASE_TAG}/{updater.ASSET_NAME}"
+    return {"release": finished["html_url"], "download": download,
             "commit": commit, "sha256": report["archive_sha256"]}
 
 

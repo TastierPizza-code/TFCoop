@@ -260,8 +260,10 @@ class DraftLifecycleTests(unittest.TestCase):
         return result
 
     def test_first_release_pushes_atomic_tag_and_only_publishes_after_verified_upload(self):
+        self.asset["browser_download_url"] = "https://github.com/fixture/releases/download/untagged-fixture/TFCoop-Windows.zip"
         result = self.run_publish()
         self.assertEqual(result["sha256"], "a" * 64)
+        self.assertEqual(result["download"], f"https://github.com/{publisher.REPO}/releases/download/{publisher.RELEASE_TAG}/TFCoop-Windows.zip")
         push = next(event for event in self.events if event[0] == "git" and event[1][0] == "push")
         self.assertIn("--atomic", push[1])
         methods = [event[0] for event in self.events if event[0] != "git"]
