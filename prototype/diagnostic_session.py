@@ -11,6 +11,7 @@ import json
 import math
 from pathlib import Path, PurePosixPath
 import re
+import stat
 import zipfile
 import uuid
 
@@ -432,31 +433,87 @@ def prepare_diagnostic(game_dir: Path, save_dir: Path, on_progress=None) -> Diag
         raise DiagnosticError(str(exc)) from exc
 
 
+def _incomplete_json(error):
+    """Recognize unfinished JSON prefixes, without suppressing malformed values."""
+    cause = error.__cause__
+    if isinstance(cause, UnicodeDecodeError):
+        return cause.reason == "unexpected end of data" and cause.end == len(cause.object)
+    if not isinstance(cause, json.JSONDecodeError):
+        return False  # Duplicate keys and nonfinite numbers always fail closed.
+    text = cause.doc.rstrip()
+    if not text or cause.pos >= len(text):
+        return True
+    if cause.msg.startswith("Unterminated string"):
+        return True
+    tail = text[cause.pos:]
+    if cause.msg == "Expecting value" and any(
+            token.startswith(tail) and token != tail for token in ("true", "false", "null")):
+        return True
+    if cause.msg == "Invalid \\uXXXX escape" and re.fullmatch(r"u[0-9a-fA-F]{0,3}", tail):
+        return True
+    # A write may stop inside a minus sign, fraction or exponent. Invalid forms
+    # such as 1.e, 01 or '-x' are not valid JSON prefixes and must not wait forever.
+    number = re.search(r"(?:[:\[,]\s*)(-|[-]?(?:0|[1-9][0-9]*)\.|[-]?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?[eE][+-]?)$", text)
+    return bool(number and cause.pos >= number.start(1)
+                and cause.msg in {"Expecting value", "Expecting ',' delimiter"})
+
+
+def _report_bytes(path):
+    """Every actual read permits Windows writers to replace or remove the file."""
+    path = _plain(path)
+    info = path.stat()
+    if not stat.S_ISREG(info.st_mode) or info.st_size > MAX_REPORT_BYTES:
+        raise DiagnosticError("Diagnosebericht ist keine reguläre Datei oder überschreitet 98304 Bytes.")
+    raw = _shared_read(path, MAX_REPORT_BYTES)
+    if len(raw) > MAX_REPORT_BYTES:
+        raise DiagnosticError("Diagnosebericht überschreitet 98304 Bytes.")
+    return raw
+
+
+def _validated_report(raw, run):
+    try:
+        report = _json_bytes(raw)
+    except DiagnosticError as exc:
+        if _incomplete_json(exc):
+            return None
+        raise
+    if (type(report.get("format")) is not int or report["format"] != 1
+            or report.get("mode") != MODE or report.get("request_id") != run.request_id
+            or type(report.get("status")) is not str or report["status"] not in {"completed", "error"}
+            or report.get("valid_snapshot") is not False
+            or type(report.get("records")) is not list
+            or len(report["records"]) > 1024 or any(type(record) is not dict for record in report["records"])
+            or type(report.get("limits")) is not dict
+            or type(report.get("truncated")) is not bool):
+        raise DiagnosticError("Diagnosebericht gehört nicht zum aktuellen Auftrag oder hat ein ungültiges Format.")
+    return report
+
+
 def read_diagnostic_report(run: DiagnosticRun) -> dict | None:
-    """Read only the bounded report belonging to this exact audit request."""
+    """Read a finished report or an unchanged, complete recovery .part file.
+
+    The Lua sandbox may deny the final rename after writing a complete .part.
+    Reading/exporting that existing report requires no new game run. This reader
+    never renames, deletes or publishes files and leaves installation journals alone.
+    """
     try:
         run = _validate_run(run)
         path = _plain(run.report_path)
-        if not path.exists():
-            return None
-        with baseline._open_regular(path, MAX_REPORT_BYTES):
+        try:
+            report = _validated_report(_report_bytes(path), run)
+            if report is not None:
+                return report  # Prefer the complete final file, even if .part exists.
+        except FileNotFoundError:
             pass
-        raw = _shared_read(path, MAX_REPORT_BYTES)
-        if len(raw) > MAX_REPORT_BYTES:
-            raise DiagnosticError("Diagnosebericht überschreitet 98304 Bytes.")
-        report = _json_bytes(raw)
-        if (type(report.get("format")) is not int or report["format"] != 1
-                or report.get("mode") != MODE or report.get("request_id") != run.request_id
-                or type(report.get("status")) is not str or report["status"] not in {"completed", "error"}
-                or report.get("valid_snapshot") is not False
-                or type(report.get("records")) is not list
-                or len(report["records"]) > 1024 or any(type(record) is not dict for record in report["records"])
-                or type(report.get("limits")) is not dict
-                or type(report.get("truncated")) is not bool):
-            raise DiagnosticError("Diagnosebericht gehört nicht zum aktuellen Auftrag oder hat ein ungültiges Format.")
-        return report
-    except FileNotFoundError:
-        return None  # A report is published only after the Lua collection completes.
+        part = _plain(Path(str(path) + ".part"))
+        try:
+            first = _report_bytes(part)
+            second = _report_bytes(part)
+        except FileNotFoundError:
+            return None
+        if first != second:
+            return None  # Still being written or replaced; retry on the next poll.
+        return _validated_report(second, run)
     except (OSError, baseline.BaselineError) as exc:
         raise DiagnosticError(str(exc)) from exc
 

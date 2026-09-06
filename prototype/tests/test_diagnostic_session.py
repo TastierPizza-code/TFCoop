@@ -347,6 +347,118 @@ class DiagnosticSessionTests(unittest.TestCase):
                 with self.assertRaises(diagnostic.DiagnosticError):
                     diagnostic.read_diagnostic_report(run)
 
+    def test_complete_stable_part_can_be_read_and_exported_without_renaming_or_installing(self):
+        run = self.prepare()
+        expected = self.report(run, records=[{"component": "CONSTRUCTION", "status": "observed"}])
+        final = Path(run.report_path)
+        part = Path(run.report_path + ".part")
+        final.rename(part)
+        before_part = part.read_bytes()
+        journal = Path(run.backup_path) / "journal.json"
+        before_journal = journal.read_bytes(), journal.stat().st_mtime_ns
+        before_mod = self.mod_files()
+        before_save = Path(run.imported_save).read_bytes()
+        with patch.object(diagnostic.workflow, "restore_probe") as restore, \
+                patch.object(diagnostic.recovery, "_replace") as mutate:
+            self.assertEqual(diagnostic.read_diagnostic_report(run), expected)
+            archive = diagnostic.export_diagnostic(run, self.root / "recovered.zip")
+            restore.assert_not_called()
+            mutate.assert_not_called()
+        with zipfile.ZipFile(archive) as package:
+            self.assertEqual(json.loads(package.read("api-audit.json")), expected)
+        self.assertFalse(final.exists())
+        self.assertEqual(part.read_bytes(), before_part)
+        self.assertEqual((journal.read_bytes(), journal.stat().st_mtime_ns), before_journal)
+        self.assertEqual(self.mod_files(), before_mod)
+        self.assertEqual(Path(run.imported_save).read_bytes(), before_save)
+
+    def test_complete_final_is_preferred_without_reading_invalid_part(self):
+        run = self.prepare()
+        expected = self.report(run)
+        Path(run.report_path + ".part").write_bytes(b"invalid leftover data")
+        with patch.object(diagnostic, "_shared_read", wraps=diagnostic._shared_read) as reads:
+            self.assertEqual(diagnostic.read_diagnostic_report(run), expected)
+        self.assertEqual(reads.call_count, 1)
+        self.assertEqual(reads.call_args.args[0], Path(run.report_path))
+
+    def test_partial_final_can_fall_back_to_complete_stable_part(self):
+        run = self.prepare()
+        expected = self.report(run)
+        final = Path(run.report_path)
+        Path(run.report_path + ".part").write_bytes(final.read_bytes())
+        final.write_bytes(b'{"format":1,')
+        self.assertEqual(diagnostic.read_diagnostic_report(run), expected)
+        self.assertEqual(final.read_bytes(), b'{"format":1,')
+
+    def test_partial_or_empty_json_in_both_files_waits_for_completion(self):
+        run = self.prepare()
+        final, part = Path(run.report_path), Path(run.report_path + ".part")
+        prefixes = (b"", b" \r\n", b"{", b'{"format":', b'{"format":1,',
+                    b'{"value":"unfinished', b'{"value":"escape\\',
+                    b'{"value":"\\u1', b'{"value":tru', b'{"value":fal', b'{"value":nu',
+                    b'{"value":-', b'{"value":1.', b'{"value":1e', b'{"value":1e+',
+                    b'{"value":-1.2e-', b'{"value":"\xc3')
+        for raw in prefixes:
+            with self.subTest(raw=raw):
+                final.write_bytes(raw)
+                part.write_bytes(raw)
+                self.assertIsNone(diagnostic.read_diagnostic_report(run))
+
+    def test_stable_complete_part_rejects_wrong_request_schema_and_malformed_json(self):
+        run = self.prepare()
+        final, part = Path(run.report_path), Path(run.report_path + ".part")
+        for changes in ({"request_id": "c" * 32}, {"mode": "different"},
+                        {"valid_snapshot": True}, {"records": ["bad row"]}):
+            with self.subTest(changes=changes):
+                self.report(run, **changes)
+                part.write_bytes(final.read_bytes())
+                final.unlink()
+                with self.assertRaises(diagnostic.DiagnosticError):
+                    diagnostic.read_diagnostic_report(run)
+        for raw in (b'{"value":nope}', b'{"value":NaN}', b'{"value":1e309}',
+                    b'{"format":1,"format":1}', b'{"value":01}', b'{"value":1.e}',
+                    b'{"value":"\\uX"}', b" " * (diagnostic.MAX_REPORT_BYTES + 1)):
+            with self.subTest(raw=raw[:40]):
+                part.write_bytes(raw)
+                with self.assertRaises(diagnostic.DiagnosticError):
+                    diagnostic.read_diagnostic_report(run)
+
+    def test_complete_invalid_final_does_not_fall_back_to_valid_part(self):
+        run = self.prepare()
+        self.report(run)
+        final = Path(run.report_path)
+        Path(run.report_path + ".part").write_bytes(final.read_bytes())
+        self.report(run, request_id="f" * 32)
+        with self.assertRaises(diagnostic.DiagnosticError):
+            diagnostic.read_diagnostic_report(run)
+        final.write_bytes(b'{"value":wrong}')
+        with self.assertRaises(diagnostic.DiagnosticError):
+            diagnostic.read_diagnostic_report(run)
+
+    def test_part_changed_between_shared_reads_waits_and_next_stable_read_succeeds(self):
+        run = self.prepare()
+        first = self.report(run)
+        final, part = Path(run.report_path), Path(run.report_path + ".part")
+        first_bytes = final.read_bytes()
+        second = self.report(run, records=[{"status": "observed"}])
+        second_bytes = final.read_bytes()
+        final.rename(part)
+        with patch.object(diagnostic, "_shared_read", side_effect=[first_bytes, second_bytes]) as reads:
+            self.assertIsNone(diagnostic.read_diagnostic_report(run))
+            self.assertEqual(reads.call_count, 2)
+            self.assertTrue(all(call.args == (part, diagnostic.MAX_REPORT_BYTES) for call in reads.call_args_list))
+        self.assertEqual(diagnostic.read_diagnostic_report(run), second)
+        self.assertNotEqual(first, second)
+
+    def test_part_disappearing_between_shared_reads_waits(self):
+        run = self.prepare()
+        self.report(run)
+        final, part = Path(run.report_path), Path(run.report_path + ".part")
+        raw = final.read_bytes()
+        final.rename(part)
+        with patch.object(diagnostic, "_shared_read", side_effect=[raw, FileNotFoundError()]):
+            self.assertIsNone(diagnostic.read_diagnostic_report(run))
+
     def test_export_contains_only_validated_report_and_public_metadata(self):
         run = self.prepare()
         expected = self.report(run)

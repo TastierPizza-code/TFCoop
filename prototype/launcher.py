@@ -90,7 +90,7 @@ class App:
         self.root.bind("<MouseWheel>", lambda event: canvas.yview_scroll(-int(event.delta / 120), "units"))
         ttk.Label(outer, text="TF2-Koop  /  " + workflow.VERSION, style="Title.TLabel").pack(anchor="w")
         ttk.Label(outer, text="API-Daten auf diesem PC prüfen", font=("Segoe UI", 12)).pack(anchor="w", pady=(3, 6))
-        ttk.Label(outer, text="Die neue Diagnose liest mehrere Datenfelder in einem Durchlauf. Dein Freund muss dafür nicht mitstarten. Der Zahlenfehler aus Alpha5.3 ist noch nicht geklärt.",
+        ttk.Label(outer, text="Alpha5.5 erkennt auch vollständige temporäre Berichte aus Alpha5.4. Wenn du schon getestet hast, zuerst den vorhandenen Bericht prüfen; kein erneuter Spielstart nötig.",
                   wraplength=900).pack(anchor="w", pady=(0, 13))
         ttk.Label(outer, textvariable=self.update_status, wraplength=900).pack(anchor="w", pady=(0, 8))
         paths = ttk.LabelFrame(outer, text="1  ·  Ordner prüfen", padding=12)
@@ -121,7 +121,7 @@ class App:
         self.diagnostic_button.pack(anchor="w", pady=(0, 10))
         ttk.Label(solo, text="3  ·  TF2 selbst über Steam starten und diesen Spielstand laden", font=("Segoe UI", 12, "bold")).pack(anchor="w")
         ttk.Entry(solo, textvariable=self.diagnostic_save, state="readonly").pack(fill="x", pady=7)
-        ttk.Label(solo, text="Spiel laden → OPTIONEN AUSWÄHLEN / Mods: 'TF2 API-Diagnose (Alpha5.4)' und Legacy Fahrzeuge aktivieren. Strict Sync und alte Koop-Mods deaktivieren. Nach dem Laden etwa 10 Sekunden warten.", wraplength=850).pack(anchor="w")
+        ttk.Label(solo, text="Spiel laden → OPTIONEN AUSWÄHLEN / Mods: 'TF2 API-Diagnose (Alpha5.5)' und Legacy Fahrzeuge aktivieren. Strict Sync und alte Koop-Mods deaktivieren. Nach dem Laden etwa 10 Sekunden warten.", wraplength=850).pack(anchor="w")
         ttk.Label(solo, text="Die Diagnose baut nichts und ändert keine Pause. Sie liest vorhandene Objekte und getrennt davon neu angelegte Konfigurationsobjekte. Fehlende Fahrzeuge oder Depots bleiben als ungeprüft erkennbar.", wraplength=850).pack(anchor="w", pady=9)
         ttk.Label(solo, textvariable=self.diagnostic_status, style="Status.TLabel", wraplength=850).pack(anchor="w", pady=7)
         self.diagnostic_export_button = ttk.Button(solo, text="Diagnosebericht als ZIP …", command=self.export_diagnostic)
@@ -178,7 +178,7 @@ class App:
         savebox.pack(fill="x", pady=10)
         ttk.Label(savebox, text="Im Spiel ausdrücklich diese Testsave wählen:").pack(anchor="w")
         ttk.Entry(savebox, textvariable=self.save_name, state="readonly").pack(fill="x", pady=3)
-        ttk.Label(savebox, text="Spiel laden → OPTIONEN AUSWÄHLEN / Mods: 'TF2 Strict Sync - automatischer Bautest (Alpha5.4)' aktivieren; Diagnosemod und alte Koop-Mods deaktivieren.",
+        ttk.Label(savebox, text="Spiel laden → OPTIONEN AUSWÄHLEN / Mods: 'TF2 Strict Sync - automatischer Bautest (Alpha5.5)' aktivieren; Diagnosemod und alte Koop-Mods deaktivieren.",
                   wraplength=900).pack(anchor="w")
         footer = ttk.Frame(outer)
         footer.pack(fill="x", pady=(7, 0))
@@ -310,15 +310,16 @@ class App:
         self._buttons()
 
     def _poll_diagnostic(self):
-        if not self.diagnostic or self.diagnostic_finished or self.busy:
+        run = self.diagnostic or self.last_diagnostic
+        if not run or self.diagnostic_finished or self.busy:
             return
         self.diagnostic_ticks += 1
         if self.diagnostic_ticks % 3:
             return
         try:
-            report = diagnostics.read_diagnostic_report(self.diagnostic)
+            report = diagnostics.read_diagnostic_report(run)
             if report is None:
-                if time.monotonic() - self.diagnostic_started >= 60:
+                if self.diagnostic and time.monotonic() - self.diagnostic_started >= 60:
                     self.diagnostic_status.set("Noch kein Diagnosebericht. Falls die Karte bereits geladen ist: angezeigten Diagnosespielstand und aktive Diagnosemod prüfen. Bei weiter ausbleibendem Bericht diese Meldung schicken; sie beweist keinen API-Fehler.")
                 return
             self.diagnostic_finished = True

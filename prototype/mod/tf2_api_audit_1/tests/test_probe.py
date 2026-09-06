@@ -17,6 +17,7 @@ class Harness:
         self.lua = RUNTIME(unpack_returned_tuples=True)
         self.j = self.lua.execute((SCRIPTS/'json.lua').read_text(encoding='utf-8'))
         self.lua.execute((HERE/'fake_api.lua').read_text(encoding='utf-8'))
+        self.lua.execute('logs={};print=function(value)logs[#logs+1]=value end')
         self.p = self.lua.execute((SCRIPTS/'probe.lua').read_text(encoding='utf-8'))
         self.lua.execute(setup)
     def collect(self, options=None):
@@ -153,6 +154,7 @@ class ProbeTests(unittest.TestCase):
             for _ in range(1000):script.update()
             self.assertFalse(path.exists());self.assertEqual(h.lua.globals().gets,0)
             self.assertEqual(h.lua.globals().sent,0)
+            self.assertEqual(len(h.lua.globals().logs),0)
 
     def test_script_waits_for_loaded_player_then_writes_exactly_once(self):
         h=Harness('player_ready=false')
@@ -167,7 +169,7 @@ class ProbeTests(unittest.TestCase):
             gets=h.lua.globals().gets;path.unlink()
             for _ in range(10):script.update()
             self.assertFalse(path.exists());self.assertEqual(h.lua.globals().gets,gets)
-            self.assertFalse(Path(str(path)+'.part').exists())
+            self.assertEqual(Path(str(path)+'.part').read_bytes(),raw)
             self.assertEqual(h.lua.globals().sent,0)
 
     def test_script_fatal_error_is_bounded_report_without_pointer(self):
@@ -198,10 +200,12 @@ class ProbeTests(unittest.TestCase):
             path=Path(td)/'report.json';script=h.script(path)
             h.lua.execute('''
               open_count=0;local old=io.open
-              io.open=function(...)
-                open_count=open_count+1
-                if open_count<3 then return nil,'temporary sharing violation' end
-                return old(...)
+              io.open=function(path,mode)
+                if mode=='wb'and path:match('%.part$')then
+                  open_count=open_count+1
+                  if open_count<3 then return nil,'temporary sharing violation' end
+                end
+                return old(path,mode)
               end
             ''')
             script.update();gets=h.lua.globals().gets
@@ -218,6 +222,82 @@ class ProbeTests(unittest.TestCase):
             for _ in range(100):script.update()
             self.assertEqual(h.lua.globals().open_count,3)
             self.assertEqual(h.lua.globals().gets,gets)
+
+    def test_publication_succeeds_without_rename_and_logs_bounded_stages(self):
+        h=Harness('os.rename=nil;player_ready=false')
+        with tempfile.TemporaryDirectory() as td:
+            path=Path(td)/'report.json';script=h.script(path)
+            script.load(None);script.load(None)
+            for _ in range(10):script.update()
+            h.lua.execute('player_ready=true');script.update()
+            self.assertEqual(path.read_bytes(),Path(str(path)+'.part').read_bytes())
+            lines=list(h.lua.globals().logs.values())
+            self.assertTrue(any('status=published' in line for line in lines))
+            for stage in ('script_loaded','load_callback','first_update','waiting_for_player','collected','staging_closed','final_closed'):
+                self.assertEqual(sum('status='+stage in line for line in lines),1,stage)
+            self.assertTrue(all(str(path) not in line and td not in line for line in lines))
+            self.assertEqual(h.lua.globals().sent,0)
+
+    def test_partial_final_write_is_detected_and_retried_from_original_staging(self):
+        h=Harness()
+        with tempfile.TemporaryDirectory() as td:
+            path=Path(td)/'report.json';script=h.script(path)
+            h.lua.execute('''
+              partial_count=0;staging_writes=0;local old=io.open
+              io.open=function(path,mode)
+                local f,err=old(path,mode)
+                if mode=='wb'and path:match('%.part$')then staging_writes=staging_writes+1 end
+                if f and mode=='wb'and path:match('%.json$')then
+                  partial_count=partial_count+1
+                  if partial_count==1 then return {
+                    write=function(_,raw)return f:write(raw:sub(1,31))end,
+                    close=function()return f:close()end}end
+                end
+                return f,err
+              end
+            ''')
+            script.update();gets=h.lua.globals().gets
+            with self.assertRaises(json.JSONDecodeError):json.loads(path.read_bytes())
+            staged=Path(str(path)+'.part').read_bytes()
+            self.assertEqual(json.loads(staged)['status'],'completed')
+            self.assertTrue(any('status=final_readback_mismatch' in line for line in h.lua.globals().logs.values()))
+            for _ in range(31):script.update()
+            self.assertEqual(path.read_bytes(),staged)
+            self.assertEqual(h.lua.globals().staging_writes,1)
+            self.assertEqual(h.lua.globals().gets,gets)
+
+    def test_writer_throw_logs_no_private_path_or_opaque_pointer(self):
+        h=Harness()
+        with tempfile.TemporaryDirectory() as td:
+            path=Path(td)/'report.json';script=h.script(path)
+            h.lua.execute('io.open=function(path)error(path..": permission denied 0xAB1234",0)end')
+            script.update()
+            text='\n'.join(h.lua.globals().logs.values())
+            self.assertIn('staging_open_failed',text)
+            self.assertIn('permission denied [address]',text)
+            self.assertNotIn(td,text);self.assertNotIn('0xAB1234',text)
+
+    def test_explicit_close_failure_is_logged_and_never_published(self):
+        h=Harness()
+        with tempfile.TemporaryDirectory() as td:
+            path=Path(td)/'report.json';script=h.script(path)
+            h.lua.execute('''
+              close_count=0;local old=io.open
+              io.open=function(path,mode)
+                local f,err=old(path,mode)
+                if f and mode=='wb'then return {
+                  write=function(_,raw)return f:write(raw)end,
+                  close=function()f:close();close_count=close_count+1;return false,'close failed'end}end
+                return f,err
+              end
+            ''')
+            for _ in range(100):script.update()
+            self.assertFalse(path.exists())
+            self.assertEqual(h.lua.globals().close_count,3)
+            text='\n'.join(h.lua.globals().logs.values())
+            self.assertIn('status=staging_close_failed failure=close failed',text)
+            self.assertIn('status=write_attempts_exhausted',text)
+            self.assertNotIn('status=published',text)
 
     def test_readiness_timeout_writes_one_error_and_stops(self):
         h=Harness('player_ready=false')

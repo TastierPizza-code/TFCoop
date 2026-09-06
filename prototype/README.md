@@ -1,13 +1,17 @@
 # TF2: Prototyp für strikte Synchronisation
 
+**Alpha5.5 erkennt vollständige temporäre Diagnoseberichte aus Alpha5.4.**
+Vorhandene Berichte lassen sich nach dem Launcherupdate ohne neuen
+Spielstart exportieren. Der Bauabbruch ist damit noch nicht behoben.
+
 Dieser Ordner enthält den Synchronisationskern und die Komponenten des
 kontrollierten Engineversuchs. Der Launcher bereitet eine eigene Testinstallation
 vor und kann die vorherigen Dateien anschließend wiederherstellen.
 
-Der aktuelle **Alpha5.4-Diagnose-Launcher** bietet im ersten Reiter
+Der aktuelle **Alpha5.5-Diagnose-Launcher** bietet im ersten Reiter
 **API-Diagnose allein** eine Erfassung auf einem einzelnen PC: lokale Pfade
 prüfen, **Diagnose vorbereiten**, TF2 selbst über Steam starten und die angezeigte
-`TF2-API-Diagnose-….sav` ausschließlich mit **TF2 API-Diagnose (Alpha5.4)** und
+`TF2-API-Diagnose-….sav` ausschließlich mit **TF2 API-Diagnose (Alpha5.5)** und
 **Legacy Fahrzeuge** laden. Nach etwa zehn Sekunden den eigenen
 **Diagnosebericht als ZIP …** exportieren. Verbindung, IP, Sitzungscode und
 Mitspieler sind dafür nicht erforderlich. Ablauf und Wiederherstellung stehen
@@ -50,7 +54,7 @@ Im Alpha5.2-Nutzertest wurde die Straße gebaut; anschließend brach das Lesen d
 Konstruktionstransformation in Runde 1 ab. Alpha5.3 behob den dabei beobachteten
 Fehler der Lua-Rückgabewerte. Im anschließenden echten Alpha5.3-Test erschien nach
 dem Straßenbau `invalid finite build value`. Das betroffene Zahlenfeld ist noch
-nicht bekannt. Alpha5.4 liefert dafür einen Solo-Diagnosemodus, keinen bestätigten
+nicht bekannt. Alpha5.5 liefert dafür einen Solo-Diagnosemodus, keinen bestätigten
 Fix und keinen Nachweis für den weiteren Bauablauf oder deterministischen Multiplayer.
 Normale Bauwerkzeuge und eine aktive gemeinsame Wirtschaft sind damit noch
 nicht umfassend geprüft oder vollständig an die neue Eingabesteuerung angeschlossen.
@@ -79,9 +83,9 @@ Der Fehlerpfad liefert jetzt ausdrücklich ein `nil`, sodass die vorhandene
 Prüfung und der alternative Transformationsleser ausgeführt werden können.
 Das Testprofil und die Kriterien für einen erfolgreichen Abschluss bleiben gleich.
 
-Spieler mit einem Launcher ab Alpha5.2 erhalten Alpha5.4 über die vorhandene
+Spieler mit einem Launcher ab Alpha5.2 erhalten Alpha5.5 über die vorhandene
 Updatefunktion: TF2 und Messcontroller schließen, den Launcher normal öffnen
-und auf **Alpha5.4-Diagnose** warten. Danach **Diagnose vorbereiten** im ersten
+und auf **Alpha5.5-Diagnose** warten. Danach **Diagnose vorbereiten** im ersten
 Reiter verwenden. Die Vorbereitung setzt die bisherige strikte
 Testinstallation zurück und erstellt eine frische Save-Kopie für die Diagnosemod.
 Ein erneuter ZIP-Download ist bei funktionierender Updateprüfung nicht nötig.

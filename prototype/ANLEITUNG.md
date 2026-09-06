@@ -1,13 +1,27 @@
-# TF2-Koop Alpha5.4-Diagnose — Anleitung
+# TF2-Koop Alpha5.5-Diagnose — Anleitung
 
-**Der nächste Schritt geht allein auf deinem PC. Dein Freund muss dafür nichts
-starten und keine ZIP schicken.** Alpha5.4 liest die tatsächlich verfügbaren
+**Schon mit Alpha5.4 getestet, aber „Noch kein Diagnosebericht“ gesehen?**
+Zuerst TF2 schließen und nur den Launcher neu öffnen. Alpha5.5 erkennt auch
+vollständige temporäre Berichte aus dem bisherigen Lauf. **Nicht erneut
+vorbereiten oder ins Spiel gehen:** Sobald der vorhandene Bericht angezeigt
+wird, lässt er sich mit **Diagnosebericht als ZIP …** exportieren. Das gilt
+auch, wenn die Diagnosemod bereits wiederhergestellt wurde. Unvollständige,
+veränderte oder einem anderen Auftrag zugeordnete Dateien werden nicht als
+fertiger Bericht übernommen.
+
+Bei den beiden untersuchten Alpha5.4-Versuchen war die Erfassung vollständig;
+der Launcher hatte die temporäre Datei nicht erkannt. Der neue Ausgabeweg
+benötigt keine Lua-Dateiumbenennung mehr. Ein Grund für das Scheitern des
+alten abschließenden Dateischritts wurde damals nicht protokolliert.
+
+**Ein neuer Diagnoselauf geht allein auf deinem PC. Dein Freund muss dafür nichts
+starten und keine ZIP schicken.** Alpha5.5 liest die tatsächlich verfügbaren
 TF2-Daten aus einer frischen Kopie eures bisherigen Testspielstands. Dafür sind
 keine Verbindung, Host-IP, Sitzungscode oder Hamachi erforderlich.
 
 Im letzten Alpha5.3-Bautest wurde die Straße gebaut; danach erschien
 `invalid finite build value`. Welches Datenfeld das verursacht, ist noch nicht
-bekannt. **Alpha5.4 ist eine Diagnoseversion, kein bestätigter Fix für diesen
+bekannt. **Alpha5.5 ist eine Diagnoseversion, kein bestätigter Fix für diesen
 Abbruch und kein Nachweis für deterministischen Multiplayer.** Der gemeinsame
 Bautest bleibt im Reiter **Bautest (experimentell)** erhalten.
 
@@ -18,7 +32,7 @@ Bautest bleibt im Reiter **Bautest (experimentell)** erhalten.
    Versionswechsel verschoben.
 2. Den vorhandenen Launcher normal neu öffnen und die Updateprüfung abwarten.
    Ab Alpha5.2 lädt er neuere GitHub-Releases automatisch. Oben muss
-   **Alpha5.4-Diagnose** stehen. Du musst dafür keine neue ZIP von Hand laden.
+   **Alpha5.5-Diagnose** stehen. Du musst dafür keine neue ZIP von Hand laden.
 3. Oben unter **Ordner prüfen** den **TF2-Installationsordner** und
    **Steam-Saveordner** prüfen, dann den ersten Reiter **API-Diagnose allein**
    verwenden. Es sind deine eigenen lokalen Ordner:
@@ -34,7 +48,7 @@ Bautest bleibt im Reiter **Bautest (experimentell)** erhalten.
 6. In TF2 **Spiel laden** öffnen und genau die angezeigte Diagnose-Save wählen.
    Nicht einfach **Fortsetzen** drücken. Rechts über **Aktivierte Mods** auf
    **OPTIONEN AUSWÄHLEN** klicken, dann den Reiter **Mods** öffnen.
-7. Für diese Save nur **TF2 API-Diagnose (Alpha5.4)** und **Legacy Fahrzeuge**
+7. Für diese Save nur **TF2 API-Diagnose (Alpha5.5)** und **Legacy Fahrzeuge**
    aktivieren. Die bisherigen Koop-Mods, **MP Lockstep**, **MP Bridge** und
    **TF2 Strict Sync** deaktivieren; keine zusätzlichen Mods einschalten.
    Die Modauswahl der Save ist maßgeblich, auch wenn bei **Freies Spiel** bereits

@@ -1,14 +1,18 @@
 # TFCoop für Transport Fever 2
 
-Experimenteller Koop-Prototyp für eine gemeinsame Firma. Der aktuelle Stand **Alpha5.4-Diagnose / v0.5.4** ergänzt einen allein ausführbaren API-Diagnosemodus. Er liest vorhandene Kartenobjekte und getrennte Konstruktorproben, um den ungeklärten Alpha5.3-Abbruch `invalid finite build value` nach dem Straßenbau einzugrenzen.
+**Alpha5.5 erkennt vollständige temporäre Diagnoseberichte aus Alpha5.4.**
+Vorhandene Berichte lassen sich nach dem Launcherupdate ohne neuen
+Spielstart exportieren. Der Bauabbruch ist damit noch nicht behoben.
 
-**Der nächste Schritt benötigt nur einen PC und einen eigenen Diagnosebericht.** Verbindung, Host-IP, Sitzungscode und Mitspieler sind dafür nicht erforderlich. Der gemeinsame Bautest bleibt experimentell; freies gleichzeitiges Bauen, Cursor und die normalen gemeinsamen Pause-Tasten sind noch nicht freigeschaltet. Alpha5.4 ist kein bestätigter Fix und kein Nachweis für deterministischen Multiplayer.
+Experimenteller Koop-Prototyp für eine gemeinsame Firma. Der aktuelle Stand **Alpha5.5-Diagnose / v0.5.5** ergänzt einen allein ausführbaren API-Diagnosemodus. Er liest vorhandene Kartenobjekte und getrennte Konstruktorproben, um den ungeklärten Alpha5.3-Abbruch `invalid finite build value` nach dem Straßenbau einzugrenzen.
+
+**Der nächste Schritt benötigt nur einen PC und einen eigenen Diagnosebericht.** Verbindung, Host-IP, Sitzungscode und Mitspieler sind dafür nicht erforderlich. Der gemeinsame Bautest bleibt experimentell; freies gleichzeitiges Bauen, Cursor und die normalen gemeinsamen Pause-Tasten sind noch nicht freigeschaltet. Alpha5.5 ist kein bestätigter Fix und kein Nachweis für deterministischen Multiplayer.
 
 ## Download und Start
 
-1. TF2 und den laufenden Test schließen. Wer bereits einen Launcher ab Alpha5.2 verwendet, öffnet ihn anschließend normal und wartet auf das automatische Update auf **Alpha5.4-Diagnose**. Bei der ersten Einrichtung einmal [TFCoop-Windows.zip herunterladen](https://github.com/TastierPizza-code/TFCoop/releases/latest/download/TFCoop-Windows.zip), vollständig entpacken und `TF2-Coop.exe` öffnen. Git und Python werden auf Spieler-PCs nicht benötigt.
+1. TF2 und den laufenden Test schließen. Wer bereits einen Launcher ab Alpha5.2 verwendet, öffnet ihn anschließend normal und wartet auf das automatische Update auf **Alpha5.5-Diagnose**. Bei der ersten Einrichtung einmal [TFCoop-Windows.zip herunterladen](https://github.com/TastierPizza-code/TFCoop/releases/latest/download/TFCoop-Windows.zip), vollständig entpacken und `TF2-Coop.exe` öffnen. Git und Python werden auf Spieler-PCs nicht benötigt.
 2. Oben die eigenen Spiel- und Saveordner prüfen und im ersten Reiter **API-Diagnose allein** auf **Diagnose vorbereiten** klicken. Die Vorbereitung setzt eine vorhandene Strict-Sync-Testinstallation zurück, installiert die Diagnosemod und erstellt eine frische, geprüfte Save-Kopie.
-3. TF2 selbst normal über Steam starten. Die angezeigte `TF2-API-Diagnose-….sav` über **Spiel laden → OPTIONEN AUSWÄHLEN → Mods** nur mit **TF2 API-Diagnose (Alpha5.4)** und **Legacy Fahrzeuge** laden. Alte Koop- und Strict-Sync-Mods deaktivieren.
+3. TF2 selbst normal über Steam starten. Die angezeigte `TF2-API-Diagnose-….sav` über **Spiel laden → OPTIONEN AUSWÄHLEN → Mods** nur mit **TF2 API-Diagnose (Alpha5.5)** und **Legacy Fahrzeuge** laden. Alte Koop- und Strict-Sync-Mods deaktivieren.
 4. Etwa zehn Sekunden warten, dann **Diagnosebericht als ZIP …** exportieren und privat zur Auswertung weitergeben. Nur ein eigener Bericht ist nötig. TF2 anschließend schließen und die bisherige Installation wiederherstellen. Der vollständige Ablauf steht in der [Anleitung](prototype/ANLEITUNG.md).
 
 Das vom Alpha5.3-Fehler betroffene Zahlenfeld ist noch nicht bekannt. Die Diagnose gibt keine Bau- oder Pausebefehle aus; fehlende Livefahrzeuge oder andere Objekte gelten als fehlende Abdeckung, nicht als erfolgreiche Prüfung. Zweck und Grenzen: [API-Diagnose](prototype/API_DIAGNOSE.md). Den gemeinsamen 240-Runden-Bautest erst nach Auswertung dieses Berichts erneut planen.

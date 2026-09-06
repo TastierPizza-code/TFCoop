@@ -101,6 +101,27 @@ class DiagnosticLauncherTests(unittest.TestCase):
         self.assertTrue(app.diagnostic_finished)
         self.assertIn("wrong request", app.diagnostic_status.get())
 
+    def test_previous_report_is_recognized_after_mod_was_restored(self):
+        app = self.app()
+        app.last_diagnostic = object()
+        app.diagnostic_ticks = 2
+        report = {"status": "completed", "records": [{"access": "ok"}], "truncated": False}
+        with patch.object(launcher.diagnostics, "read_diagnostic_report", return_value=report) as read:
+            app._poll_diagnostic()
+        read.assert_called_once_with(app.last_diagnostic)
+        self.assertTrue(app.diagnostic_finished)
+        self.assertIn("Diagnosebericht vorhanden", app.diagnostic_status.get())
+        self.assertIsNone(app.diagnostic)
+
+    def test_previous_missing_report_does_not_request_new_game_start(self):
+        app = self.app()
+        app.last_diagnostic = object()
+        app.diagnostic_ticks = 2
+        app.diagnostic_status.set("Vorherige Installation wiederhergestellt.")
+        with patch.object(launcher.diagnostics, "read_diagnostic_report", return_value=None):
+            app._poll_diagnostic()
+        self.assertEqual(app.diagnostic_status.get(), "Vorherige Installation wiederhergestellt.")
+
     def test_installed_solo_refuses_build_even_after_launcher_restart(self):
         app = self.app()
         app.role, app.host, app.code = Value("a"), Value("127.0.0.1"), Value("fixture")

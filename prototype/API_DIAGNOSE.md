@@ -1,6 +1,31 @@
-# API-Diagnose in Alpha5.4
+# API-Diagnose in Alpha5.5
 
-Alpha5.4 sammelt auf einem einzelnen PC, welche Daten TF2 über seine Lua-API
+## Alpha5.5: vorhandene Berichte übernehmen
+
+Zwei reale Alpha5.4-Läufe hinterließen jeweils einen vollständigen Bericht mit
+281 Einträgen als `report.json.part`, während `report.json` fehlte. Die
+Mod war aktiv und die Datenerfassung erfolgreich. Der genaue Fehler des
+anschließenden Dateischritts wurde von Alpha5.4 nicht aufgezeichnet.
+
+Der Leser prüft jetzt auch eine temporäre Datei: zwei identische begrenzte
+Lesevorgänge, vollständiges gültiges JSON und die passende Auftragskennung
+sind erforderlich. Angefangene Dateien werden erneut gelesen; falsche
+Kennungen, ungültige Daten und Größenüberschreitungen bleiben Fehler. Die
+Übernahme verändert weder die Quelldatei noch Spielstand oder Installation.
+Neue Ausgaben schreiben nach dem vollständigen temporären Bericht die
+Zieldatei direkt und prüfen ihre Bytes durch Rücklesen. Die Ausgabe hängt
+nicht mehr von `os.rename` ab. Begrenzte Statusmeldungen im TF2-Protokoll
+machen den erreichten Schritt und Schreibfehler sichtbar.
+
+Die vorhandenen Daten zeigen numerische flache Matrizen mit 16 Einträgen.
+`timeBuild` ist bei den beiden untersuchten Industriekonstruktionen nicht
+vorhanden. Dies ist ein konkreter Unterschied zu den bisherigen
+Modellannahmen, aber keine Beobachtung der später gebauten Teststraße.
+Depots, Linien und eigene Transportfahrzeuge fehlen in dieser Karte; ihre
+Livewerte sind weiterhin ungeprüft. Der Bauzustandsleser bleibt unverändert.
+
+
+Alpha5.5 sammelt auf einem einzelnen PC, welche Daten TF2 über seine Lua-API
 tatsächlich zugänglich macht. Anlass ist der echte Alpha5.3-Abbruch
 `invalid finite build value` nach dem Straßenbau. Der bisherige Bericht ordnet
 diesen Fehler keinem bestimmten Feld zu. Eine Matrix als Ursache anzunehmen
@@ -11,12 +36,12 @@ oder einen fehlenden Zahlenwert durch null zu ersetzen wäre deshalb unbegründe
 Der vollständige Ablauf steht in [ANLEITUNG.md](ANLEITUNG.md). Kurz:
 
 1. TF2 und bisherigen Test schließen, vorhandenen Launcher ab Alpha5.2 neu öffnen
-   und das Update auf **Alpha5.4-Diagnose** abwarten.
+   und das Update auf **Alpha5.5-Diagnose** abwarten.
 2. Oben lokale Pfade prüfen und im ersten Reiter **API-Diagnose allein**
    **Diagnose vorbereiten** verwenden. Host-IP, Sitzungscode und Mitspieler
    werden nicht benötigt.
 3. TF2 manuell über Steam starten. Die angezeigte `TF2-API-Diagnose-….sav` mit
-   ausschließlich **TF2 API-Diagnose (Alpha5.4)** und **Legacy Fahrzeuge** laden.
+   ausschließlich **TF2 API-Diagnose (Alpha5.5)** und **Legacy Fahrzeuge** laden.
    Die Modliste unter **Spiel laden → OPTIONEN AUSWÄHLEN → Mods** ändern.
 4. Etwa zehn Sekunden warten, ohne selbst zu bauen oder die Geschwindigkeit
    umzuschalten. **Diagnosebericht als ZIP …** exportieren; ein eigener Bericht

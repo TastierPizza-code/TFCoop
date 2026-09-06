@@ -1,5 +1,35 @@
 # Prüfstand vom 6. September 2026
 
+## Alpha5.5: abgeschlossene Diagnoseberichte erkennen
+
+Zwei tatsächliche Alpha5.4-Läufe hatten je 281 vollständige, ungekürzte
+Beobachtungen als `report.json.part` geschrieben. Die endgültige Datei fehlte.
+Die TF2-Protokolle bestätigen die richtige Save und ausschließlich Legacy
+Fahrzeuge plus Diagnosemod. Der bisherige Leser ignorierte temporäre Dateien;
+der genaue Fehler des abschließenden Dateischritts war nicht protokolliert.
+
+Der neue Leser hat beide vorhandenen Berichte streng validiert und lokal als
+ZIP exportiert. Die Hashes der ursprünglichen Dateien blieben unverändert;
+kein neuer Spielstart und keine Änderung der Installation waren nötig.
+Er akzeptiert nur vollständige, zweimal identisch gelesene temporäre Daten
+mit passender Auftragskennung. Neue Ausgaben schreiben die endgültige Datei
+ohne Umbenennung und prüfen ihren Inhalt durch Rücklesen. Unvollständige
+Schreibstände werden weiterhin nicht als fertiger Bericht gewertet.
+
+**72 Literal-Lua-Prüfungen** unter Lua 5.1 bis 5.4 und **137 Python-Prüfungen**
+bestehen, einschließlich temporärer Berichtübernahme, Teilwrites,
+vorübergehender Dateisperren, fehlendem `os.rename`, falschen Kennungen,
+Größenlimits, Launcher und Updater. Der Pythonlauf enthält den vollständigen
+Dateiaustausch mit dem tatsächlichen GameScript in Lua 5.4 und einer
+nachgebildeten Spiel-API. Der neue Lua-Ausgabeweg ist noch nicht in TF2
+ausgeführt worden; die Übernahme der vorhandenen echten Berichte ist geprüft.
+
+Die beobachteten Matrixzugriffe passen zum vorhandenen Leser. `timeBuild`
+fehlt bei zwei bestehenden Industriekonstruktionen und würde dessen
+Zahlenprüfung verletzen. Das ist noch kein Beleg für das Feld der gebauten
+Teststraße. Keine Live-Depots, Linien oder eigenen Transportfahrzeuge wurden
+beobachtet. Der experimentelle Bauablauf bleibt unverändert.
+
 ## Alpha5.4: breitere API-Diagnose auf einem PC
 
 Der tatsächliche Alpha5.3-Bericht endet nach dem Straßenbau in Runde 1 mit
