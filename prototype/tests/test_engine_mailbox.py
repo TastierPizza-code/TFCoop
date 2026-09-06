@@ -328,10 +328,16 @@ class EngineMailboxTests(unittest.TestCase):
             return True
         with tempfile.TemporaryDirectory() as directory:
             engine, fixture = self.create(directory, lua_fault=fault)
-            with self.assertRaisesRegex(MailboxError, "PROBE_DEPOT: proposal collision first actual API detail") as caught:
-                engine.apply({"op": "DEPOT"}, "a:1")
-            self.assertNotIn("\x00", str(caught.exception))
-            self.assertEqual(fixture.applies, 0)
+            try:
+                with self.assertRaisesRegex(MailboxError, "PROBE_DEPOT: proposal collision first actual API detail") as caught:
+                    engine.apply({"op": "DEPOT"}, "a:1")
+                self.assertNotIn("\x00", str(caught.exception))
+                self.assertEqual(fixture.applies, 0)
+            finally:
+                # Stop the mailbox writer before its temporary directory is
+                # removed, including while the final HALT is being consumed.
+                engine.close()
+                fixture.close()
 
     def test_missing_snapshot_coverage_reports_the_actual_getter_path(self):
         adapter = EngineAdapter.__new__(EngineAdapter)

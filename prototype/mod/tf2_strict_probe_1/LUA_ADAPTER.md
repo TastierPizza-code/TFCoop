@@ -7,12 +7,17 @@ only clock-setting command here is an explicit, jointly committed `SET_PAUSED`.
 
 ## Activation and baseline
 
-The Alpha5 launcher explicitly selects `profile="build_v1"`. This selects
+The Alpha5.7 launcher explicitly selects `profile="build_v2"`. This selects
 `build_engine.lua`, a separate fixed recipe adapter with no manually supplied
 bindings. It creates a custom `STREET_CONSTRUCTION`, stock depot and two stock
-passenger stops, buys an available 1850 passenger vehicle, creates a line and
-assigns the vehicle. Only actual callback results and authoritative component
-children become logical bindings. StationGroup/Construction identity aliases
+passenger stops, explicitly connects their separated endpoints, buys an available
+1850 passenger vehicle, creates a line and assigns the vehicle. Construction and
+vehicle identities come from actual callback results and authoritative component
+children. Connection edges are verified by an exact incident-graph difference
+at the six known endpoint IDs, since ordinary street callbacks can return no IDs.
+Every intended pair needs exactly one new matching edge; all old incident edges
+must be unchanged. All three results are validated before committing bindings.
+StationGroup/Construction identity aliases
 are allowed when confirmed by the station-group API. The observed shared node
 graph must connect all constructions before purchase. Vehicle configurations
 use read/modify/write for copied vector properties and verify the result.

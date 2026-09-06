@@ -121,7 +121,7 @@ class App:
         self.diagnostic_button.pack(anchor="w", pady=(0, 10))
         ttk.Label(solo, text="3  ·  TF2 selbst über Steam starten und diesen Spielstand laden", font=("Segoe UI", 12, "bold")).pack(anchor="w")
         ttk.Entry(solo, textvariable=self.diagnostic_save, state="readonly").pack(fill="x", pady=7)
-        ttk.Label(solo, text="Spiel laden → OPTIONEN AUSWÄHLEN / Mods: 'TF2 API-Diagnose (Alpha5.6)' und Legacy Fahrzeuge aktivieren. Strict Sync und alte Koop-Mods deaktivieren. Nach dem Laden etwa 10 Sekunden warten.", wraplength=850).pack(anchor="w")
+        ttk.Label(solo, text="Spiel laden → OPTIONEN AUSWÄHLEN / Mods: 'TF2 API-Diagnose (Alpha5.7)' und Legacy Fahrzeuge aktivieren. Strict Sync und alte Koop-Mods deaktivieren. Nach dem Laden etwa 10 Sekunden warten.", wraplength=850).pack(anchor="w")
         ttk.Label(solo, text="Die Diagnose baut nichts und ändert keine Pause. Sie liest vorhandene Objekte und getrennt davon neu angelegte Konfigurationsobjekte. Fehlende Fahrzeuge oder Depots bleiben als ungeprüft erkennbar.", wraplength=850).pack(anchor="w", pady=9)
         ttk.Label(solo, textvariable=self.diagnostic_status, style="Status.TLabel", wraplength=850).pack(anchor="w", pady=7)
         self.diagnostic_export_button = ttk.Button(solo, text="Diagnosebericht als ZIP …", command=self.export_diagnostic)
@@ -178,7 +178,7 @@ class App:
         savebox.pack(fill="x", pady=10)
         ttk.Label(savebox, text="Im Spiel ausdrücklich diese Testsave wählen:").pack(anchor="w")
         ttk.Entry(savebox, textvariable=self.save_name, state="readonly").pack(fill="x", pady=3)
-        ttk.Label(savebox, text="Spiel laden → OPTIONEN AUSWÄHLEN / Mods: 'TF2 Strict Sync - automatischer Bautest (Alpha5.6)' und Legacy Fahrzeuge aktivieren; Diagnosemod und alte Koop-Mods deaktivieren.",
+        ttk.Label(savebox, text="Spiel laden → OPTIONEN AUSWÄHLEN / Mods: 'TF2 Strict Sync - automatischer Bautest (Alpha5.7)' und Legacy Fahrzeuge aktivieren; Diagnosemod und alte Koop-Mods deaktivieren.",
                   wraplength=900).pack(anchor="w")
         footer = ttk.Frame(outer)
         footer.pack(fill="x", pady=(7, 0))

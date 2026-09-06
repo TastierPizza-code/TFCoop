@@ -10,7 +10,7 @@ from unittest.mock import Mock, patch
 
 from prototype.strict_sync import game_runner as driver
 from prototype.strict_sync.core import digest
-from prototype.tests.test_build_profile import observed_snapshot
+from prototype.tests.test_build_profile import connector_objects, observed_snapshot
 from prototype.tests.test_engine_mailbox import native_bytes
 
 
@@ -47,7 +47,16 @@ class BuildEngineFixture:
         elif op == "PROBE_STOP":
             scene.setdefault("stops", []).append(key)
             kind = "construction"
+        elif op == "PROBE_CONNECT":
+            if not scene.get("road") or not scene.get("depot") or len(scene.get("stops", [])) != 2:
+                raise ValueError("fixture connection endpoints are missing")
+            scene["connectors"] = key
+            self.world["objects"].extend(connector_objects(key))
+            self.world["objects"].sort(key=lambda item: item["logical_id"])
+            probe["connectivity"] = {"connected": True}
         elif op == "PROBE_VEHICLE":
+            if not probe["connectivity"]["connected"]:
+                raise ValueError("fixture road/depot/stop graph is disconnected")
             scene["vehicle"], kind = key, "vehicle"
             probe["vehicle"] = {"logical_id": key, "line": "", "in_depot": True, "state": 0, "no_path": False}
             if not self.missing_debit:
@@ -55,7 +64,6 @@ class BuildEngineFixture:
         elif op == "PROBE_LINE":
             scene["line"], kind = key, "line"
             probe["line"] = {"logical_id": key, "vehicles": [], "stops": scene["stops"][:]}
-            probe["connectivity"] = {"connected": True}
         elif op == "PROBE_ASSIGN":
             probe["vehicle"]["line"] = scene["line"]
             probe["line"]["vehicles"] = [scene["vehicle"]]
@@ -74,6 +82,27 @@ class BuildEngineFixture:
             probe["vehicle"].update(in_depot=False, state=1,
                                     position_mm=[(self.time_us - self.initial_time) // 1000, 0, 0])
         return {"state_digest": self.state_digest, "sim_time_us": self.time_us}
+
+
+class BuildEngineFixtureTests(unittest.TestCase):
+    def test_endpoint_builds_remain_disconnected_until_explicit_connector_command(self):
+        engine = BuildEngineFixture()
+        for key, command in (("a:2", {"op": "PROBE_ROAD"}), ("b:1", {"op": "PROBE_DEPOT"}),
+                             ("a:3", {"op": "PROBE_STOP", "index": 0}),
+                             ("b:2", {"op": "PROBE_STOP", "index": 1})):
+            engine.apply(command, key)
+            self.assertFalse(engine.snapshot()["probe"]["connectivity"]["connected"])
+        before = engine.snapshot()
+        with self.assertRaisesRegex(ValueError, "disconnected"):
+            engine.apply({"op": "PROBE_VEHICLE"}, "b:3")
+        self.assertEqual(engine.snapshot(), before)
+        engine.apply({"op": "PROBE_CONNECT"}, "a:4")
+        connected = engine.snapshot()
+        self.assertTrue(connected["probe"]["connectivity"]["connected"])
+        self.assertEqual(connected["probe"]["scene"]["connectors"], "a:4")
+        self.assertEqual([obj for obj in connected["objects"] if obj["kind"] == "connector"], connector_objects())
+        engine.apply({"op": "PROBE_VEHICLE"}, "b:3")
+        self.assertEqual(engine.snapshot()["probe"]["vehicle"]["logical_id"], "b:3")
 
 
 class BuildDriverTests(unittest.IsolatedAsyncioTestCase):
@@ -113,11 +142,11 @@ class BuildDriverTests(unittest.IsolatedAsyncioTestCase):
                     session = run / "session"
                     session.mkdir()
                     for name in driver.PREPARED_FILES: (session / name).write_text("fixture preparation")
-                    args = argparse.Namespace(peer=peer, inputs=None, profile="build_v1", rounds=240, epoch="build-fixture",
+                    args = argparse.Namespace(peer=peer, inputs=None, profile="build_v2", rounds=240, epoch="build-fixture",
                         host="127.0.0.1", port=port, timeout=5, startup_timeout=10, delay_ms=0,
                         report=run / "peer-report.json", progress=run / "peer-progress.json", stop_file=run / "stop")
                     setup = {"game_exe": str(root / "fixture-game.exe"), "native_epoch": 7,
-                             "manifest_digest": "a" * 64, "measurement_profile": "build_v1"}
+                             "manifest_digest": "a" * 64, "measurement_profile": "build_v2"}
                     tasks.append(asyncio.create_task(driver.game_peer(args, secret, session, setup)))
                 together = asyncio.gather(*tasks)
                 done, _ = await asyncio.wait({together}, timeout=60)
@@ -141,9 +170,14 @@ class BuildDriverTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(host["coordinated_completed"])
         for report, journal in zip(reports, journals):
             self.assertTrue(report["build_proof"]["passed"])
-            self.assertEqual(report["build_proof"]["elapsed_sim_time_us"], 42400000)
+            self.assertEqual(report["build_proof"]["elapsed_sim_time_us"], 42200000)
             self.assertEqual(len([record for record in journal if record["event"] == "stepped"]), 240)
-            self.assertEqual(len([record for record in journal if record["event"] == "applied"]), 11)
+            self.assertEqual(len([record for record in journal if record["event"] == "applied"]), 12)
+            connector_record = next(record for record in journal
+                                    if record["event"] == "applied" and record["command"]["op"] == "PROBE_CONNECT")
+            self.assertEqual((connector_record["round"], connector_record["command_key"]), (5, "a:4"))
+            self.assertEqual(len([obj for obj in connector_record["snapshot"]["objects"]
+                                  if obj["kind"] == "connector"]), 3)
             self.assertEqual(journal[-1]["event"], "completed")
         self.assertTrue(all(engine.closed for engine in engines))
 

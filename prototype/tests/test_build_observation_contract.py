@@ -141,8 +141,8 @@ class BuildObservationContractTests(unittest.TestCase):
         initial_time = 700000
         sequence = (
             (observed_snapshot(initial_time), 0, None),
-            (observed_snapshot(initial_time, 9000, built=True), 5, {"op": "PROBE_VEHICLE"}),
-            (observed_snapshot(initial_time + ENGINE_STEP_US, 9000, built=True, position=200), 9, None),
+            (observed_snapshot(initial_time, 9000, built=True), 6, {"op": "PROBE_VEHICLE"}),
+            (observed_snapshot(initial_time + ENGINE_STEP_US, 9000, built=True, position=200), 10, None),
             (observed_snapshot(initial_time + BUILD_ADVANCE_STEPS * ENGINE_STEP_US,
                                9000, built=True, position=2000), BUILD_ROUNDS, None),
         )

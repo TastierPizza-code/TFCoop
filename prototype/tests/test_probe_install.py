@@ -228,11 +228,11 @@ class InstallTests(unittest.TestCase):
         self.output = self.base / "build-output"
         self.session = self.base / "build-session"
         stage.stage_probe(game_dir=self.game, save=self.original, session=self.session,
-                          output=self.output, repository_root=self.root, native_epoch=66, profile="build_v1")
+                          output=self.output, repository_root=self.root, native_epoch=66, profile="build_v2")
         result = self.execute()
         self.assertTrue(result["installed"])
         actual = (self.game / "mods" / stage.MOD / stage.CONFIG).read_text()
-        self.assertIn('profile = "build_v1"', actual)
+        self.assertIn('profile = "build_v2"', actual)
         install.restore_probe(self.game)
         self.assertEqual(self.game_bytes(), self.original_game)
 

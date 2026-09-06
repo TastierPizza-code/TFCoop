@@ -83,7 +83,7 @@ class StrictApiAuditResourceTests(unittest.TestCase):
             path.write_bytes(b"-- isolated build fixture\nreturn {}\n")
         self.assertFalse((case.root / stage.SOLO_API_AUDIT).exists())
         original_game = stage_fixtures._files(case.game)
-        result = case.prepare("independent", profile="build_v1")
+        result = case.prepare("independent", profile="build_v2")
         output, session = Path(result["output"]), Path(result["session"])
         copied = output / "game/mods" / stage.MOD / stage.API_AUDIT
         self.assertEqual(copied.read_bytes(), collector)

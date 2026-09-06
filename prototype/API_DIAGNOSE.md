@@ -1,11 +1,11 @@
-# API-Diagnose und Baufehlerberichte in Alpha5.6
+# API-Diagnose und Baufehlerberichte in Alpha5.7
 
 **Die zwei vorhandenen Alpha5.4-Soloberichte wurden geborgen und ausgewertet.
 Eine erneute Solo-Diagnose ist für den nächsten Schritt nicht nötig.** Jetzt
 folgt der gemeinsame automatische 240-Runden-Bautest auf beiden PCs. Die
 Schritt-für-Schritt-Anleitung steht in [ANLEITUNG.md](ANLEITUNG.md).
 
-## Alpha5.6: Rohdiagnose beim tatsächlichen Bauabbruch
+## Alpha5.7: Rohdiagnose beim tatsächlichen Bauabbruch
 
 Der Strict-Mod enthält eine eigene byteidentische Kopie des begrenzten
 Rohdaten-Collectors. Ein strikter Bauabbruch löst damit automatisch eine
@@ -14,9 +14,12 @@ Solo-Diagnosemod bleibt dafür deaktiviert.
 
 Der Rohbericht wird separat als `lua_api_audit.json` in der Sitzung geschrieben
 und automatisch in die private **Testbericht-ZIP** aufgenommen. Seine Größe ist
-auf 98304 Bytes begrenzt. `lua_status.json` enthält dazu nur einen Dateihinweis,
+auf 98304 Bytes und höchstens 16 Bindings begrenzt. `lua_status.json` enthält dazu einen Dateihinweis,
 den Status des vollständigen Schreibens und Rücklesens sowie begrenzte
-Fehlversuchsmetadaten. Der letzte gültige Snapshot bleibt davon getrennt und ist
+Fehlversuchsmetadaten. Zusätzlich bleiben tatsächliche Callback-Rückgabefelder
+einschließlich verfügbarer Proposal-Fehler in einer eigenen, auf 16 KiB begrenzten
+Diagnose erhalten. Undokumentierte Methoden werden dabei nicht aufgerufen.
+Der letzte gültige Snapshot bleibt davon getrennt und ist
 als historischer Zustand markiert.
 
 Die Rohdiagnose enthält ausdrücklich `valid_snapshot=false`. Auch rohe
@@ -33,12 +36,13 @@ einmal **Diagnose vorbereiten** verwenden.
 ## Beobachtete Verfügbarkeit und Grenzen
 
 Die geborgenen Daten zeigen `timeBuild=nil` bei zwei vorhandenen
-Industriekonstruktionen. Das belegt einen fehlenden Wert bei diesen Objekten;
-die früher gebaute Teststraße wurde im Solo-Versuch nicht erfasst. Dass ihr
-Abbruch am selben Feld lag, bleibt eine plausible Annahme.
+Industriekonstruktionen. Die anschließenden Alpha5.6-Berichte beider PCs
+bestätigen dieselbe Abwesenheit unmittelbar an der erfolgreich gebauten
+Teststraße. Welches Feld den allgemeinen Zahlenfehler früherer Versionen
+auslöste, lässt sich aus deren unvollständigen Berichten nicht rückwirkend beweisen.
 
-Alpha5.6 speichert ein fehlendes `CONSTRUCTION.timeBuild` ausdrücklich als
-`{available=false}` im gehashten Zustand. Ein vorhandener Wert bleibt samt
+Seit Alpha5.6 wird ein fehlendes `CONSTRUCTION.timeBuild` ausdrücklich als
+`{available=false}` im gehashten Zustand gespeichert. Ein vorhandener Wert bleibt samt
 Verfügbarkeit enthalten. Eine künstliche Null würde den Unterschied verdecken
 und wird nicht eingesetzt. `stopIndex` darf vor einer Linienzuordnung fehlen,
 ist nach Zuordnung aber verpflichtend. `loadConfig` akzeptiert außerdem den
@@ -47,8 +51,7 @@ dokumentierten automatischen Wert `-1`; siehe die
 Ungültige verpflichtende Zahlenwerte
 stoppen den Test weiterhin; Fehlermeldungen nennen den konkreten Feldpfad.
 
-Die Änderung macht die bisherige Annahme über die gebaute Straße nicht zu
-einem Beweis. Der weitere Ablauf mit Depot, Haltestellen, Fahrzeug und Linie
+Der weitere Ablauf mit Depot, Haltestellen, Fahrzeug und Linie
 muss im tatsächlichen gemeinsamen Test bestätigt werden.
 
 ## Alpha5.5: vorhandene Berichte übernehmen
@@ -74,7 +77,7 @@ vorhanden. Dies ist ein konkreter Unterschied zu den bisherigen
 Modellannahmen, aber keine Beobachtung der später gebauten Teststraße.
 Depots, Linien und eigene Transportfahrzeuge fehlen in dieser Karte; ihre
 Livewerte waren damit weiterhin ungeprüft. In Alpha5.5 blieb der Bauzustandsleser
-unverändert; die oben beschriebenen Anpassungen folgen erst mit Alpha5.6.
+unverändert; die oben beschriebenen Anpassungen folgten mit Alpha5.6.
 
 
 Der Solo-Diagnosemodus sammelt auf einem einzelnen PC, welche Daten TF2 über seine
@@ -91,12 +94,12 @@ ausdrücklich eine weitere Solo-Messung benötigt wird, bleibt der Modus im
 zweiten Reiter **API-Diagnose allein** verfügbar:
 
 1. TF2 und bisherigen Test schließen, vorhandenen Launcher ab Alpha5.2 neu öffnen
-   und das Update auf **Alpha5.6-Bautest** abwarten; vorherige Installation wiederherstellen.
+   und das Update auf **Alpha5.7-Bautest** abwarten; vorherige Installation wiederherstellen.
 2. Oben lokale Pfade prüfen und im zweiten Reiter **API-Diagnose allein**
    **Diagnose vorbereiten** verwenden. Host-IP, Sitzungscode und Mitspieler
    werden nicht benötigt.
 3. TF2 manuell über Steam starten. Die angezeigte `TF2-API-Diagnose-….sav` mit
-   ausschließlich **TF2 API-Diagnose (Alpha5.6)** und **Legacy Fahrzeuge** laden.
+   ausschließlich **TF2 API-Diagnose (Alpha5.7)** und **Legacy Fahrzeuge** laden.
    Die Modliste unter **Spiel laden → OPTIONEN AUSWÄHLEN → Mods** ändern.
 4. Etwa zehn Sekunden warten, ohne selbst zu bauen oder die Geschwindigkeit
    umzuschalten. **Diagnosebericht als ZIP …** exportieren; ein eigener Bericht

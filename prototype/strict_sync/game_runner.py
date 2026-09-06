@@ -221,7 +221,7 @@ def selected_profile(args, setup):
     if profile not in (TIME_PROFILE, BUILD_PROFILE) or profile != setup.get("measurement_profile", TIME_PROFILE):
         raise ValueError("selected test profile does not match the prepared shared manifest")
     if profile == BUILD_PROFILE and getattr(args, "rounds", None) != BUILD_ROUNDS:
-        raise ValueError("build_v1 requires the complete fixed 240-round recipe")
+        raise ValueError("build_v2 requires the complete fixed 240-round recipe")
     return profile
 
 

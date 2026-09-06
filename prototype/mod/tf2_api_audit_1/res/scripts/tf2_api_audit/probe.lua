@@ -36,7 +36,7 @@ function M.collect(api,game,json,options)
     request_id=M.safe_text(options.request_id or ''),records=json.array(),truncated=false,
     limits={max_bytes=MAX_BYTES,max_records=MAX_RECORDS,max_string_bytes=MAX_STRING,
       max_depth=MAX_DEPTH,max_members=MAX_MEMBERS,max_array_entries=MAX_ARRAY,
-      max_entities_per_component=2,max_bindings=12,dropped_records=0}}
+      max_entities_per_component=2,max_bindings=16,dropped_records=0}}
   local records,priorities=report.records,{}
   local sample_priority=2
   local function truncated()report.truncated=true end
@@ -249,7 +249,7 @@ function M.collect(api,game,json,options)
   if type(options.bindings)=='table'and next(options.bindings)~=nil then
     local n=0
     for logical,id in pairs(options.bindings)do
-      n=n+1;if n>12 then truncated();break end
+      n=n+1;if n>16 then truncated();break end
       sample_priority=n==1 and 2 or 0
       if type(logical)=='string'and finite(id)and id%1==0 then
         for _,kind in ipairs(order)do inspect(id,kind,'bindings.'..M.safe_text(logical))end

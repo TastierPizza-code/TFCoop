@@ -109,20 +109,20 @@ class StageTests(unittest.TestCase):
             file.parent.mkdir(parents=True, exist_ok=True)
             file.write_text("-- build fixture\nreturn {}\n")
         time = self.prepare("time")
-        build = self.prepare("build", profile="build_v1")
+        build = self.prepare("build", profile="build_v2")
         self.assertNotEqual(time["manifest_digest"], build["manifest_digest"])
         self.assertFalse(build["read_only_time_probe"])
         time_manifest = json.loads((Path(time["session"]) / "probe_manifest.json").read_text())
         build_manifest = json.loads((Path(build["session"]) / "probe_manifest.json").read_text())
         self.assertEqual(time_manifest["prototype_files"], build_manifest["prototype_files"])
         self.assertNotIn("profile", time_manifest["config_semantics"])
-        self.assertEqual(build_manifest["config_semantics"]["profile"], "build_v1")
+        self.assertEqual(build_manifest["config_semantics"]["profile"], "build_v2")
         config = (Path(build["output"]) / "game/mods" / stage.MOD / stage.CONFIG).read_text()
-        self.assertIn('profile = "build_v1"', config)
+        self.assertIn('profile = "build_v2"', config)
 
     def test_build_profile_refuses_missing_assets_before_creating_session(self):
         with self.assertRaisesRegex(stage.StageError, "recipe"):
-            self.prepare("build", profile="build_v1")
+            self.prepare("build", profile="build_v2")
         self.assertFalse((self.base / "build-session").exists())
         with self.assertRaisesRegex(stage.StageError, "Unknown"):
             self.prepare("unknown", profile="invented")
@@ -130,7 +130,7 @@ class StageTests(unittest.TestCase):
     def test_build_profile_cannot_mix_existing_template_bindings(self):
         template = self.template([{"logical_id": "seed:depot", "kind": "depot", "entity": 5}])
         with self.assertRaisesRegex(stage.StageError, "cannot be mixed"):
-            self.prepare("mixed", profile="build_v1", templates=template)
+            self.prepare("mixed", profile="build_v2", templates=template)
 
     def test_template_order_canonical_and_actual_ids_bound(self):
         bindings = [{"logical_id": "seed:vehicle", "kind": "vehicle", "entity": 20},

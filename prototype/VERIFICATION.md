@@ -1,4 +1,101 @@
-# Prüfstand vom 6. September 2026
+# Prüfstand
+
+## Alpha5.7: ausdrückliche Straßenverbindungen und erhaltener Callback-Abschluss
+
+Der echte Alpha5.6-Versuch bestätigte die Teststraße einschließlich der drei
+Kanten, Firmenwerte und ausdrücklich fehlendem `timeBuild` bis Frame 2 auf
+beiden Teilnehmern. Die Simulation war dabei gehalten. Depot, Fahrzeug und
+Linienfahrt sind weiterhin nicht bestätigt. Der lokale Spiel-Log enthält für
+diesen Lauf außerdem `Bau nicht möglich`; die genaue Begründung fehlt.
+
+Der anschließend ausgewertete Alpha5.6-Bericht von Teilnehmer b bestätigt:
+Beide Manifeste, alle ersten fünf Journaleinträge und alle 153 Roh-Audit-Zeilen
+sind identisch. Nur die erwartete lokale Diagnose-Anfragekennung unterscheidet
+sich. Die gemeinsame Straße kostete 71.377; beide Firmen hatten danach 4.928.623
+bei Kredit 5.000.000. Teilnehmer b erhielt am Depotauftrag b:1 tatsächlich
+`success=false`. Teilnehmer a speicherte keine Callback-Aussage; der allgemeine
+Text im Spiel-Log allein ersetzt diese nicht. Die angehängten Endsnapshots sind
+historisch. Auch das fehlende `timeBuild` der erfolgreich gebauten Straße ist
+jetzt auf beiden PCs unmittelbar beobachtet. Der Lauf startete bereits pausiert;
+er beweist keinen erneuten Wechsel aus laufender Simulation in Pause.
+
+Eine weitergehende Prüfung des lokalen Upstreams zeigte eine falsche Annahme:
+`docs/re/PROPOSAL_STRUCTURE.md` beschreibt den Skript-Construction-Bau mit leerer
+`nodes2snap`-Zuordnung; die interaktive Platzierung übergibt eine Zuordnung.
+Unsere frühere Testnachbildung verband räumlich übereinanderliegende Anschlüsse
+automatisch. Das war kein belegter Vertrag der Engine. Die genaue Ursache des
+alten nativen Depot-Rejects fehlt weiterhin; die falsche Anschlussannahme lässt
+sich unabhängig davon korrigieren.
+
+Das neue Rezept `road-depot-service-v3` baut Depot und Haltestellen mit jeweils
+20 m Lücke zur eigenen Straße. Runde 5 des neuen Profils `build_v2` baut drei
+normale Straßenkanten zwischen den sechs beobachteten vorhandenen Anschluss-IDs.
+Die 20 m sind eine bewusst gewählte Verbindungsstrecke und kein behaupteter
+Mindestabstand der Engine. Die 320 × 180 m große Baufläche und der Prüfbereich
+von ±180 m umfassen die ausgeführten Stock-Geometrien mit Reserve.
+
+Reine Straßen-Callbacks können leere Ergebnis-IDs liefern. Der Adapter erfindet
+keine IDs, sondern verlangt an jedem bekannten Knoten genau eine passende neue
+Kante und unveränderte bestehende Kanten/Positionen. Erst der vollständige
+Nachweis aller drei Verbindungen veröffentlicht die neuen Bindings. Die
+vollständigen Connector-Zustände gehen in Graph, Digest und Abschlussprüfung
+ein. Ein Fahrzeugkauf vor belegter Verbindung wird abgelehnt. Die Testnachbildung
+besitzt jetzt tatsächlich getrennte Knoten, bis der Straßenauftrag ausgeführt
+wird. Unterschiedliche lokale IDs bleiben erlaubt.
+
+Der Ablauf umfasst weiterhin 240 Runden, davon 211 Fortschrittsschritte und
+29 Pausenrunden, insgesamt 42,2 Sekunden Enginezeit. Zeitschritt-DLL und ABI 3
+bleiben unverändert. Normaler UI-Bau, Cursor und UI-Pausetasten bleiben getrennte,
+noch nicht angeschlossene Arbeiten.
+
+Der bisherige Callback-Ablauf behandelte einen vorübergehend fehlgeschlagenen
+Lesezugriff auf die native Statusdatei als endgültigen Fehler. Vor dem Senden
+eines Befehls wird derselbe Zustand bereits erneut gelesen. Ein isolierter
+Windows-Versuch mit atomarem Dateiersetzen und echtem Lua-`io.open` reproduziert
+kurzzeitige Öffnungsfehler ohne teilweise gelesene Inhalte. Der konkrete
+Lesezustand am Abbruchzeitpunkt wurde im Alpha5.6-Bericht noch nicht gespeichert.
+
+Die Korrektur bewahrt die Bauantwort genau einmal auf. Bei vorübergehend
+nicht lesbarer Statusdatei bleibt der Befehl unbestätigt. Spätere Updates prüfen
+erneut dieselbe Grenze, Zeit und Pause; der Befehl wird nicht erneut gesendet.
+Echte Fehler, widersprüchliche Grenzen und der Controller-Abbruch bleiben
+endgültig. Unveränderte Wartezustände schreiben die Statusdatei nicht ständig
+neu. Der vorhandene Controller-Timeout begrenzt das Warten.
+
+Ein abgelehnter Bau-Callback behält seine ursprüngliche Ablehnung, bevor weitere
+Statusprüfungen stattfinden. Die getrennte Callback-Diagnose erfasst außerdem
+begrenzt die tatsächlichen Rückgabefelder und `resultProposalData.errorState`,
+ohne undokumentierte Methoden aufzurufen oder Werte in einen gültigen Snapshot
+zu übernehmen. Fehlende Daten bleiben erkennbar; keine Diagnose darf das
+ursprüngliche Ergebnis ersetzen.
+
+Der unveränderte installierte Depot-Lua-Code lässt sich mit den verwendeten
+Parametern außerhalb des Spiels auswerten. Im bisherigen Rezept lag sein
+Anschluss geometrisch auf dem gemessenen Straßenendpunkt; das war kein
+Nachweis eines gemeinsamen Knotens. Das bestätigt weder native Kollisions- und
+Geländeprüfungen noch einen erfolgreichen Depotbau. Diese Ursache wird nicht
+durch Abschalten von Prüfungen oder Ignorieren von Baufehlern umgangen.
+
+Der bisher bestandene Alpha4.2-Zeitversuch bleibt ein begrenzter positiver
+Befund; der aktuelle Bauabbruch ist kein Nachweis einer auseinanderlaufenden Welt.
+Das neue Profil ist weiterhin erst außerhalb der echten Spiel-Engine geprüft.
+
+Die endgültigen Lua-Änderungen bestehen 172 generische, 272 Bauadapter- und
+76 Roh-Audit-Prüfungen unter Lua 5.1 bis 5.4. Weitere 28 Ausführungen gegen die
+installierten Stock-Asset-Funktionen bestehen ohne übersprungene Fälle. Die
+breite Python-Prüfung von Datei-Adapter, Export, Staging, Installation, Launcher,
+Updater und Veröffentlichung besteht 238 Fälle. Die Prüfungen laufen außerhalb
+der Spiel-Engine. Weitere 29 Profil-/Beobachtungs-/Driver-/Datei-Integrationsfälle
+bestanden ohne Fehler oder übersprungene Fälle. Darin enthalten sind zwei echte
+Lua-Instanzen mit unterschiedlichen lokalen IDs und der vollständige gemeinsame
+240-Runden-Ablauf über Datei-IPC, einschließlich aller drei ausdrücklich
+gebauten Connectoren und passender Abschlussnachweise. Die native Uhr und die
+Spiel-Engine sind dabei Testnachbildungen. Geprüft werden unter anderem vorübergehende und
+dauerhafte Lesesperren nach der tatsächlichen Callback-Ausführung, kein
+erneutes Senden, keine unberechtigten Schritte sowie eine abgelehnte
+Depotantwort mit nativen Test-`errorState`-Daten und zugleich unlesbarem Gate.
+Die Engine-Antworten in diesen Prüfungen sind Testdaten; sie ersetzen nicht
+die fehlende tatsächliche Ablehnungsbegründung aus dem Spiel.
 
 ## Alpha5.6: gemeinsamer Bautest nach Auswertung der Rohdaten
 

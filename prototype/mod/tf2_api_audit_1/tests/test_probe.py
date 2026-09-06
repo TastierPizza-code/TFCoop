@@ -122,6 +122,16 @@ class ProbeTests(unittest.TestCase):
         self.assertLessEqual(len(h.raw.encode('utf-8')),98304)
         self.assertFalse(r['valid_snapshot'])
 
+    def test_all_scene_bindings_and_callback_candidate_fit_binding_limit(self):
+        h=Harness("for id=20,40 do world[id]={NAME=native({name='tracked'})}end")
+        bindings={'object'+str(i):i for i in range(20,35)}
+        r=h.collect({'bindings':bindings})
+        self.assertEqual(r['limits']['max_bindings'],16)
+        for name in bindings:
+            self.assertTrue(rows(r,'bindings.'+name+'.NAME.name'),name)
+        self.assertFalse(r['valid_snapshot'])
+        self.assertLessEqual(len(h.raw.encode()),98304)
+
     def test_userdata_throwing_every_leaf_produces_report_not_snapshot(self):
         h=Harness("""
           world[1].CONSTRUCTION=native({})

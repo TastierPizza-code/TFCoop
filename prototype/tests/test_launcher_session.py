@@ -98,7 +98,7 @@ class LauncherSessionTests(unittest.TestCase):
         command, options, _ = self.spawned[-1]
         self.assertEqual(command[command.index("--delay-ms") + 1], "0")
         self.assertEqual(command[command.index("--rounds") + 1], "240")
-        self.assertEqual(command[command.index("--profile") + 1], "build_v1")
+        self.assertEqual(command[command.index("--profile") + 1], "build_v2")
         self.assertIn("--worker", command)
         self.assertNotIn(str(self.root / "game/TransportFever2.exe"), command)
         self.assertEqual(options["stdin"], workflow.subprocess.DEVNULL)
@@ -269,7 +269,7 @@ class LauncherSessionTests(unittest.TestCase):
         events = []
         def stage(**kwargs):
             events.append("stage")
-            self.assertEqual(kwargs["profile"], "build_v1")
+            self.assertEqual(kwargs["profile"], "build_v2")
             return {"session": str(kwargs["session"]), "output": str(kwargs["output"]), "manifest_digest": "a" * 64}
         def install(_game, _payload, _save, **kwargs):
             events.append("install")

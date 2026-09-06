@@ -84,7 +84,9 @@ world[0]={TERRAIN={waterLevel=0}}
 api={type={ComponentType=setmetatable({},{__index=function(_,k)return k end}),
   Vec2f={new=function(x,y)return{x=x,y=y}end},Vec3f={new=v3},Vec4f={new=v4},Mat4f={new=mat},
   Box3={new=function(a,b)return{min=a,max=b}end},Context={new=function()return{}end},
-  SimpleProposal={new=function()return{constructionsToAdd={}}end,ConstructionEntity={new=function()return{}end}},
+  SimpleProposal={new=function()return{constructionsToAdd={},constructionsToRemove={},streetProposal={nodesToAdd={},nodesToRemove={},edgesToAdd={},edgesToRemove={},edgeObjectsToAdd={},edgeObjectsToRemove={}}}end,ConstructionEntity={new=function()return{}end}},
+  SegmentAndEntity={new=function()return{comp={node0=-1,node1=-1,type=0,typeIndex=-1,objects={}},type=0}end},
+  BaseEdgeStreet={new=function()return{streetType=-1,hasBus=false,tramTrackType=0}end},
   VehiclePart={new=function()return vecfields({loadConfig={}})end},TransportVehiclePart={new=function()return vecfields({autoLoadConfig={}})end},
   TransportVehicleConfig={new=function()return{vehicles={},vehicleGroups={}}end},
   Line={new=function()return{stops={}}end,Stop={new=function()return{alternativeTerminals={},waypoints={}}end}},
@@ -93,6 +95,14 @@ api={type={ComponentType=setmetatable({},{__index=function(_,k)return k end}),
     forEachEntityWithComponent=function(fn,kind)for id,w in pairs(world)do if w[kind]then fn(id)end end end,
     util={getPlayer=function()return 1 end},terrain={isValidCoordinate=function()return true end,getHeightAt=function()return 10 end},
     system={octreeSystem={findIntersectingEntities=function()end},stationGroupSystem={getStationGroup=function(s)return world[s].group end},
+      streetSystem={getNode2StreetEdgeMap=function()
+        local out={};for id,w in pairs(world)do
+          if w.BASE_EDGE and w.BASE_EDGE_STREET then
+            for _,n in ipairs({w.BASE_EDGE.node0,w.BASE_EDGE.node1})do out[n]=out[n]or{};out[n][#out[n]+1]=id end
+          end
+        end
+        for _,ids in pairs(out)do table.sort(ids)end;return out
+      end},
       transportVehicleSystem={getLineVehicles=function(id)local out={};for n,w in pairs(world)do if w.TRANSPORT_VEHICLE and w.TRANSPORT_VEHICLE.line==id then out[#out+1]=n end end;return out end}}},
   res={modelRep={find=function(name)return name==assets.vehicle_model and 7 or -1 end,getName=function(id)return id==7 and assets.vehicle_model or nil end,
       get=function(id)return id==7 and {metadata={transportVehicle={}}}or nil end},
@@ -107,23 +117,50 @@ api.cmd.make.createLine=function(name,color,player,line)return{op='line',name=na
 api.cmd.make.setLine=function(v,l,stop)return{op='assign',vehicle=v,line=l,stop=stop}end
 local function node(x,y,z)local id=fresh();world[id]={BASE_NODE={position=v3(x,y,z)}};return id end
 local function edge(a,b)
-  local id=fresh();world[id]={BASE_EDGE={node0=a,node1=b,tangent0=v3(1,0,0),tangent1=v3(1,0,0),type=0,typeIndex=-1},
+  local pa,pb=world[a].BASE_NODE.position,world[b].BASE_NODE.position
+  local tangent=v3(pb.x-pa.x,pb.y-pa.y,pb.z-pa.z)
+  local id=fresh();world[id]={BASE_EDGE={node0=a,node1=b,tangent0=copy(tangent),tangent1=copy(tangent),type=0,typeIndex=-1},
     BASE_EDGE_STREET={streetType=8,hasBus=false,tramTrackType=0}};return id
 end
 function apply_command(cmd,no_result)
   sent=sent+1;local result={}
   if cmd.op=='pause'then speed=cmd.value
+  elseif cmd.op=='build'and #cmd.proposal.constructionsToAdd==0 then
+    -- The script API never welds coordinates. A link exists only when the
+    -- proposal names the two already-existing node identities explicitly.
+    local sp=cmd.proposal.streetProposal
+    assert(#sp.nodesToAdd==0 and #sp.nodesToRemove==0 and #sp.edgesToRemove==0,'fixture connector must use existing nodes only')
+    assert(#cmd.proposal.constructionsToRemove==0,'fixture connector cannot remove constructions')
+    connector_ids={}
+    for _,e in ipairs(sp.edgesToAdd)do
+      assert(e.entity<0 and e.type==0,'fixture connector must be a new road edge')
+      assert(e.comp.node0>0 and e.comp.node1>0 and e.comp.node0~=e.comp.node1,'fixture requires distinct existing node IDs')
+      assert(world[e.comp.node0]and world[e.comp.node0].BASE_NODE and world[e.comp.node1]and world[e.comp.node1].BASE_NODE,'fixture connector references absent node')
+      local id=fresh();world[id]={BASE_EDGE=copy(e.comp),BASE_EDGE_STREET=copy(e.streetEdge)};connector_ids[#connector_ids+1]=id
+    end
+    money=money-1000*#connector_ids
+    -- Measured by the upstream engine integration: pure street commands have
+    -- an empty resultEntities vector, even after successful edge creation.
+    result.resultEntities={}
   elseif cmd.op=='build'then
-    local c=cmd.proposal.constructionsToAdd[1];local id=fresh();local co={fileName=c.fileName,params=native_params(copy(c.params)),transf=observed_matrix(c.transf),timeBuild=observed_time_build,frozenEdges={},stations={},depots={}}
+    local c=cmd.proposal.constructionsToAdd[1];local id=fresh();local co={fileName=c.fileName,params=native_params(copy(c.params)),transf=observed_matrix(c.transf),timeBuild=observed_time_build,frozenEdges={},frozenNodes={},stations={},depots={}}
+    local function placed(point)
+      local x,y,z,t=c.transf:col(0),c.transf:col(1),c.transf:col(2),c.transf:col(3)
+      return node(t.x+x.x*point[1]+y.x*point[2]+z.x*point[3],t.y+x.y*point[1]+y.y*point[2]+z.y*point[3],t.z+x.z*point[1]+y.z*point[2]+z.z*point[3])
+    end
     world[id]={CONSTRUCTION=observed_construction(co),NAME={name=c.name}}
     if c.fileName==assets.road_file then
-      junction=node(0,0,10);roadends={node(-80,0,10),node(80,0,10),node(0,40,10)}
+      junction=placed(assets.road_junction);roadends={};co.frozenNodes={junction}
+      for _,point in ipairs(assets.road_endpoints)do roadends[#roadends+1]=placed(point)end
       for _,n in ipairs(roadends)do co.frozenEdges[#co.frozenEdges+1]=edge(junction,n)end
     elseif c.fileName==assets.depot_file then
       local child=fresh();world[child]={VEHICLE_DEPOT={carrier=0,state=0,doors=0,stateTime=0}};co.depots={child}
-      co.frozenEdges={edge(roadends[3],node(0,65,10))}
+      local inner=placed({0,-20.79972,0});depot_outer=placed({0,-30.4153,0})
+      co.frozenNodes={inner};co.frozenEdges={edge(inner,depot_outer)}
     else
-      local index=c.name:sub(-1)=='1'and 1 or 2;co.frozenEdges={edge(roadends[index],node(index==1 and -115 or 115,0,10))}
+      local index=c.name:sub(-1)=='1'and 1 or 2;stop_outer=stop_outer or{}
+      local inner=placed({0,-15,0});stop_outer[index]=placed({0,-35,0})
+      co.frozenNodes={inner};co.frozenEdges={edge(inner,stop_outer[index])}
       local s,g=fresh(),fresh();world[s]={STATION={cargo=false,terminals={{},{}}},group=g};world[g]={STATION_GROUP={stations={s}}};co.stations={s}
     end
     money=money-10000;result.resultEntities={id}

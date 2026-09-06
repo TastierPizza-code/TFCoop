@@ -1,6 +1,7 @@
 -- A small immutable test road. The BuildProposal callback identifies this
 -- construction, whose frozenEdges then identify every actual created road.
--- Do not make its nodes free: this test needs an authoritative owned graph.
+-- Keep each edge owned through its frozen central node. The three outer snap
+-- nodes remain available for separate explicitly connected street segments.
 function data()
   return {
     type='STREET_CONSTRUCTION',
@@ -28,7 +29,7 @@ function data()
         -- a 0.6 slope needs less than the 20 m clearance to the checked box.
         terrainAlignmentLists={{
           type='EQUAL',
-          faces={{{-140,-40,0},{140,-40,0},{140,120,0},{-140,120,0}}},
+          faces={{{-160,-40,0},{160,-40,0},{160,140,0},{-160,140,0}}},
           slopeLow=0.6,
           slopeHigh=0.6,
           optional=false,

@@ -12,8 +12,8 @@ SCRIPTS = HERE.parent / 'res/scripts/tf2_strict_probe'
 RUNTIME = None
 COMMANDS = [('a:1', {'op':'SET_PAUSED','value':True}), ('a:2',{'op':'PROBE_ROAD'}),
  ('b:1',{'op':'PROBE_DEPOT'}), ('a:3',{'op':'PROBE_STOP','index':0}),
- ('b:2',{'op':'PROBE_STOP','index':1}), ('b:3',{'op':'PROBE_VEHICLE'}),
- ('a:4',{'op':'PROBE_LINE'}), ('b:4',{'op':'PROBE_ASSIGN'})]
+ ('b:2',{'op':'PROBE_STOP','index':1}), ('a:4',{'op':'PROBE_CONNECT'}), ('b:3',{'op':'PROBE_VEHICLE'}),
+ ('a:5',{'op':'PROBE_LINE'}), ('b:4',{'op':'PROBE_ASSIGN'})]
 
 class Harness:
     def __init__(self, offset=0, setup='', bind=True):
@@ -104,7 +104,7 @@ class BuildEngineTests(unittest.TestCase):
         h=Harness(setup='''
           api.engine.terrain.isValidCoordinate=function(p)return math.abs(p.x)<8192 and math.abs(p.y)<8192 end
           api.engine.terrain.getHeightAt=function(p)
-            if math.abs(p.x+133.333333)<1 and math.abs(p.y+133.333333)<1 then return 0 end
+            if math.abs(p.x+150)<1 and math.abs(p.y+150)<1 then return 0 end
             return 10
           end
         ''')
@@ -139,7 +139,7 @@ class BuildEngineTests(unittest.TestCase):
         h=Harness();s=h.build()
         self.assertEqual(s['coverage']['missing'],[])
         self.assertTrue(s['probe']['connectivity']['connected'])
-        self.assertEqual(s['probe']['scene'],dict(road='a:2',depot='b:1',stops=['a:3','b:2'],vehicle='b:3',line='a:4'))
+        self.assertEqual(s['probe']['scene'],dict(road='a:2',depot='b:1',stops=['a:3','b:2'],vehicle='b:3',line='a:5',connectors='a:4'))
         self.assertEqual(s['probe']['line']['vehicles'],['b:3'])
         self.assertEqual(s['probe']['line']['stops'],['a:3','b:2'])
         self.assertTrue(s['probe']['vehicle']['in_depot'])
@@ -157,6 +157,169 @@ class BuildEngineTests(unittest.TestCase):
         self.assertEqual(a.build(),b.build())
         a.lua.globals().advance();b.lua.globals().advance()
         self.assertEqual(a.snapshot(),b.snapshot())
+
+    def disconnected_scene(self,offset=0):
+        h=Harness(offset)
+        for key,command in COMMANDS[:5]:h.apply(key,command)
+        return h
+
+    def assert_no_connector_binding(self,h):
+        self.assertIsNone(h.e.scene.connectors)
+        self.assertFalse(any(str(key).startswith('a:4') for key,_ in h.e.local_bindings().items()))
+
+    def test_stock_constructions_keep_distinct_ports_until_explicit_link_command(self):
+        h=self.disconnected_scene();before=h.snapshot()
+        self.assertFalse(before['probe']['connectivity']['connected'])
+        self.assertFalse(h.lua.eval('depot_outer==roadends[3]'))
+        self.assertFalse(h.lua.eval('stop_outer[1]==roadends[1]or stop_outer[2]==roadends[2]'))
+        positions=h.lua.eval('''function()
+          local out={}
+          for _,pair in ipairs({{roadends[1],stop_outer[1]},{roadends[2],stop_outer[2]},{roadends[3],depot_outer}})do
+            local a,b=world[pair[1]].BASE_NODE.position,world[pair[2]].BASE_NODE.position
+            out[#out+1]=math.sqrt((a.x-b.x)^2+(a.y-b.y)^2+(a.z-b.z)^2)
+          end
+          return out
+        end''')()
+        self.assertEqual([positions[i] for i in range(1,4)],[20,20,20])
+        with self.assertRaises(Exception):h.plan('b:3',{'op':'PROBE_VEHICLE'})
+        self.assertEqual(h.snapshot(),before)
+        self.assertEqual(h.lua.globals().sent,5)
+
+    def test_connector_plan_uses_existing_node_ids_and_real_empty_callback_result(self):
+        h=self.disconnected_scene();before=h.snapshot()
+        plan=h.plan('a:4',{'op':'PROBE_CONNECT'});sp=plan.native.proposal.streetProposal
+        self.assertEqual(h.snapshot(),before)
+        self.assertEqual(len(plan.native.proposal.constructionsToAdd),0)
+        for name in ('nodesToAdd','nodesToRemove','edgesToRemove','edgeObjectsToAdd','edgeObjectsToRemove'):
+            self.assertEqual(len(sp[name]),0,name)
+        self.assertEqual(len(sp.edgesToAdd),3)
+        actual={frozenset((edge.comp.node0,edge.comp.node1)) for _,edge in sp.edgesToAdd.items()}
+        g=h.lua.globals()
+        expected={frozenset((g.roadends[i],g.stop_outer[i])) for i in (1,2)}
+        expected.add(frozenset((g.roadends[3],g.depot_outer)))
+        self.assertEqual(actual,expected)
+        self.assertEqual(sorted(edge.entity for _,edge in sp.edgesToAdd.items()),[-3,-2,-1])
+        result=h.lua.globals().apply_command(plan.native,False)
+        self.assertEqual(len(result.resultEntities),0)
+        receipt=h.e.finish(plan,result,True)
+        self.assertTrue(receipt.success)
+        after=h.snapshot()
+        self.assertEqual(after['probe']['profile'],'build_v2')
+        self.assertEqual(after['probe']['scene']['connectors'],'a:4')
+        self.assertTrue(after['probe']['connectivity']['connected'])
+        self.assertEqual(len([x for x in after['objects'] if x['kind']=='connector']),3)
+        self.assertEqual(after['coverage']['missing'],[])
+        h.plan('b:3',{'op':'PROBE_VEHICLE'})
+
+    def test_false_connector_callback_does_not_confirm_an_existing_graph_change(self):
+        h=self.disconnected_scene();plan=h.plan('a:4',{'op':'PROBE_CONNECT'})
+        result=h.lua.globals().apply_command(plan.native,False)
+        receipt=h.e.finish(plan,result,False)
+        self.assertEqual(json.loads(h.j.encode(receipt)),{'success':False,'result':{'error':'engine_rejected','op':'PROBE_CONNECT'}})
+        self.assert_no_connector_binding(h)
+        with self.assertRaises(Exception):h.plan('b:3',{'op':'PROBE_VEHICLE'})
+
+    def test_success_without_new_connector_edges_never_confirms_or_allows_buy(self):
+        h=self.disconnected_scene();plan=h.plan('a:4',{'op':'PROBE_CONNECT'})
+        with self.assertRaises(Exception):h.e.finish(plan,h.lua.eval('native_record({resultEntities={}})'),True)
+        self.assert_no_connector_binding(h)
+        self.assertFalse(h.snapshot()['probe']['connectivity']['connected'])
+        with self.assertRaises(Exception):h.plan('b:3',{'op':'PROBE_VEHICLE'})
+
+    def test_partial_wrong_or_ambiguous_connector_graph_is_rejected_atomically(self):
+        cases=[
+          'world[connector_ids[2]]=nil',
+          'world[connector_ids[1]].BASE_EDGE.node1=roadends[3]',
+          'world[fresh()]=copy(world[connector_ids[1]])',
+          'world[connector_ids[1]].BASE_EDGE_STREET.streetType=999',
+          'world[connector_ids[1]].BASE_EDGE.tangent0.x=world[connector_ids[1]].BASE_EDGE.tangent0.x+.5',
+          'world[connector_ids[1]].BASE_EDGE.typeIndex=0',
+        ]
+        for change in cases:
+            with self.subTest(change=change):
+                h=self.disconnected_scene();verified=h.j.encode(h.e.local_bindings())
+                plan=h.plan('a:4',{'op':'PROBE_CONNECT'})
+                result=h.lua.globals().apply_command(plan.native,False);h.lua.execute(change)
+                with self.assertRaises(Exception):h.e.finish(plan,result,True)
+                self.assert_no_connector_binding(h)
+                self.assertEqual(h.j.encode(h.e.local_bindings()),verified)
+                with self.assertRaises(Exception):h.plan('b:3',{'op':'PROBE_VEHICLE'})
+
+    def test_connector_graph_witness_requires_unchanged_existing_edges(self):
+        h=self.disconnected_scene();plan=h.plan('a:4',{'op':'PROBE_CONNECT'})
+        result=h.lua.globals().apply_command(plan.native,False)
+        h.lua.globals().road_id=h.e.local_bindings()['a:2']
+        h.lua.execute('world[world[road_id].CONSTRUCTION.frozenEdges[1]].BASE_EDGE.tangent0.x=777')
+        with self.assertRaises(Exception):h.e.finish(plan,result,True)
+        self.assert_no_connector_binding(h)
+
+    def test_nonempty_connector_callback_ids_must_match_unique_observed_new_edges(self):
+        for supplied in ('{connector_ids[1],connector_ids[2],999999}',
+                         '{connector_ids[1],connector_ids[2],connector_ids[2]}',
+                         '{connector_ids[1],connector_ids[2]}'):
+            h=self.disconnected_scene();plan=h.plan('a:4',{'op':'PROBE_CONNECT'})
+            h.lua.globals().apply_command(plan.native,False)
+            result=h.lua.eval('native_record({resultEntities='+supplied+'})')
+            with self.assertRaises(Exception):h.e.finish(plan,result,True)
+            self.assert_no_connector_binding(h)
+
+    def test_connector_result_identity_vector_read_errors_are_not_observed_empty(self):
+        h=self.disconnected_scene();plan=h.plan('a:4',{'op':'PROBE_CONNECT'})
+        h.lua.globals().apply_command(plan.native,False)
+        with self.assertRaises(Exception):h.e.finish(plan,h.lua.eval('native_record({})'),True)
+        self.assert_no_connector_binding(h)
+
+    def test_connector_plan_rejects_missing_throwing_or_malformed_incidence_data(self):
+        cases=[
+          "api.engine.system.streetSystem.getNode2StreetEdgeMap=function()return nil end",
+          "api.engine.system.streetSystem.getNode2StreetEdgeMap=function()error(native_params({},'opaque'),0)end",
+          "local get=api.engine.system.streetSystem.getNode2StreetEdgeMap;api.engine.system.streetSystem.getNode2StreetEdgeMap=function()local m=get();m[roadends[3]]=nil;return m end",
+          "local get=api.engine.system.streetSystem.getNode2StreetEdgeMap;api.engine.system.streetSystem.getNode2StreetEdgeMap=function()local m=get();m[roadends[3]]=false;return m end",
+          "local get=api.engine.system.streetSystem.getNode2StreetEdgeMap;api.engine.system.streetSystem.getNode2StreetEdgeMap=function()local m=get();m[roadends[3]]={};return m end",
+          "local get=api.engine.system.streetSystem.getNode2StreetEdgeMap;api.engine.system.streetSystem.getNode2StreetEdgeMap=function()local m=get();m[roadends[3]]=native_params({},'opaque');getmetatable(m[roadends[3]]).__len=function()error('native vector length failed')end;return m end",
+        ]
+        for change in cases:
+            h=self.disconnected_scene();before=h.snapshot();h.lua.execute(change)
+            with self.assertRaises(Exception):h.plan('a:4',{'op':'PROBE_CONNECT'})
+            self.assert_no_connector_binding(h)
+            self.assertEqual(h.snapshot(),before)
+            self.assertEqual(h.lua.globals().sent,5)
+
+    def test_connector_finish_does_not_treat_failed_incidence_read_as_empty(self):
+        h=self.disconnected_scene();plan=h.plan('a:4',{'op':'PROBE_CONNECT'})
+        result=h.lua.globals().apply_command(plan.native,False)
+        h.lua.execute("api.engine.system.streetSystem.getNode2StreetEdgeMap=function()error('map refresh failed')end")
+        with self.assertRaisesRegex(Exception,'map refresh failed'):h.e.finish(plan,result,True)
+        self.assert_no_connector_binding(h)
+
+    def test_connector_using_foreign_node_at_equal_coordinates_is_not_confirmed(self):
+        h=self.disconnected_scene();plan=h.plan('a:4',{'op':'PROBE_CONNECT'})
+        result=h.lua.globals().apply_command(plan.native,False)
+        h.lua.execute('''
+          local e=world[connector_ids[1]].BASE_EDGE
+          local foreign=fresh();world[foreign]={BASE_NODE={position=copy(world[e.node1].BASE_NODE.position)}}
+          e.node1=foreign
+        ''')
+        with self.assertRaises(Exception):h.e.finish(plan,result,True)
+        self.assert_no_connector_binding(h)
+
+    def test_connector_plan_rejects_missing_or_mismatched_street_resource(self):
+        for change in ('api.res.streetTypeRep.find=function()return -1 end',
+                       "api.res.streetTypeRep.getName=function()return 'unrequested.lua' end"):
+            h=self.disconnected_scene();h.lua.execute(change)
+            with self.assertRaises(Exception):h.plan('a:4',{'op':'PROBE_CONNECT'})
+            self.assert_no_connector_binding(h)
+            self.assertEqual(h.lua.globals().sent,5)
+
+    def test_disconnected_equal_coordinate_ports_are_not_the_same_node_identity(self):
+        h=self.disconnected_scene()
+        h.lua.execute('''
+          world[depot_outer].BASE_NODE.position=copy(world[roadends[3]].BASE_NODE.position)
+          for i=1,2 do world[stop_outer[i]].BASE_NODE.position=copy(world[roadends[i]].BASE_NODE.position)end
+        ''')
+        self.assertFalse(h.snapshot()['probe']['connectivity']['connected'])
+        with self.assertRaises(Exception):h.plan('a:4',{'op':'PROBE_CONNECT'})
+        with self.assertRaises(Exception):h.plan('b:3',{'op':'PROBE_VEHICLE'})
 
     def test_observed_nil_construction_timestamp_is_explicit_coverage(self):
         h=Harness();s=h.apply('a:2',{'op':'PROBE_ROAD'})
@@ -231,7 +394,7 @@ class BuildEngineTests(unittest.TestCase):
 
     def test_unassigned_stop_index_absence_and_actual_zero_are_distinct(self):
         h=Harness()
-        for key,command in COMMANDS[:6]:h.apply(key,command)
+        for key,command in COMMANDS[:7]:h.apply(key,command)
         absent=h.snapshot();self.assertEqual(absent['coverage']['missing'],[])
         vehicle=next(x['state'] for x in absent['objects'] if x['kind']=='vehicle')
         self.assertEqual(vehicle['stop_index'],{'available':False})
@@ -247,7 +410,7 @@ class BuildEngineTests(unittest.TestCase):
             errors='\n'.join(h.snapshot()['coverage']['missing'])
             self.assertIn('b:3.TRANSPORT_VEHICLE.stopIndex',errors)
         h=Harness()
-        for key,command in COMMANDS[:6]:h.apply(key,command)
+        for key,command in COMMANDS[:7]:h.apply(key,command)
         h.lua.execute("setmetatable(world[vehicle_id].TRANSPORT_VEHICLE,{__index=function(_,k)if k=='stopIndex'then error('bad stop getter')end end})")
         self.assertIn('getter threw at b:3.TRANSPORT_VEHICLE.stopIndex','\n'.join(h.snapshot()['coverage']['missing']))
 
@@ -263,7 +426,7 @@ class BuildEngineTests(unittest.TestCase):
         for setup,path,kind in cases:
             h=Harness();h.build()
             h.lua.globals().depot_id=h.e.local_bindings()['b:1:depot']
-            h.lua.globals().line_id=h.e.local_bindings()['a:4']
+            h.lua.globals().line_id=h.e.local_bindings()['a:5']
             h.lua.execute(setup)
             errors='\n'.join(h.snapshot()['coverage']['missing'])
             self.assertIn(path,errors);self.assertIn('Lua type='+kind,errors)
@@ -399,11 +562,11 @@ class BuildEngineTests(unittest.TestCase):
 
     def test_callback_output_need_not_exist_before_execution(self):
         h=Harness();h.build()  # Every fake maker omits all result fields.
-        self.assertEqual(h.lua.globals().sent,8)
+        self.assertEqual(h.lua.globals().sent,9)
 
     def test_rejected_vehicle_recipe_retains_exact_callback_id_only_for_diagnosis(self):
         h=Harness()
-        for key,command in COMMANDS[:5]:h.apply(key,command)
+        for key,command in COMMANDS[:6]:h.apply(key,command)
         before=h.snapshot();verified=json.loads(h.j.encode(h.e.local_bindings()))
         plan=h.plan('b:3',{'op':'PROBE_VEHICLE'})
         result=h.lua.globals().apply_command(plan.native,False)
@@ -416,7 +579,8 @@ class BuildEngineTests(unittest.TestCase):
         self.assertIsNone(h.e.scene.vehicle)
         diagnostic=json.loads(h.j.encode(h.e.diagnostic_bindings()))
         self.assertEqual(diagnostic,dict(verified,**{'callback:b:3':exact_id}))
-        self.assertLessEqual(len(diagnostic),12)
+        self.assertEqual(len(diagnostic),len(verified)+1)
+        self.assertLessEqual(len(diagnostic),15)
         # The pre-existing tracked objects are unchanged by a diagnostic entry.
         self.assertEqual(before['objects'],h.snapshot()['objects'])
         h.e.finish(plan,h.table({}),False)
@@ -429,7 +593,7 @@ class BuildEngineTests(unittest.TestCase):
 
     def test_ambiguous_or_nonexistent_callback_is_not_a_diagnostic_candidate(self):
         h=Harness()
-        for key,command in COMMANDS[:5]:h.apply(key,command)
+        for key,command in COMMANDS[:6]:h.apply(key,command)
         plan=h.plan('b:3',{'op':'PROBE_VEHICLE'})
         result=h.lua.globals().apply_command(plan.native,False)
         actual=h.lua.globals().vehicle_id
@@ -459,11 +623,11 @@ class BuildEngineTests(unittest.TestCase):
         s=h.build()
         self.assertEqual(s['coverage']['missing'],[])
         self.assertEqual(s['probe']['scene']['vehicle'],'b:3')
-        self.assertEqual(s['probe']['scene']['line'],'a:4')
+        self.assertEqual(s['probe']['scene']['line'],'a:5')
 
     def test_callback_without_any_readable_identity_does_not_bind_a_guess(self):
         h=Harness()
-        for key,command in COMMANDS[:5]:h.apply(key,command)
+        for key,command in COMMANDS[:6]:h.apply(key,command)
         plan=h.plan('b:3',{'op':'PROBE_VEHICLE'})
         h.lua.globals().apply_command(plan.native,False)
         result=h.lua.eval('native_record({})')
@@ -471,6 +635,217 @@ class BuildEngineTests(unittest.TestCase):
             h.e.finish(plan,result,True)
         self.assertIsNone(h.e.local_bindings()['b:3'])
         self.assertNotIn('vehicle',h.snapshot()['probe']['scene'])
+
+    def test_rejected_native_callback_preserves_observed_error_state_separately(self):
+        for mode in ('members','pairs'):
+            h=Harness();before=h.snapshot();plan=h.plan('a:2',{'op':'PROBE_ROAD'})
+            h.lua.globals().callback_mode=mode
+            h.lua.execute('''
+              callback_method_calls=0
+              local state=native_params({code=17,possible=false,detail={distance=1.25},
+                message='Bau nicht möglich',method=function()callback_method_calls=callback_method_calls+1 end},callback_mode)
+              callback=native_record({resultEntities={7,8},resultVehicleEntity=-1,resultEntity=0,
+                resultProposalData=native_params({errorState=state,cost=10000},callback_mode)})
+              assert(type(callback)=='userdata' and type(state)=='userdata')
+            ''')
+            receipt=h.e.finish(plan,h.lua.globals().callback,False)
+            self.assertEqual(json.loads(h.j.encode(receipt)),{'success':False,'result':{'error':'engine_rejected','op':'PROBE_ROAD'}})
+            report=json.loads(h.j.encode(h.e.callback_diagnostics()))
+            self.assertEqual((report['command_key'],report['op']),('a:2','PROBE_ROAD'))
+            self.assertEqual(report['success'],{'type':'boolean','value':False})
+            self.assertEqual(report['result_type'],'userdata')
+            self.assertFalse(report['valid_snapshot'])
+            rows={r['path']:r for r in report['records']};prefix='result.resultProposalData.errorState'
+            self.assertEqual(rows[prefix]['type'],'userdata')
+            self.assertEqual(rows[prefix+'.code']['value'],'17')
+            self.assertEqual(rows[prefix+'.detail.distance']['value'],'1.25')
+            self.assertEqual(rows[prefix+'.possible']['value'],False)
+            self.assertEqual(rows[prefix+'.message']['value'],'Bau nicht möglich')
+            self.assertEqual(rows[prefix+'.method']['type'],'function')
+            self.assertNotIn('value',rows[prefix+'.method'])
+            self.assertEqual(rows['result.resultEntities.1']['value'],'7')
+            self.assertEqual(rows['result.resultVehicleEntity']['value'],'-1')
+            self.assertEqual(h.lua.globals().callback_method_calls,0)
+            self.assertEqual(h.snapshot(),before)
+            self.assertEqual(h.j.encode(h.e.local_bindings()),'{}')
+            self.assertEqual(h.j.encode(h.e.diagnostic_bindings()),'{}')
+            self.assertEqual(h.lua.globals().sent,0)
+
+    def test_callback_diagnostics_distinguish_nil_and_throwing_native_members(self):
+        h=Harness();plan=h.plan('a:2',{'op':'PROBE_ROAD'})
+        h.lua.execute('''
+          opaque_error=native_params({},'opaque')
+          getmetatable(opaque_error).__tostring=function()error('opaque tostring must not run')end
+          local state=native_params({broken=17,message='observed rejection'},'members')
+          local state_read=getmetatable(state).__index
+          getmetatable(state).__index=function(self,key)
+            if key=='broken'then error('getter rejected field at 0xAABBCC',0)end
+            return state_read(self,key)
+          end
+          callback=native_params({},'opaque')
+          local proposal=native_params({errorState=state},'members')
+          getmetatable(callback).__index=function(_,key)
+            if key=='resultEntity'then error(opaque_error,0)end
+            if key=='resultProposalData'then return proposal end
+            return nil
+          end
+        ''')
+        receipt=h.e.finish(plan,h.lua.globals().callback,False)
+        self.assertFalse(receipt.success)
+        raw=h.j.encode(h.e.callback_diagnostics());rows={r['path']:r for r in json.loads(raw)['records']}
+        self.assertEqual(rows['result.resultEntities']['access'],'nil')
+        self.assertEqual(rows['result.resultEntities']['type'],'nil')
+        self.assertEqual(rows['result.resultEntity']['access'],'throws')
+        self.assertEqual(rows['result.resultEntity']['error_type'],'userdata')
+        self.assertEqual(rows['result.resultEntity']['error'],'error value has Lua type=userdata')
+        prefix='result.resultProposalData.errorState'
+        self.assertEqual(rows[prefix+'.broken']['access'],'throws')
+        self.assertEqual(rows[prefix+'.message']['value'],'observed rejection')
+        self.assertIn('[address]',rows[prefix+'.broken']['error'])
+        self.assertNotIn('0xAABBCC',raw)
+
+    def test_callback_diagnostic_numbers_are_strings_including_nonfinite_values(self):
+        h=Harness();plan=h.plan('a:2',{'op':'PROBE_ROAD'})
+        result=h.lua.eval("native_params({resultProposalData={errorState={nan=0/0,positive=math.huge,negative=-math.huge,integer=17,fraction=1.25,flag=false}}},'members')")
+        h.e.finish(plan,result,False)
+        raw=h.j.encode(h.e.callback_diagnostics());report=json.loads(raw,parse_constant=lambda s:self.fail('invalid JSON number '+s))
+        rows={r['path']:r for r in report['records']};prefix='result.resultProposalData.errorState.'
+        for key,value in [('nan','NaN'),('positive','+Infinity'),('negative','-Infinity'),('integer','17'),('fraction','1.25')]:
+            self.assertEqual(rows[prefix+key]['type'],'number')
+            self.assertEqual(rows[prefix+key]['value'],value)
+        for row in report['records']:
+            if row['type']=='number':self.assertIsInstance(row['value'],str)
+        self.assertFalse(rows[prefix+'flag']['value'])
+
+    def test_callback_diagnostics_bound_broad_native_payload_and_retain_header(self):
+        h=Harness();plan=h.plan('a:2',{'op':'PROBE_ROAD'})
+        h.lua.execute('''
+          local state={}
+          for i=1,20 do
+            local child={};state[string.rep('key',60)..i]=child
+            for j=1,20 do child[string.rep('leaf',45)..j]=string.rep('payload',1000)end
+          end
+          callback=native_params({resultProposalData={errorState=state}},'members')
+        ''')
+        h.e.finish(plan,h.lua.globals().callback,False)
+        raw=h.j.encode(h.e.callback_diagnostics());report=json.loads(raw)
+        self.assertLessEqual(len(raw.encode('utf-8')),16384)
+        self.assertLessEqual(len(report['records']),128)
+        self.assertTrue(report['truncated'])
+        self.assertGreater(report['limits']['dropped_records'],0)
+        self.assertEqual(report['success'],{'type':'boolean','value':False})
+        self.assertEqual((report['command_key'],report['op']),('a:2','PROBE_ROAD'))
+        paths={r['path'] for r in report['records']}
+        for name in ('resultEntities','resultVehicleEntity','resultEntity','resultProposalData'):
+            self.assertIn('result.'+name,paths)
+        for row in report['records']:
+            for value in row.values():
+                if isinstance(value,str):self.assertLessEqual(len(value.encode('utf-8')),256)
+
+    def test_callback_diagnostics_bound_cycles_depth_and_unknown_native_iteration(self):
+        h=Harness();plan=h.plan('a:2',{'op':'PROBE_ROAD'})
+        h.lua.execute('''
+          local state={deep={one={two={hidden='too deep'}}}};state.cycle=state
+          state.opaque=native_params({},'opaque')
+          callback=native_params({resultProposalData={errorState=state}},'members')
+        ''')
+        h.e.finish(plan,h.lua.globals().callback,False)
+        report=json.loads(h.j.encode(h.e.callback_diagnostics()))
+        rows={r['path']:r for r in report['records']};prefix='result.resultProposalData.errorState'
+        self.assertTrue(report['truncated'])
+        self.assertTrue(rows[prefix+'.cycle.@cycle']['value'])
+        self.assertEqual(rows[prefix+'.opaque.@enumeration']['access'],'throws')
+        self.assertNotIn(prefix+'.deep.one.two.hidden',rows)
+
+    def test_callback_text_is_valid_utf8_bounded_and_opaque_addresses_are_removed(self):
+        h=Harness();plan=h.plan('a:2',{'op':'PROBE_ROAD'})
+        h.lua.execute('''
+          local state=native_params({invalid='Grüße '..string.char(255,192,175,237,160,128,244,144,128,128)..' 0xABCDEF',
+            control='line'..string.char(0,1,10)..'end',boundary=string.rep('x',255)..'ä'},'members')
+          local read=getmetatable(state).__index
+          getmetatable(state).__members[4]='broken'
+          getmetatable(state).__index=function(self,key)
+            if key=='broken'then error('error '..string.char(255)..' 0x123ABC',0)end
+            return read(self,key)
+          end
+          callback=native_params({resultProposalData={errorState=state}},'members')
+        ''')
+        h.e.finish(plan,h.lua.globals().callback,False)
+        raw=h.j.encode(h.e.callback_diagnostics());report=json.loads(raw)
+        rows={r['path']:r for r in report['records']};prefix='result.resultProposalData.errorState.'
+        self.assertTrue(rows[prefix+'invalid']['value'].startswith('Grüße '))
+        self.assertIn('?',rows[prefix+'invalid']['value'])
+        self.assertIn('[address]',rows[prefix+'invalid']['value'])
+        self.assertEqual(rows[prefix+'control']['value'],'line\x00\x01\nend')
+        self.assertEqual(rows[prefix+'boundary']['value'],'x'*255)
+        self.assertEqual(rows[prefix+'broken']['error'],'error ? [address]')
+        self.assertNotIn('0xABCDEF',raw)
+        self.assertNotIn('0x123ABC',raw)
+        self.assertTrue(report['truncated'])
+
+    def test_callback_diagnostics_are_collected_once_and_replaced_per_callback(self):
+        h=Harness();plan=h.plan('a:2',{'op':'PROBE_ROAD'})
+        self.assertIsNone(h.e.callback_diagnostics())
+        h.lua.execute('''
+          callback_reads=0;callback=native_params({},'opaque')
+          getmetatable(callback).__index=function()
+            callback_reads=callback_reads+1;return nil
+          end
+        ''')
+        h.e.finish(plan,h.lua.globals().callback,False)
+        raw=h.j.encode(h.e.callback_diagnostics())
+        self.assertEqual(h.lua.globals().callback_reads,4)
+        self.assertEqual(raw,h.j.encode(h.e.callback_diagnostics()))
+        self.assertEqual(h.lua.globals().callback_reads,4)
+        other=h.plan('b:1',{'op':'SET_PAUSED','value':True})
+        receipt=h.e.finish(other,h.table({}),True)
+        report=json.loads(h.j.encode(h.e.callback_diagnostics()))
+        self.assertEqual(report['command_key'],'b:1')
+        self.assertEqual(report['success'],{'type':'boolean','value':True})
+        self.assertEqual(json.loads(h.j.encode(receipt)),{'success':True,'result':{'paused':True}})
+        self.assertNotIn('callback_diagnostics',h.j.encode(receipt))
+
+    def test_new_valid_plan_clears_previous_callback_and_unverified_candidate_before_failure(self):
+        h=Harness();h.apply('a:2',{'op':'PROBE_ROAD'})
+        self.assertIsNotNone(h.e.callback_diagnostics())
+        with self.assertRaises(Exception):h.plan('b:3',{'op':'PROBE_VEHICLE'})
+        self.assertIsNone(h.e.callback_diagnostics())
+        h=self.disconnected_scene();h.apply('a:4',{'op':'PROBE_CONNECT'})
+        plan=h.plan('b:3',{'op':'PROBE_VEHICLE'})
+        result=h.lua.globals().apply_command(plan.native,False)
+        h.lua.execute("world[vehicle_id].TRANSPORT_VEHICLE.transportVehicleConfig.vehicles[1].maintenanceState='invalid'")
+        with self.assertRaises(Exception):h.e.finish(plan,result,True)
+        self.assertIsNotNone(h.e.callback_diagnostics())
+        self.assertIsNotNone(h.e.diagnostic_bindings()['callback:b:3'])
+        with self.assertRaises(Exception):h.plan('a:5',{'op':'PROBE_LINE'})
+        self.assertIsNone(h.e.callback_diagnostics())
+        self.assertEqual(h.j.encode(h.e.diagnostic_bindings()),h.j.encode(h.e.local_bindings()))
+
+    def test_callback_capture_failure_retains_header_and_original_finish_decision(self):
+        h=Harness();plan=h.plan('a:2',{'op':'PROBE_ROAD'})
+        encode=h.j.encode
+        h.j.encode=h.lua.eval("function()error('diagnostic encoder unavailable',0)end")
+        receipt=h.e.finish(plan,h.table({}),False)
+        h.j.encode=encode
+        self.assertEqual(json.loads(encode(receipt)),{'success':False,'result':{'error':'engine_rejected','op':'PROBE_ROAD'}})
+        report=json.loads(encode(h.e.callback_diagnostics()))
+        self.assertTrue(report['capture_failed'])
+        self.assertTrue(report['truncated'])
+        self.assertEqual(report['records'],[])
+        self.assertEqual(report['success'],{'type':'boolean','value':False})
+        self.assertEqual((report['command_key'],report['op']),('a:2','PROBE_ROAD'))
+        self.assertEqual(h.j.encode(h.e.local_bindings()),'{}')
+        result=h.lua.globals().apply_command(plan.native,False)
+        h.j.encode=h.lua.eval("function()error('diagnostic encoder unavailable',0)end")
+        receipt=h.e.finish(plan,result,True)
+        h.j.encode=encode
+        self.assertTrue(receipt.success)
+        self.assertEqual(receipt.result.logical_id,'a:2')
+        self.assertEqual(h.e.local_bindings()['a:2'],receipt.result_entity)
+        report=json.loads(encode(h.e.callback_diagnostics()))
+        self.assertTrue(report['capture_failed'])
+        self.assertEqual(report['success'],{'type':'boolean','value':True})
+        self.assertEqual(h.snapshot()['coverage']['missing'],[])
 
     def test_missing_actual_callback_identity_refuses(self):
         h=Harness()
@@ -483,7 +858,7 @@ class BuildEngineTests(unittest.TestCase):
           local original=apply_command
           apply_command=function(cmd,no_result)
             local r=original(cmd,no_result)
-            if cmd.op=='build' and cmd.proposal.constructionsToAdd[1].fileName==assets.stop_file then
+            if cmd.op=='build' and cmd.proposal.constructionsToAdd[1] and cmd.proposal.constructionsToAdd[1].fileName==assets.stop_file then
               local id=r.resultEntities[1];local station=world[id].CONSTRUCTION.stations[1]
               local old=world[station].group;world[id].STATION_GROUP=world[old].STATION_GROUP
               world[station].group=id;world[old]=nil
@@ -507,7 +882,7 @@ class BuildEngineTests(unittest.TestCase):
 
     def test_broken_copy_vector_writeback_refuses_before_buy(self):
         h=Harness()
-        for key,command in COMMANDS[:5]:h.apply(key,command)
+        for key,command in COMMANDS[:6]:h.apply(key,command)
         h.lua.execute('''
           api.type.TransportVehiclePart.new=function()
             return setmetatable({},{__index=function(_,k)if k=='autoLoadConfig'then return{}end end,
@@ -546,7 +921,7 @@ class BuildEngineTests(unittest.TestCase):
         h.lua.globals().depot_entity=h.e.local_bindings()['b:1']
         h.lua.execute('''
           local e=world[world[depot_entity].CONSTRUCTION.frozenEdges[1]].BASE_EDGE
-          local id=fresh();world[id]={BASE_NODE={position=copy(world[e.node0].BASE_NODE.position)}};e.node0=id
+          local id=fresh();world[id]={BASE_NODE={position=copy(world[e.node1].BASE_NODE.position)}};e.node1=id
         ''')
         after=h.snapshot()
         self.assertNotEqual(before,after)

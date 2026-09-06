@@ -35,7 +35,7 @@ REQUIRED_MOD_FILES = {
 }
 REQUIRED_PYTHON = {"core.py", "replica.py", "transport.py", "runner.py",
                    "engine_mailbox.py", "game_runner.py", "stage_probe.py", "build_profile.py"}
-PROFILES = {"time_v1", "build_v1"}
+PROFILES = {"time_v1", "build_v2"}
 REQUIRED_BUILD_FILES = {"res/scripts/tf2_strict_probe/build_engine.lua",
                         "res/scripts/tf2_strict_probe/build_assets.lua",
                         "res/construction/tf2_strict_probe/road_test.con"}
@@ -206,14 +206,14 @@ def stage_probe(*, game_dir: str | Path, save: str | Path, session: str | Path,
     if save_path.suffix.lower() != ".sav" or not save_path.is_file() or not sidecar.is_file():
         raise StageError("An existing .sav and its matching .sav.lua are required.")
     selected = read_templates(Path(templates) if templates is not None else None)
-    if profile == "build_v1" and selected["initial_bindings"]:
+    if profile == "build_v2" and selected["initial_bindings"]:
         raise StageError("The fixed build profile creates its own scene; template bindings cannot be mixed in.")
     root = Path(repository_root).resolve()
     mod_source = root / "prototype" / "mod" / MOD
     mod_hashes = _files(mod_source) if mod_source.is_dir() else {}
     if not REQUIRED_MOD_FILES <= mod_hashes.keys():
         raise StageError("Prototype Lua mod is incomplete; finish its build before staging.")
-    if profile == "build_v1" and not REQUIRED_BUILD_FILES <= mod_hashes.keys():
+    if profile == "build_v2" and not REQUIRED_BUILD_FILES <= mod_hashes.keys():
         raise StageError("The controlled build recipe or its Lua engine is incomplete.")
     python_source = root / "prototype" / "strict_sync"
     python_files = {path.name: path for path in python_source.glob("*.py")}
@@ -290,7 +290,7 @@ def stage_probe(*, game_dir: str | Path, save: str | Path, session: str | Path,
     _write_json(directory / "probe_setup.json", setup)  # Activation descriptor last.
     return {"staging_only": True, "output": str(destination), "session": str(directory),
             "manifest_digest": manifest_digest, "native_epoch": epoch,
-            "read_only_time_probe": profile != "build_v1" and not selected["initial_bindings"],
+            "read_only_time_probe": profile != "build_v2" and not selected["initial_bindings"],
             "profile": profile or "time_v1"}
 
 

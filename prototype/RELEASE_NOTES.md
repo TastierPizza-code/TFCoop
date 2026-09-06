@@ -1,10 +1,12 @@
-Alpha5.6-Bautest (`v0.5.6`) setzt den gemeinsamen automatischen 240-Runden-Test fort. Die zwei vorhandenen Alpha5.4-Soloberichte wurden geborgen und ausgewertet; eine weitere Solo-Diagnose ist jetzt nicht nötig.
+Alpha5.7-Bautest (`v0.5.7`) korrigiert die Verbindungen im automatischen Zwei-PC-Bautest und die Verarbeitung von Bauantworten.
 
-- Fehlendes `CONSTRUCTION.timeBuild` wird ausdrücklich mit `available=false` in den gemeinsamen Zustandsvergleich aufgenommen. Es wird kein künstlicher Nullwert eingesetzt. Die Beobachtung stammt von vorhandenen Industriekonstruktionen; als Ursache des früheren Straßenbauabbruchs bleibt dieses Feld eine plausible Annahme.
-- `stopIndex` darf vor einer Linienzuordnung fehlen und ist danach verpflichtend. `loadConfig` akzeptiert den dokumentierten automatischen Wert `-1`. Numerische Lesefehler nennen ihren Feldpfad.
-- Bei einem strikten Bauabbruch erfasst der Mod automatisch eine unabhängige, begrenzte Rohdiagnose der aktuellen Testobjekte als `lua_api_audit.json`. Sie kommt in die normale private Testbericht-ZIP. Der Solo-Mod bleibt deaktiviert; Rohdaten sind ausdrücklich kein gültiger Snapshot und fließen nicht ins Synchronitätsprotokoll ein.
-- **Bautest (experimentell)** ist wieder der erste Reiter. Auf beiden PCs TF2 und alten Launcher schließen, normal neu öffnen und das automatische Update auf **Alpha5.6-Bautest** abwarten. Danach **Bisherige Installation wiederherstellen**, Rollen/Host-IP/frischen gemeinsamen Sitzungscode festlegen und jeder **Test vorbereiten und installieren**.
-- Verbinden, Startfreigabe abwarten und jeweils die neue Messtest-Save mit ausschließlich **TF2 Strict Sync - automatischer Bautest (Alpha5.6)** und **Legacy Fahrzeuge** laden. Diagnosemod und alte Koop-Mods ausschalten. Während des Tests nur zuschauen oder die Kamera bewegen.
-- Nach Abbruch oder 240 Runden **die normalen Testbericht-ZIPs beider PCs** privat zur Auswertung schicken.
+- Depot und Haltestellen haben eigene, getrennte Anschlüsse. Runde 5 baut drei ausdrückliche Verbindungsstraßen zwischen den bereits vorhandenen Knoten. Die Bestätigung verlangt einen eindeutigen Graphvergleich und unveränderte Bestandskanten. Alle Verbindungen gehen in den gemeinsamen Zustand ein.
+- Die Testnachbildung setzt kein automatisches Verbinden mehr voraus. Unverbundene oder mehrdeutige Ergebnisse verhindern den Fahrzeugkauf und Abschluss.
+- Kurzzeitige Lesesperren nach einem Callback lassen denselben Auftrag warten; kein erneutes Senden und keine zusätzliche Zeitfreigabe. Ursprüngliche Ablehnungen, verfügbare Engine-Fehlerdetails und die erste Fehlerursache bleiben erhalten.
+- Weiterhin 240 Runden, jetzt 211 Fortschrittsschritte und 29 Pausenrunden: 42,2 Sekunden Enginezeit. Der Test arbeitet automatisch; nur zuschauen oder Kamera bewegen.
 
-Die vorhandene sehr große Ausgangskarte bleibt lokal erhalten. Öffentliche Releases enthalten keine privaten Spielstände oder Berichte. Der vollständige Bauablauf und diese Änderungen müssen im echten Zwei-PC-Test noch bestätigt werden; freies gemeinsames Bauen, Cursor und normale gemeinsame Pause-Tasten sind nicht freigeschaltet. Anleitung: **ANLEITUNG.html**; Details: **BUILD_TEST.md** und **API_DIAGNOSE.md**.
+Beide Alpha5.6-Berichte bestätigen denselben Zustand bis zum Straßenbau. Die damalige genaue Depot-Ablehnungsursache fehlt; der neue Ablauf ist noch nicht im echten Spiel bestätigt. Freies Bauen, Cursor und normale gemeinsame Pause-Tasten sind nicht freigeschaltet.
+
+**Beide:** TF2, Test und alten Launcher schließen; Launcher erneut öffnen und Update auf Alpha5.7 abwarten. **Bisherige Installation wiederherstellen**, frischen gemeinsamen Code setzen, **Test vorbereiten und installieren**, verbinden und jeweils die neu angezeigte Messtest-Save laden. Nur **TF2 Strict Sync - automatischer Bautest (Alpha5.7)** und **Legacy Fahrzeuge** aktivieren. Nach Abbruch oder Abschluss beide normalen Testbericht-ZIPs privat schicken.
+
+Die vorhandene sehr große Ausgangskarte bleibt lokal. Das öffentliche Paket enthält keine Spielstände oder Berichte. Vollständige Anleitung: **ANLEITUNG.html**.

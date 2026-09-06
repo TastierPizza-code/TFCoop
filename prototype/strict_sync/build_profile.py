@@ -12,18 +12,19 @@ from pathlib import Path
 
 from .core import ProtocolError, canonical_json
 
-BUILD_PROFILE = "build_v1"
+BUILD_PROFILE = "build_v2"
 TIME_PROFILE = "time_v1"
 BUILD_ROUNDS = 240
-BUILD_ADVANCE_STEPS = 212
+BUILD_ADVANCE_STEPS = 211
 EXPECTED_SCENE = {"road": "a:2", "depot": "b:1", "stops": ["a:3", "b:2"],
-                  "vehicle": "b:3", "line": "a:4"}
+                  "connectors": "a:4", "vehicle": "b:3", "line": "a:5"}
 _INPUTS = {
     "a": {0: {"op": "SET_PAUSED", "value": True}, 1: {"op": "PROBE_ROAD"},
-          3: {"op": "PROBE_STOP", "index": 0}, 6: {"op": "PROBE_LINE"},
-          8: {"op": "SET_PAUSED", "value": False}, 80: {"op": "SET_PAUSED", "value": True}},
+          3: {"op": "PROBE_STOP", "index": 0}, 5: {"op": "PROBE_CONNECT"},
+          7: {"op": "PROBE_LINE"}, 9: {"op": "SET_PAUSED", "value": False},
+          80: {"op": "SET_PAUSED", "value": True}},
     "b": {2: {"op": "PROBE_DEPOT"}, 4: {"op": "PROBE_STOP", "index": 1},
-          5: {"op": "PROBE_VEHICLE"}, 7: {"op": "PROBE_ASSIGN"},
+          6: {"op": "PROBE_VEHICLE"}, 8: {"op": "PROBE_ASSIGN"},
           100: {"op": "SET_PAUSED", "value": False}},
 }
 
@@ -38,6 +39,7 @@ def build_inputs(peer, number):
 def phase_label(number, command=None):
     op = command.get("op") if isinstance(command, dict) else None
     labels = {"PROBE_ROAD": "Teststraße bauen", "PROBE_DEPOT": "Depot bauen",
+              "PROBE_CONNECT": "Depot und Haltestellen mit der Straße verbinden",
               "PROBE_STOP": "Haltestellen bauen", "PROBE_VEHICLE": "Fahrzeug kaufen",
               "PROBE_LINE": "Linie mit beiden Haltestellen anlegen",
               "PROBE_ASSIGN": "Fahrzeug der Linie zuweisen"}
@@ -45,7 +47,7 @@ def phase_label(number, command=None):
         return labels[op]
     if number is None or number == 0:
         return "Ausgangswelt und Baustelle prüfen"
-    if number < 8:
+    if number < 9:
         fixed = next((_INPUTS[peer][number] for peer in ("a", "b") if number in _INPUTS[peer]), {})
         return labels.get(fixed.get("op"), "Bauabschluss bestätigen")
     if 80 <= number < 100:
@@ -74,7 +76,7 @@ class BuildProof:
         _require(type(snapshot) is dict, "actual snapshot missing")
         probe = snapshot.get("probe")
         _require(type(probe) is dict and probe.get("profile") == BUILD_PROFILE,
-                 "loaded Lua profile is not build_v1")
+                 "loaded Lua profile is not " + BUILD_PROFILE)
         site = probe.get("site")
         _require(type(site) is dict and all(type(site.get(k)) is int for k in ("x_mm", "y_mm", "z_mm"))
                  and type(site.get("recipe_id")) is str and bool(site["recipe_id"])
@@ -122,16 +124,19 @@ class BuildProof:
         objects = snapshot.get("objects")
         _require(type(objects) is list, "tracked objects are unavailable")
         by_key = {obj.get("logical_id"): obj for obj in objects if type(obj) is dict}
-        required = ("a:2", "b:1", "a:3", "b:2", "b:3", "a:4")
+        required = ("a:2", "b:1", "a:3", "b:2", "b:3", "a:5",
+                    "a:4:link:1", "a:4:link:2", "a:4:link:3")
         _require(all(key in by_key and type(by_key[key].get("state")) is dict
                      and not by_key[key]["state"].get("unavailable") for key in required),
                  "scene references are not backed by actual tracked object states")
-        _require(by_key["b:3"].get("kind") == "vehicle" and by_key["a:4"].get("kind") == "line",
+        _require(all(by_key[f"a:4:link:{index}"].get("kind") == "connector" for index in range(1, 4)),
+                 "three observed connection edges are required")
+        _require(by_key["b:3"].get("kind") == "vehicle" and by_key["a:5"].get("kind") == "line",
                  "tracked vehicle/line types are incorrect")
         vehicle, line = probe.get("vehicle"), probe.get("line")
         _require(type(vehicle) is dict and vehicle.get("logical_id") == "b:3"
-                 and vehicle.get("line") == "a:4", "vehicle does not report its assigned line")
-        _require(type(line) is dict and line.get("logical_id") == "a:4"
+                 and vehicle.get("line") == "a:5", "vehicle does not report its assigned line")
+        _require(type(line) is dict and line.get("logical_id") == "a:5"
                  and line.get("vehicles") == ["b:3"] and line.get("stops") == ["a:3", "b:2"],
                  "actual line membership or ordered stop list is incorrect")
         _require(vehicle.get("in_depot") is False and type(vehicle.get("state")) is int
@@ -142,7 +147,7 @@ class BuildProof:
                  and all(type(value) is int for value in final_position),
                  "final actual vehicle position is unavailable")
         moving = [s for s in self.samples if s["in_depot"] is False and s["state"] == 1
-                  and s["no_path"] is False and s["line"] == "a:4"]
+                  and s["no_path"] is False and s["line"] == "a:5"]
         _require(len(moving) >= 2, "fewer than two observed movement samples at distinct simulation times")
         maximum_squared = max(sum((a - b) ** 2 for a, b in zip(left["position_mm"], right["position_mm"]))
                               for i, left in enumerate(moving) for right in moving[i + 1:])

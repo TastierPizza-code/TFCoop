@@ -34,20 +34,20 @@ Kopiervorgang verändert werden.
 
 Die Straße besteht aus genau drei festen Abschnitten mit gemeinsamem Knoten
 `(0,0,0)`. Ihre Endpunkte sind `(-80,0,0)`, `(80,0,0)` und `(0,40,0)`.
-Alle Straßenpunkte bleiben zur Konstruktion gehörig; `freeNodes` ist leer.
+Die Straßenkanten bleiben zur Konstruktion gehörig; `freeNodes` ist leer.
 Die drei äußeren Punkte dürfen über `snapNodes={0,3,5}` angeschlossen werden.
 Straßentyp ist `standard/town_medium_old.lua` ohne Tramgleis oder Busspur.
 
 | Bauwerk | Ursprung | Drehung um z | Anschluss nach Transformation |
 |---|---|---|---|
-| Linke Station | (-115,0,0) | +90° | (-80,0,0) |
-| Rechte Station | (115,0,0) | -90° | (80,0,0) |
-| Depot | (0,70.4153,0) | 0° | (0,40,0) |
+| Linke Station | (-135,0,0) | +90° | (-100,0,0) |
+| Rechte Station | (135,0,0) | -90° | (100,0,0) |
+| Depot | (0,90.4153,0) | 0° | (0,60,0) |
 
 Die 2×2-Rotationswerte im Rezept sind spaltenweise abgelegt. Zur gesamten Szene
 kommt genau eine gemeinsame Position und Höhe hinzu, die der Engineadapter nach
 einer begrenzten, nur lesenden Geländeprüfung auswählt. Das Rezept reserviert
-160 m in jede horizontale Richtung. Version 1 ließ höchstens 2 m Höhenstreuung
+180 m in jede horizontale Richtung. Version 1 ließ höchstens 2 m Höhenstreuung
 zu; die kontrollierte Geländeangleichung von Version 2 ist unten beschrieben.
 
 ## Verbindliche Ergebniszuordnung
@@ -95,17 +95,18 @@ Modulaufrufe folgen der Reihenfolge und den Transformationsregeln des lokalen
 Anschlüsse, Terminalgruppen, die Depottransformation, alle drei Straßenäste sowie
 Verfügbarkeit und Ladekonfiguration des Fahrzeugs.
 
-Alle fünf Prüfungen bestanden auf Lua 5.1, 5.2, 5.3 und 5.4: insgesamt 20
+Die aktuellen sieben Prüfungen bestanden auf Lua 5.1, 5.2, 5.3 und 5.4: insgesamt 28
 erfolgreiche Ausführungen, keine übersprungen. Das bestätigt die Asset-Geometrie
 und das Rezept. Es bestätigt noch nicht, dass die native Engine die Szene auf
-dem konkreten Gelände annimmt, die Knoten zusammenführt oder das Fahrzeug die
+dem konkreten Gelände annimmt, die Verbindungsstraßen baut oder das Fahrzeug die
 Stationen tatsächlich erreicht. Diese Punkte müssen die beiden Spielinstanzen
 im automatischen Bautest messen.
 
-## Version 2: gemeinsame Geländeangleichung beim Straßenbau
+## Historisch: Version 2 mit gemeinsamer Geländeangleichung beim Straßenbau
 
-`road-depot-service-v2` behält die Anschlussgeometrie bei. Der gemeinsam
-ausgeführte Straßenbau enthält jetzt eine obligatorische `EQUAL`-Fläche bei
+Die folgenden Maße beschreiben das frühere Rezept. `road-depot-service-v2`
+behielt die Anschlussgeometrie bei. Der gemeinsam ausgeführte Straßenbau
+enthielt eine obligatorische `EQUAL`-Fläche bei
 lokal z=0: x von -140 bis 140 m, y von -40 bis 120 m. Damit wird die Baufläche
 als Teil desselben Baukommandos angeglichen. Eine separate manuelle
 Geländeaktion ist nicht nötig. `EQUAL` gleicht an die angegebenen Polygone an;
@@ -139,3 +140,33 @@ Die sieben Asset-Prüfungen liefen auf Lua 5.1, 5.2, 5.3 und 5.4 erfolgreich:
 tatsächlichen Stock-Geländeflächen einschließlich der optionalen
 Depot-Dreiecke und prüfen Fläche, Höhenverträglichkeit, Straßenbreite und
 Abstand zur Freihaltezone. Das Spiel wurde dafür weder gestartet noch bedient.
+
+## Version 3: ausdrückliche Graphverbindungen
+
+`road-depot-service-v3` lässt zwischen den äußeren Anschlüssen der Gebäude und
+der Straße jeweils 20 m Platz. Das ist eine absichtlich neue Verbindungsstrecke;
+kein vorhandener Knoten wird verschoben. Die Baufläche reicht nun von x=-160
+bis 160 und y=-40 bis 140 m, der gelesene Prüfbereich bis ±180 m.
+
+Die lokale Upstream-Untersuchung `docs/re/PROPOSAL_STRUCTURE.md` beschreibt,
+dass `scripting::Convert` die Construction-Vorlage mit einer leeren `nodes2snap`-
+Zuordnung verarbeitet. Die interaktive Platzierung übergibt dagegen eine
+explizite Snap-Zuordnung. Die früher vorausgesetzte automatische Verbindung
+aufeinanderliegender Punkte war somit kein gültiger Skript-Vertrag. Die alte
+Testnachbildung hatte dieselbe unbelegte Annahme und wird durch getrennte
+Knoten plus wirklich ausgeführte Verbindungsproposals ersetzt.
+
+Drei neue `SimpleStreetProposal`-Kanten referenzieren ausschließlich vorhandene
+positive Knoten-IDs; die neuen Kanten erhalten absteigende negative Platzhalter.
+Es werden keine Knoten hinzugefügt, entfernt oder geometrisch gesucht. Für jeden
+bekannten Anschluss wird der vorherige Incident-Graph erfasst. Nach erfolgreichem
+Callback muss genau eine passende neue Kante je ID-Paar vorliegen und der ganze
+vorherige Incident-Graph unverändert sein. Eine leere `resultEntities`-Liste wird
+nicht mit angenommenen IDs gefüllt. Erst ein vollständiger Nachweis aller drei
+neuen Kanten erlaubt Bindings und spätere Fahrzeugkäufe.
+[Offizieller SimpleStreetProposal-Vertrag](https://wiki.transportfever2.com/api/modules/api.type.html#SimpleStreetProposal)
+
+Die echte Ablehnungsursache des alten Depot-Callbacks wurde im damaligen Bericht
+nicht erfasst. Diese strukturelle Korrektur beseitigt die falsche Anschlussannahme,
+beweist aber vor einem tatsächlichen Spielversuch weder die Annahme aller Gebäude
+noch erfolgreiche Fahrt.

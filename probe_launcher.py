@@ -174,7 +174,11 @@ def self_check(report_path: Path) -> int:
                 raise RuntimeError("packaged launcher build profile mismatch")
             scheduled = [command for number in range(BUILD_ROUNDS) for peer in ("a", "b")
                          for command in build_inputs(peer, number)]
-            if len(scheduled) != 11 or sum(command["op"] == "PROBE_STOP" for command in scheduled) != 2:
+            from collections import Counter
+            expected_operations = {"SET_PAUSED": 4, "PROBE_ROAD": 1, "PROBE_DEPOT": 1,
+                                   "PROBE_STOP": 2, "PROBE_CONNECT": 1, "PROBE_VEHICLE": 1,
+                                   "PROBE_LINE": 1, "PROBE_ASSIGN": 1}
+            if Counter(command["op"] for command in scheduled) != expected_operations:
                 raise RuntimeError("packaged automatic scene recipe is incomplete")
             manifest = json.loads((portable / "package_manifest.json").read_text("utf-8"))
             result["package_manifest_sha256"] = _hash(portable / "package_manifest.json")

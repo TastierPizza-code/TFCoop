@@ -23,9 +23,21 @@ class Harness:
         self.lua.execute((HERE / "fake_engine.lua").read_text(encoding="utf-8"))
         self.j = self.lua.execute((MOD / "res/scripts/tf2_strict_probe/json.lua").read_text(encoding="utf-8"))
         config = self.lua.execute((MOD / "res/scripts/tf2_strict_probe/config.lua").read_text(encoding="utf-8"))
+        self.config = config
         config.enabled, config.epoch, config.mailbox_dir = enabled, "77", "C:/probe"
         config.initial_bindings = self.lua.globals().bindings if bindings else self.lua.table()
         engine = self.lua.execute((MOD / "res/scripts/tf2_strict_probe/engine.lua").read_text(encoding="utf-8"))
+        self.lua.globals().fixture_engine = engine
+        self.lua.execute("""
+            finish_calls=0
+            local original_new=fixture_engine.new
+            fixture_engine.new=function(...)
+              local e=original_new(...); observed_engine=e
+              local original_finish=e.finish
+              e.finish=function(...) finish_calls=finish_calls+1; return original_finish(...) end
+              return e
+            end
+        """)
         modules = {"tf2_strict_probe/json": self.j, "tf2_strict_probe/config": config, "tf2_strict_probe/engine": engine}
         self.lua.globals().require = lambda name: modules[name]
         self.lua.execute((MOD / "res/config/game_script/tf2_strict_probe.lua").read_text(encoding="utf-8"))
@@ -57,6 +69,29 @@ class Harness:
     def complete(self, n=900, success=True, no_result=False):
         self.lua.globals().complete(len(self.lua.globals().sends), n, success, no_result)
         return self.status()
+
+    def fail_native_reads(self, count=1, operation="open"):
+        """Only the selected native read fails; no status or engine action is fabricated."""
+        self.lua.globals().native_failures = count
+        self.lua.globals().native_failure_operation = operation
+        self.lua.execute("""
+            local original=io.open
+            io.open=function(path,mode)
+              if path=='C:/probe/native_status.txt' and mode=='rb' and native_failures>0 then
+                native_failures=native_failures-1
+                if native_failure_operation=='open' then return nil,'Permission denied',13 end
+                local f=original(path,mode)
+                if native_failure_operation=='read' then
+                  f.read=function() return nil,'Read denied',13 end
+                elseif native_failure_operation=='close' then
+                  f.close=function() return nil,'Close denied',13 end
+                elseif native_failure_operation=='throw' then error('fixture open failure',0)
+                end
+                return f
+              end
+              return original(path,mode)
+            end
+        """)
 
     def run(self, command, key="a:1", n=900):
         assert self.request("plan", command, key)["status"] == "planned", self.status()
@@ -173,6 +208,231 @@ class ProductionLuaTests(unittest.TestCase):
         h = Harness(); h.update(); h.request("plan", BUY); h.request("apply", BUY)
         self.assert_halted(h.complete(no_result=True))
         self.assertNotIn("a:1", h.status()["diagnostics"]["bindings"])
+
+    def test_callback_waits_for_native_read_then_finishes_once(self):
+        for operation in ("open", "read", "close", "throw"):
+            with self.subTest(operation=operation):
+                h = Harness(); h.update()
+                command = dict(op="SET_PAUSED", value=True)
+                h.request("plan", command); h.request("apply", command)
+                h.fail_native_reads(3, operation)
+                waiting = h.complete()
+                self.assertEqual(waiting["status"], "in_flight")
+                self.assertFalse(waiting["complete"])
+                self.assertTrue(waiting["receipt"]["success"])
+                self.assertEqual(waiting["diagnostics"]["callback_phase"], "await_gate")
+                issue = waiting["diagnostics"]["last_native_read_issue"]
+                self.assertEqual(issue["operation"], "open" if operation == "throw" else operation)
+                if operation != "throw":
+                    self.assertEqual(issue["errno"], 13)
+                raw = h.lua.globals().files["C:/probe/lua_status.json"]
+                writes = h.lua.globals().writes
+                for _ in range(2):
+                    self.assertEqual(h.update(), waiting)
+                    self.assertEqual(h.lua.globals().files["C:/probe/lua_status.json"], raw)
+                    self.assertEqual(h.lua.globals().writes, writes)
+                done = h.update()
+                self.assertEqual(done["status"], "applied")
+                self.assertTrue(done["complete"])
+                self.assertTrue(done["snapshot"]["paused"])
+                self.assertEqual(done["receipt"], waiting["receipt"])
+                self.assertEqual(done["diagnostics"]["last_native_read_issue"]["count"], 3)
+                self.assertEqual(h.lua.globals().finish_calls, 1)
+                self.assertEqual(len(h.lua.globals().sends), 1)
+                self.assertIsNone(h.lua.globals().files["C:/probe/native_control.txt"])
+
+    def test_sync_callback_read_wait_is_not_retried_in_same_update(self):
+        h = self.h
+        h.lua.globals().sync_callback = True
+        h.fail_native_reads(0)
+        h.lua.execute("local send=api.cmd.sendCommand; api.cmd.sendCommand=function(...) native_failures=1; return send(...) end")
+        command = dict(op="SET_PAUSED", value=True)
+        h.request("plan", command)
+        self.assertEqual(h.request("apply", command)["status"], "in_flight")
+        self.assertEqual(h.update()["status"], "applied")
+        self.assertEqual(h.lua.globals().finish_calls, 1)
+        self.assertEqual(len(h.lua.globals().sends), 1)
+
+    def test_callback_rejection_is_not_hidden_by_unreadable_gate(self):
+        h = self.h
+        h.request("plan", BUY); h.request("apply", BUY)
+        h.fail_native_reads(20)
+        done = h.complete(success=False)
+        self.assert_halted(done)
+        self.assertEqual(done["error"], "engine rejected command")
+        self.assertFalse(done["receipt"]["success"])
+        self.assertEqual(done["receipt"]["result"]["error"], "engine_rejected")
+        self.assertEqual(h.lua.globals().native_failures, 20)
+        self.assertEqual(h.lua.globals().finish_calls, 1)
+        self.assertNotIn("canonical_state_json", done)
+
+    def test_waiting_callback_native_conflicts_are_terminal_with_receipt(self):
+        for changes in ({"fault": 2}, {"runtime_fault": 102}, {"halted": 1},
+                        {"epoch": 78}, {"abi": 2}, {"pending_state": 1}, {"completed_frame": 1}):
+            with self.subTest(changes=changes):
+                h = Harness(); h.update()
+                command = dict(op="SET_PAUSED", value=True)
+                h.request("plan", command); h.request("apply", command)
+                h.fail_native_reads()
+                waiting = h.complete()
+                h.lua.globals().native_status(0, h.table(changes))
+                done = h.update()
+                self.assert_halted(done)
+                self.assertEqual(done["receipt"], waiting["receipt"])
+                self.assertEqual(done["diagnostics"]["last_native_read_issue"]["kind"], "invalid")
+                h.lua.globals().native_status(0)
+                self.assertEqual(h.update(), done)
+                self.assertEqual(h.lua.globals().finish_calls, 1)
+                self.assertEqual(len(h.lua.globals().sends), 1)
+
+    def test_waiting_callback_still_requires_time_and_pause_observation(self):
+        for change, error in (("now=now+0.2", "observed simulation time differs"),
+                              ("speed=1", "pause callback did not produce requested pause flag")):
+            with self.subTest(change=change):
+                h = Harness(); h.update()
+                command = dict(op="SET_PAUSED", value=True)
+                h.request("plan", command); h.request("apply", command)
+                h.fail_native_reads(); receipt = h.complete()["receipt"]
+                h.lua.execute(change)
+                done = h.update()
+                self.assert_halted(done)
+                self.assertIn(error, done["error"])
+                self.assertEqual(done["receipt"], receipt)
+                self.assertNotIn("canonical_state_json", done)
+                self.assertEqual(h.lua.globals().finish_calls, 1)
+
+    def test_controller_halt_discards_waiting_completion_before_ack(self):
+        h = self.h
+        command = dict(op="SET_PAUSED", value=True)
+        h.request("plan", command); h.request("apply", command)
+        h.fail_native_reads(100)
+        receipt = h.complete()["receipt"]
+        stopped = h.request("halt")
+        self.assert_halted(stopped)
+        self.assertEqual(stopped["error"], "controller requested halt")
+        self.assertEqual(stopped["receipt"], receipt)
+        self.assertNotIn("callback_phase", stopped["diagnostics"])
+        h.lua.globals().native_failures = 0
+        self.assertEqual(h.update(), stopped)
+        self.assertEqual(h.lua.globals().finish_calls, 1)
+        self.assertEqual(len(h.lua.globals().sends), 1)
+
+    def test_duplicate_callback_during_gate_wait_never_repeats_finish(self):
+        h = self.h
+        command = dict(op="SET_PAUSED", value=True)
+        h.request("plan", command); h.request("apply", command)
+        h.fail_native_reads(2)
+        receipt = h.complete()["receipt"]
+        stopped = h.complete()
+        self.assert_halted(stopped)
+        self.assertEqual(stopped["error"], "engine callback invoked more than once")
+        self.assertEqual(stopped["receipt"], receipt)
+        h.lua.globals().native_failures = 0
+        self.assertEqual(h.update(), stopped)
+        self.assertEqual(h.lua.globals().finish_calls, 1)
+        self.assertEqual(len(h.lua.globals().sends), 1)
+
+    def test_gate_wait_retries_incomplete_and_not_ready_status_without_ack(self):
+        for kind in ("newline", "field", "ready"):
+            with self.subTest(kind=kind):
+                h = Harness(); h.update()
+                command = dict(op="SET_PAUSED", value=True)
+                h.request("plan", command); h.request("apply", command)
+                files = h.lua.globals().files
+                old = files["C:/probe/native_status.txt"]
+                damaged = old[:-1] if kind == "newline" else old.replace("ready=1\n", "" if kind == "field" else "ready=0\n")
+                files["C:/probe/native_status.txt"] = damaged
+                waiting = h.complete()
+                self.assertEqual(waiting["status"], "in_flight")
+                self.assertFalse(waiting["complete"])
+                self.assertEqual(h.update(), waiting)
+                files["C:/probe/native_status.txt"] = old
+                self.assertEqual(h.update()["status"], "applied")
+                self.assertEqual(h.lua.globals().finish_calls, 1)
+
+    def test_wait_status_write_failure_retries_without_sending_again(self):
+        h = self.h
+        command = dict(op="SET_PAUSED", value=True)
+        h.request("plan", command); h.request("apply", command)
+        h.fail_native_reads(3)
+        h.lua.globals().write_fail = True
+        h.complete()
+        h.update()
+        self.assertEqual(h.lua.globals().finish_calls, 1)
+        h.lua.globals().write_fail = False
+        waiting = h.update()
+        self.assertEqual(waiting["status"], "in_flight")
+        self.assertEqual(waiting["diagnostics"]["callback_phase"], "await_gate")
+        self.assertEqual(h.update()["status"], "applied")
+        self.assertEqual(len(h.lua.globals().sends), 1)
+
+    def test_new_plan_does_not_retain_previous_command_receipt(self):
+        h = self.h
+        h.run(dict(op="SET_PAUSED", value=True))
+        self.assertIn("receipt", h.status())
+        h.request("plan", BUY, key="a:2")
+        stopped = h.request("halt")
+        self.assert_halted(stopped)
+        self.assertNotIn("receipt", stopped)
+
+    def test_future_work_while_callback_waits_halts_even_if_gate_is_unreadable(self):
+        h = self.h
+        command = dict(op="SET_PAUSED", value=True)
+        h.request("plan", command); h.request("apply", command)
+        h.fail_native_reads(10)
+        receipt = h.complete()["receipt"]
+        stopped = h.request("snapshot")
+        self.assert_halted(stopped)
+        self.assertEqual(stopped["error"], "command callback still pending")
+        self.assertEqual(stopped["receipt"], receipt)
+        h.lua.globals().native_failures = 0
+        self.assertEqual(h.update(), stopped)
+        self.assertEqual(h.lua.globals().finish_calls, 1)
+        self.assertEqual(len(h.lua.globals().sends), 1)
+
+    def test_receipt_requires_bounded_plain_integer_data(self):
+        for returned in ("42", "{success='true',result={}}", "{success=true,result={cost=0.5}}",
+                         "{success=true,result={opaque=function()end}}", "{success=true,result={text=string.rep('x',33000)}}"):
+            with self.subTest(returned=returned):
+                h = Harness(); h.update()
+                h.lua.execute("observed_engine.finish=function() finish_calls=finish_calls+1; return " + returned + " end")
+                command = dict(op="SET_PAUSED", value=True)
+                h.request("plan", command); h.request("apply", command)
+                stopped = h.complete()
+                self.assert_halted(stopped)
+                self.assertNotIn("receipt", stopped)
+                self.assertNotIn("canonical_state_json", stopped)
+                self.assertEqual(h.lua.globals().finish_calls, 1)
+
+    def test_native_read_diagnostic_is_bounded_and_integer_only(self):
+        h = self.h
+        command = dict(op="SET_PAUSED", value=True)
+        h.request("plan", command); h.request("apply", command)
+        h.lua.execute("local original=io.open; io.open=function(path,mode) if path=='C:/probe/native_status.txt' then return nil,string.rep('x',300),0.5 end;return original(path,mode) end")
+        issue = h.complete()["diagnostics"]["last_native_read_issue"]
+        self.assertEqual(len(issue["error"]), 256)
+        self.assertNotIn("errno", issue)
+
+    def test_callback_diagnostics_are_optional_and_cannot_mask_rejection(self):
+        for body, valid in (("return {success=false,error_state='construction rejected',result={cost='0.5'}}", True),
+                            ("error('diagnostic unavailable',0)", False),
+                            ("return {cost=0.5}", False),
+                            ("return {detail=string.rep('x',17000)}", False)):
+            with self.subTest(body=body):
+                h = Harness(); h.update()
+                h.config.profile = "build_v2"  # Exercise halt diagnostics with the same generic engine fixture.
+                h.lua.execute("observed_engine.callback_diagnostics=function() " + body + " end")
+                h.request("plan", BUY); h.request("apply", BUY)
+                stopped = h.complete(success=False)
+                self.assert_halted(stopped)
+                self.assertEqual(stopped["error"], "engine rejected command")
+                failure = stopped["diagnostics"]["failure"]
+                if valid:
+                    self.assertFalse(failure["callback"]["success"])
+                    self.assertEqual(failure["callback"]["result"]["cost"], "0.5")
+                else:
+                    self.assertNotIn("callback", failure)
+                    self.assertIn("callback_error", failure)
 
     def test_duplicate_callback_halts(self):
         self.h.run(dict(op="SET_PAUSED", value=True))

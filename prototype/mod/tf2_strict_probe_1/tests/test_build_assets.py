@@ -116,9 +116,13 @@ class SceneAssetTests(unittest.TestCase):
             x, y, z = self.vec(self.assets.stop_offsets[i])
             actual = (x + xx * connector[0] + xy * connector[1],
                       y + yx * connector[0] + yy * connector[1], z + connector[2])
-            self.assertEqual(actual, self.vec(self.assets.road_endpoints[i]))
+            self.assertEqual(actual, ((-100 if i==1 else 100),0,0))
+            road = self.vec(self.assets.road_endpoints[i])
+            self.assertEqual(abs(actual[0]-road[0]),self.assets.connect_gap)
+            self.assertEqual(actual[1:],road[1:])
+            self.assertEqual(self.vec(self.assets.stop_snap),connector)
 
-    def test_literal_depot_connector_matches_road_endpoint(self):
+    def test_literal_depot_connector_leaves_explicit_twenty_metre_link(self):
         depot = self.stock(self.assets.depot_file)
         result = depot.updateFn(self.assets.depot_params)
         self.assertEqual(depot.type, 'STREET_DEPOT')
@@ -128,8 +132,12 @@ class SceneAssetTests(unittest.TestCase):
         connector = self.vec(edge.edges[2][1])
         self.assertEqual(connector, (0, -30.4153, 0))
         offset = self.vec(self.assets.depot_offset)
-        for got, expected in zip((offset[i] + connector[i] for i in range(3)), self.vec(self.assets.road_endpoints[3])):
+        actual=tuple(offset[i]+connector[i] for i in range(3))
+        self.assertEqual(self.vec(self.assets.depot_snap),connector)
+        self.assertEqual(self.assets.connect_gap,20)
+        for got, expected in zip(actual, (0,60,0)):
             self.assertAlmostEqual(got, expected, places=9)
+        self.assertAlmostEqual(actual[1]-self.assets.road_endpoints[3][2],self.assets.connect_gap,places=9)
 
     def test_owned_road_graph_has_three_branches_and_no_free_nodes(self):
         result = self.road()
@@ -181,9 +189,9 @@ class SceneAssetTests(unittest.TestCase):
                         self.assertGreaterEqual(z, 0)
                     else:
                         self.fail('unverified stock terrain alignment policy')
-        self.assertEqual(min(p[0] for p in observed), -130)
-        self.assertEqual(max(p[0] for p in observed), 130)
-        self.assertAlmostEqual(max(p[1] for p in observed), 105.23644)
+        self.assertEqual(min(p[0] for p in observed), -150)
+        self.assertEqual(max(p[0] for p in observed), 150)
+        self.assertAlmostEqual(max(p[1] for p in observed), 125.23644)
 
     def test_pad_covers_road_width_and_leaves_checked_earthwork_margin(self):
         road = self.road()
@@ -210,7 +218,10 @@ class SceneAssetTests(unittest.TestCase):
         self.assertGreaterEqual(margin, 10)
         max_sampled_cut_fill = self.assets.max_height_span / 2
         self.assertLess(max_sampled_cut_fill / pad.slopeLow, margin)
-        self.assertEqual(self.assets.id, 'road-depot-service-v2')
+        self.assertEqual(self.assets.id, 'road-depot-service-v3')
+        self.assertEqual(self.assets.half_extent,180)
+        self.assertEqual((x_min,x_max,y_min,y_max),(-160,160,-40,140))
+        self.assertEqual(self.assets.connection_tolerance,0.01)
         self.assertEqual(self.assets.preferred_height_span, 2)
         self.assertEqual(self.assets.max_height_span, 8)
 

@@ -5,7 +5,7 @@ local function module(name, metadata)
 end
 
 return {
-  id='road-depot-service-v2',
+  id='road-depot-service-v3',
   road_file='tf2_strict_probe/road_test.con',
   depot_file='depot/road_depot_era_a.con',
   stop_file='station/street/modular_terminal.con',
@@ -27,15 +27,19 @@ return {
     [20010000]=module('station/street/passenger_platform.module',{passenger=true,price=12000}),
     [20015503]=module('station/street/entrance_exit.module',{price=25000}),
   }},
-  -- Offsets are in metres relative to the selected scene origin. The stock
-  -- depot connector is (0,-30.4153,0); the station connector is (0,-35,0).
-  depot_offset={0,70.4153,0},
-  stop_offsets={{-115,0,0},{115,0,0}},
+  -- Script construction placement does not perform the UI's nodes2snap weld.
+  -- Keep distinct outer nodes, then join their observed IDs with normal edges.
+  depot_offset={0,90.4153,0},
+  stop_offsets={{-135,0,0},{135,0,0}},
+  depot_snap={0,-30.4153,0},
+  stop_snap={0,-35,0},
+  connect_gap=20,
+  connection_tolerance=0.01,
   -- Rotation columns (xx,yx,xy,yy): +90 degrees and -90 degrees exactly.
   stop_rotations={{0,1,-1,0},{0,-1,1,0}},
   road_endpoints={{-80,0,0},{80,0,0},{0,40,0}},
   road_junction={0,0,0},
-  half_extent=160,
+  half_extent=180,
   preferred_height_span=2,
   max_height_span=8,
   vehicle_load_config={0},

@@ -18,9 +18,12 @@ from prototype.tests.test_engine_mailbox_lua import ActualLuaWorker, MOD, RUNTIM
 
 
 class BuildLuaWorker(ActualLuaWorker):
-    def __init__(self, directory, runtime="lua53", *, terrain_setup="", audit_failure=False, **options):
+    def __init__(self, directory, runtime="lua53", *, terrain_setup="", audit_failure=False,
+                 callback_read_failures=0, callback_setup="", **options):
         self.terrain_setup = terrain_setup
         self.audit_failure = audit_failure
+        self.callback_read_failures = callback_read_failures
+        self.callback_setup = callback_setup
         super().__init__(directory, runtime=runtime, **options)
 
     def run(self):
@@ -32,8 +35,25 @@ class BuildLuaWorker(ActualLuaWorker):
             lua.globals().assets, lua.globals().id_offset = assets, self.offset
             lua.execute((MOD / "tests/fake_build_engine.lua").read_text("utf-8"))
             lua.execute(self.terrain_setup)
+            lua.globals().callback_read_failures = self.callback_read_failures
+            lua.execute("""
+                local original_open,original_apply=io.open,apply_command
+                local missing_reads=0
+                apply_command=function(command)
+                  local result=original_apply(command)
+                  missing_reads=callback_read_failures
+                  return result
+                end
+                io.open=function(path,mode)
+                  if mode=='rb' and path:match('/native_status%.txt$') and missing_reads>0 then
+                    missing_reads=missing_reads-1
+                    return nil,'fixture: transient file access denied',13
+                  end
+                  return original_open(path,mode)
+                end
+            """)
             config = lua.execute((scripts / "config.lua").read_text("utf-8"))
-            config.enabled, config.epoch, config.profile = True, EPOCH, "build_v1"
+            config.enabled, config.epoch, config.profile = True, EPOCH, "build_v2"
             config.mailbox_dir = self.directory.resolve().as_posix()
             config.initial_bindings = lua.table()
             modules = {"tf2_strict_probe/json": j, "tf2_strict_probe/config": config,
@@ -45,6 +65,7 @@ class BuildLuaWorker(ActualLuaWorker):
             lua.globals().require = lambda name: modules[name]
             modules["tf2_strict_probe/build_engine"] = lua.execute((scripts / "build_engine.lua").read_text("utf-8"))
             lua.execute("api.cmd.sendCommand=function(command,callback) callback(apply_command(command),true) end")
+            lua.execute(self.callback_setup)
             lua.execute((MOD / "res/config/game_script/tf2_strict_probe.lua").read_text("utf-8"))
             script = lua.globals().data()
             self.clock_us = 13_400_000
@@ -87,6 +108,108 @@ class BuildLuaWorker(ActualLuaWorker):
 
 @unittest.skipUnless("lua53" in RUNTIMES, "Lua 5.3 fixture runtime unavailable")
 class FullBuildFileIntegrationTests(unittest.TestCase):
+    def test_depot_rejection_keeps_actual_callback_details_even_when_gate_cannot_be_read(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            worker = BuildLuaWorker(directory, callback_setup="""
+                local original_send=api.cmd.sendCommand
+                api.cmd.sendCommand=function(command,callback)
+                  if command.op=='build' and command.proposal.constructionsToAdd[1].fileName==assets.depot_file then
+                    sent=sent+1
+                    local original_open=io.open
+                    io.open=function(path,mode)
+                      if mode=='rb' and path:match('/native_status%.txt$') then return nil,'fixture access denied',13 end
+                      return original_open(path,mode)
+                    end
+                    callback(native_params({resultProposalData={errorState={
+                      fixture_reason='collision supplied by test API',fixture_cost=10000.5
+                    }}}),false)
+                    return
+                  end
+                  return original_send(command,callback)
+                end
+            """)
+            engine = None
+            try:
+                engine = EngineAdapter(directory, EPOCH, probe_only=True, timeout_s=3, poll_s=.002)
+                engine.apply({"op": "SET_PAUSED", "value": True}, "a:1")
+                engine.apply({"op": "PROBE_ROAD"}, "a:2")
+                previous = engine.snapshot()
+                with self.assertRaisesRegex(MailboxError, "Lua adapter reported error/halt: engine rejected command"):
+                    engine.apply({"op": "PROBE_DEPOT"}, "b:1")
+                status = worker.status()
+                self.assertFalse(status["receipt"]["success"])
+                self.assertEqual(status["receipt"]["command_key"], "b:1")
+                diagnostic = status["diagnostics"]["failure"]["callback"]
+                self.assertEqual(diagnostic["success"], {"type": "boolean", "value": False})
+                fields = {item["path"]: item for item in diagnostic["records"]}
+                prefix = "result.resultProposalData.errorState."
+                self.assertEqual(fields[prefix + "fixture_reason"]["value"], "collision supplied by test API")
+                self.assertEqual(fields[prefix + "fixture_cost"]["value"], "10000.5")
+                self.assertEqual(status["snapshot"], previous)
+                self.assertNotIn("b:1", status["diagnostics"]["bindings"])
+                self.assertEqual(engine.frame, 0)
+                time.sleep(.02)
+                self.assertEqual(worker.observed_sends, 3)
+            finally:
+                if engine is not None:
+                    engine.close()
+                worker.close()
+
+    def test_transient_callback_gate_reads_recover_without_replaying_command_or_advancing_time(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            worker = BuildLuaWorker(directory, callback_read_failures=4)
+            engine = None
+            try:
+                engine = EngineAdapter(directory, EPOCH, probe_only=True, timeout_s=3, poll_s=.002)
+                result = engine.apply({"op": "SET_PAUSED", "value": True}, "a:1")
+                self.assertTrue(result["success"])
+                self.assertEqual(engine.frame, 0)
+                self.assertEqual(engine.time_us, 13400000)
+                status = worker.status()
+                self.assertEqual(status["status"], "applied")
+                self.assertEqual(status["diagnostics"]["last_native_read_issue"]["errno"], 13)
+                self.assertEqual(status["diagnostics"]["last_native_read_issue"]["count"], 4)
+                time.sleep(.02)
+                self.assertEqual(worker.observed_sends, 1)
+                self.assertEqual(worker.completed_frame, 0)
+                engine.step(0)
+                self.assertEqual(engine.frame, 1)
+                self.assertEqual(engine.time_us, 13400000)
+            finally:
+                if engine is not None:
+                    engine.close()
+                worker.close()
+
+    def test_persistent_callback_gate_read_failure_times_out_without_step_or_resend(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            worker = BuildLuaWorker(directory, callback_read_failures=1000000)
+            engine = None
+            try:
+                engine = EngineAdapter(directory, EPOCH, probe_only=True, timeout_s=3, poll_s=.002)
+                engine.native.timeout_s = .15
+                with self.assertRaisesRegex(MailboxError, "timeout"):
+                    engine.apply({"op": "SET_PAUSED", "value": True}, "a:1")
+                self.assertTrue(engine.halted)
+                self.assertEqual(engine.frame, 0)
+                self.assertEqual(worker.completed_frame, 0)
+                time.sleep(.02)
+                self.assertEqual(worker.observed_sends, 1)
+                self.assertEqual(control(directory / "native_control.txt")["action"], "halt")
+                status = worker.status()
+                self.assertEqual(status["status"], "halted")
+                self.assertTrue(status["receipt"]["success"])
+                self.assertEqual(status["receipt"]["command_key"], "a:1")
+            finally:
+                if engine is not None:
+                    engine.close()
+                worker.close()
+
     def test_failed_build_captures_independent_fields_and_never_acknowledges_bad_snapshot(self):
         import tempfile
         for runtime in RUNTIMES:
@@ -181,7 +304,8 @@ class FullBuildFileIntegrationTests(unittest.TestCase):
                 commands = [("a:1", {"op": "SET_PAUSED", "value": True}),
                             ("a:2", {"op": "PROBE_ROAD"}), ("b:1", {"op": "PROBE_DEPOT"}),
                             ("a:3", {"op": "PROBE_STOP", "index": 0}),
-                            ("b:2", {"op": "PROBE_STOP", "index": 1})]
+                            ("b:2", {"op": "PROBE_STOP", "index": 1}),
+                            ("a:4", {"op": "PROBE_CONNECT"})]
                 for key, command in commands:
                     engine.apply(command, key)
                 with self.assertRaisesRegex(MailboxError, "bought vehicle differs from requested recipe"):
@@ -237,25 +361,44 @@ class FullBuildFileIntegrationTests(unittest.TestCase):
                 for peer, replica in replicas.items():
                     queue.extend(host.receive(peer, replica.hello()))
                 final_proofs = {}
+                disconnected, connected = set(), set()
                 while host.round < BUILD_ROUNDS:
                     self.assertTrue(queue, "protocol stopped without completion")
                     peer, message = queue.popleft()
                     replica = replicas[peer]
                     response = replica.receive(message)
                     if message["kind"] in ("apply", "step"):
-                        proofs[peer].observe(replica.engine.snapshot(), frame=replica.frame,
+                        observed = replica.engine.snapshot()
+                        command = message.get("command", {})
+                        if command.get("op") == "PROBE_STOP" and command.get("index") == 1:
+                            self.assertFalse(observed["probe"]["connectivity"]["connected"])
+                            self.assertNotIn("connectors", observed["probe"]["scene"])
+                            disconnected.add(peer)
+                        if command.get("op") == "PROBE_CONNECT":
+                            self.assertEqual(observed["probe"]["scene"]["connectors"], "a:4")
+                            self.assertTrue(observed["probe"]["connectivity"]["connected"])
+                            links = [obj for obj in observed["objects"] if obj["kind"] == "connector"]
+                            self.assertEqual([obj["logical_id"] for obj in links],
+                                             [f"a:4:link:{i}" for i in range(1, 4)])
+                            self.assertTrue(all(isinstance(obj["state"], dict) and
+                                                "node0" in obj["state"] and "node1" in obj["state"]
+                                                for obj in links))
+                            connected.add(peer)
+                        proofs[peer].observe(observed, frame=replica.frame,
                             command=message.get("command"), command_key=message.get("command_key"))
                         if replica.frame == BUILD_ROUNDS:
                             final_proofs[peer] = proofs[peer].finish(frame=BUILD_ROUNDS, step_us=200000)
                     if response is not None:
                         queue.extend(host.receive(peer, response))
                     self.assertFalse(host.halted, host.halt_reason)
-                self.assertEqual(host.sim_time_us, 55_800_000)
+                self.assertEqual(host.sim_time_us, 55_600_000)
+                self.assertEqual(disconnected, {"a", "b"})
+                self.assertEqual(connected, {"a", "b"})
                 self.assertEqual(engines[0].snapshot(), engines[1].snapshot())
                 self.assertEqual(final_proofs["a"], final_proofs["b"])
                 self.assertTrue(final_proofs["a"]["passed"])
                 self.assertLess(final_proofs["a"]["finances"]["balance_delta"], 0)
-                self.assertEqual([w.observed_sends for w in workers], [11, 11])
+                self.assertEqual([w.observed_sends for w in workers], [12, 12])
                 for replica in replicas.values():
                     replica.receive({"kind": "complete", "epoch": epoch, "round": BUILD_ROUNDS,
                         "frame": BUILD_ROUNDS, "sim_time_us": host.sim_time_us, "state_digest": host.state_digest})

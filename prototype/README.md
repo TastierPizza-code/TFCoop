@@ -1,19 +1,20 @@
 # TF2: Prototyp für strikte Synchronisation
 
-**Alpha5.6-Bautest setzt den gemeinsamen automatischen 240-Runden-Versuch fort.**
-Die zwei Alpha5.4-Soloberichte wurden geborgen und ausgewertet. Für den nächsten
-Schritt werden wieder beide PCs benötigt; eine weitere Solo-Diagnose ist nicht nötig.
+**Alpha5.7-Bautest setzt den gemeinsamen automatischen 240-Runden-Versuch fort.**
+Er korrigiert die angenommene automatische Straßenverbindung und den Umgang mit
+vorübergehend unlesbaren Statusdateien nach einem Callback. Eine weitere
+Solo-Diagnose ist nicht erforderlich.
 
 Dieser Ordner enthält den Synchronisationskern und die Komponenten des
 kontrollierten Engineversuchs. Der Launcher bereitet eine eigene Testinstallation
 vor und kann die vorherigen Dateien anschließend wiederherstellen.
 
-Der aktuelle **Alpha5.6-Bautest-Launcher** öffnet zuerst den Reiter
+Der aktuelle **Alpha5.7-Bautest-Launcher** öffnet zuerst den Reiter
 **Bautest (experimentell)**. Nach dem Update auf beiden PCs die vorherige
 Installation, insbesondere die Diagnosemod, wiederherstellen. Dann Rollen,
 Host-IP und frischen gemeinsamen Sitzungscode festlegen, neu vorbereiten und
 verbinden. Beide laden ihre neue Messtest-Save mit **TF2 Strict Sync - automatischer
-Bautest (Alpha5.6)** und **Legacy Fahrzeuge**. Ablauf und Wiederherstellung stehen
+Bautest (Alpha5.7)** und **Legacy Fahrzeuge**. Ablauf und Wiederherstellung stehen
 in [ANLEITUNG.md](ANLEITUNG.md).
 
 **API-Diagnose allein** bleibt im zweiten Reiter für gezielte Untersuchungen
@@ -47,16 +48,18 @@ Lua-Dateianbindung sind gebaut und automatisiert geprüft. Ein echter Alpha4.2-
 Nutzertest hat alle 100 gemeinsamen Runden mit übereinstimmenden begrenzten
 Messwerten abgeschlossen: 80 Schritte à 0,2 Sekunden und 20 Pausenrunden.
 Der Host bestätigt die Abschlusswerte beider Spielinstanzen. Der Alpha5-Bauablauf
-ist mit Ersatzengines geprüft. Echte Nutzertests erreichten bisher Abbrüche bei
-der Platzsuche beziehungsweise beim Lesen des Zustands nach dem Straßenbau.
+ist mit Ersatzengines geprüft. Im echten Alpha5.6-Versuch stimmen die ersten fünf
+Journalzustände beider Teilnehmer vollständig überein: Ausgangswelt, Pause und
+Straßenbau einschließlich Firmenwerte. Danach verweigert TF2 auf einem PC den
+Depotbau; beim anderen fehlt die Callback-Aussage wegen eines Statuslesefehlers.
 Im Alpha5.2-Nutzertest wurde die Straße gebaut; anschließend brach das Lesen der
 Konstruktionstransformation in Runde 1 ab. Alpha5.3 behob den dabei beobachteten
 Fehler der Lua-Rückgabewerte. Im anschließenden echten Alpha5.3-Test erschien nach
 dem Straßenbau `invalid finite build value`. Die geborgenen Alpha5.4-Berichte zeigen
 fehlendes `timeBuild` an zwei bestehenden Industriekonstruktionen. Dasselbe Feld
-als Ursache an der gebauten Teststraße anzunehmen bleibt eine Hypothese.
-Alpha5.6 berücksichtigt die beobachtete Verfügbarkeit und ergänzt genaue
-Fehlerpfade; ein vollständiger echter Bauablauf ist dadurch noch nicht nachgewiesen.
+fehlt laut den neuen Alpha5.6-Rohdaten auch an der erfolgreich gebauten
+Teststraße. Seine Abwesenheit wird seit Alpha5.6 ausdrücklich abgebildet;
+ein vollständiger echter Bauablauf ist dadurch noch nicht nachgewiesen.
 Normale Bauwerkzeuge und eine aktive gemeinsame Wirtschaft sind damit noch
 nicht umfassend geprüft oder vollständig an die neue Eingabesteuerung angeschlossen.
 
@@ -84,8 +87,8 @@ Der Fehlerpfad liefert jetzt ausdrücklich ein `nil`, sodass die vorhandene
 Prüfung und der alternative Transformationsleser ausgeführt werden können.
 Das Testprofil und die Kriterien für einen erfolgreichen Abschluss bleiben gleich.
 
-Alpha5.6 speichert ein tatsächlich fehlendes `CONSTRUCTION.timeBuild` als
-`{available=false}` im gehashten Zustand. Vorhandene Werte bleiben gemessen;
+Seit Alpha5.6 wird ein tatsächlich fehlendes `CONSTRUCTION.timeBuild` als
+`{available=false}` im gehashten Zustand gespeichert. Vorhandene Werte bleiben gemessen;
 ein fehlender Wert wird nicht durch eine erfundene Null ersetzt. `stopIndex`
 darf vor der Linienzuordnung fehlen und ist nach einer Zuordnung verpflichtend.
 `loadConfig` akzeptiert den dokumentierten Wert `-1` für automatische Auswahl.
@@ -93,16 +96,17 @@ Numerische Lesefehler enthalten den jeweiligen Feldpfad.
 
 Bei einem strikten Bauabbruch liest ein unabhängiger, auf 98304 Bytes begrenzter
 Collector die aktuellen gebundenen Objekte. Die separate Datei `lua_api_audit.json`
-kommt in den normalen Testbericht. `lua_status.json` enthält nur Dateihinweis,
-Schreib-/Rücklesestatus und begrenzte Fehlversuchsmetadaten. Diese Rohdiagnose
+kommt in den normalen Testbericht. `lua_status.json` enthält Dateihinweis,
+Schreib-/Rücklesestatus, begrenzte Fehlversuchsmetadaten und seit Alpha5.7
+getrennt markierte tatsächliche Callback-Daten. Diese Rohdiagnose
 trägt `valid_snapshot=false`; ihre Fließkommazahlen bleiben außerhalb des
 strikten Synchronitätsprotokolls. Der letzte gültige Snapshot bleibt separat
 als historisch markiert. Der Strict-Mod bringt eine eigene byteidentische
 Collector-Kopie mit, sodass der Solo-Mod deaktiviert bleiben kann.
 
-Spieler mit einem Launcher ab Alpha5.2 erhalten Alpha5.6 über die vorhandene
+Spieler mit einem Launcher ab Alpha5.2 erhalten Alpha5.7 über die vorhandene
 Updatefunktion: TF2 und Messcontroller schließen, den Launcher normal öffnen
-und auf **Alpha5.6-Bautest** warten. Danach vorherige Installation wiederherstellen
+und auf **Alpha5.7-Bautest** warten. Danach vorherige Installation wiederherstellen
 und im ersten Reiter mit frischem gemeinsamem Code neu vorbereiten. Ein erneuter
 ZIP-Download ist bei funktionierender Updateprüfung nicht nötig. Nach diesem
 Versuch werden beide normalen Testbericht-ZIPs benötigt.
@@ -217,7 +221,7 @@ definierte Welt; daraus folgt keine vollständige Hashabdeckung der realen Engin
 - `mod/tf2_strict_probe_1` setzt ausschließlich vorbereitete Testbefehle über die
   Spiel-API um. Es liest tatsächliche Firmenwerte, Zeit und explizit gebundene
   Objekte. Neue Linien und Fahrzeuge benötigen echte Ergebnis-IDs. Das Profil
-  `build_v1` nutzt eine eigene Straßenkonstruktion und lokal vorhandene
+  `build_v2` nutzt eine eigene Straßenkonstruktion und lokal vorhandene
   Standardgebäude, Module und Fahrzeugmodelle. Der ältere allgemeine Adapter
   kann zusätzlich mit ausdrücklich angegebenen Objektvorlagen arbeiten.
 
@@ -295,8 +299,8 @@ und ein ausreichend vollständiger Zustandsvergleich. Steam-Einladungen, große
 Karten und Wiederaufnahme nach Absturz werden durch diesen Prototyp noch nicht
 zugesichert.
 
-Zuerst soll der Solo-Diagnosebericht die tatsächlichen API-Zugriffe eingrenzen.
-Ein späterer vollständiger Bauversuch muss zeigen, ob Zeit, explizit geprüfte
+Die Solo-Diagnoseberichte sind ausgewertet. Der gemeinsame Alpha5.7-Bauversuch
+muss nun zeigen, ob Zeit, explizit geprüfte
 Bauobjekte, Firmenwerte und Fahrzeugbewegung trotz verschiedener Wartezeiten
 gleich bleiben. Der abgeschlossene Zeit-/Pausetest beantwortet diese zusätzliche
 Frage noch nicht. Auch ein bestandener Bautest ersetzt keine vollständige
