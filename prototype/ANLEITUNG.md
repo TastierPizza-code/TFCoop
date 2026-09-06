@@ -1,15 +1,15 @@
-# TF2-Koop Alpha5.7-Bautest — Anleitung für beide Spieler
+# TF2-Koop Alpha5.8-Bautest — Anleitung für beide Spieler
 
-**Alpha5.7 überarbeitet die Straßenanschlüsse und die Verarbeitung von Bauantworten.** Im letzten gemeinsamen Versuch stimmten Straße, Pause und Firmenwerte überein. Danach lehnte TF2 bei einem Teilnehmer den Depotbau ab; beim anderen verdeckte ein Statuslesefehler die Bauantwort.
+**Alpha5.8 korrigiert das Lesen der Straßenanschlüsse.** Im letzten Alpha5.7-Versuch wurden Straße, Depot und beide Haltestellen auf beiden PCs gebaut. Alle protokollierten Zustände und Baukosten stimmten überein. Danach scheiterten beide beim Auslesen der Anschlüsse, bevor die Verbindungsstraßen ausgeführt wurden.
 
-Depot und Haltestellen werden jetzt mit Abstand zur Teststraße gebaut und anschließend durch drei ausdrücklich gebaute Straßenabschnitte verbunden. Vorübergehende Lesesperren nach einer Bauantwort führen zum Warten an derselben Spielgrenze. Der Baubefehl wird dabei nicht erneut ausgeführt. Ursprüngliche Ablehnungen und verfügbare Fehlerdetails bleiben im normalen Testbericht erhalten.
+Der korrigierte Leser durchläuft die tatsächlichen Einträge der vom Spiel gelieferten Sammlung. Er prüft weiterhin deren Anzahl, gültige Straßenkanten und passende Endpunkte. Auch die spätere Abfrage der Linienfahrzeuge verwendet diesen Leser. Die lokalen Tests bilden jetzt auch Sammlungen nach, deren Einträge sich nicht über laufende Nummern lesen lassen. Der Ablauf bleibt gleich; eine weitere Solo-Diagnose ist nicht nötig.
 
 Der automatische Ablauf hat weiterhin **240 Runden**: Straße, Depot, zwei Haltestellen, Straßenverbindungen, Fahrzeugkauf, Linie, Abfahrt und gemeinsame Pausen. Die Änderungen müssen noch in euren tatsächlichen TF2-Installationen geprüft werden. Freies gleichzeitiges Bauen, Spielercursor und normale gemeinsame Pause-Tasten sind noch nicht freigeschaltet.
 
 ## 1. Beide aktualisieren und die vorherige Installation zurücksetzen
 
 1. Den laufenden Test beenden, **TF2 vollständig schließen** und den bisherigen Launcher schließen. Ein Versionswechsel wartet, solange TF2 oder ein Messcontroller läuft.
-2. Den vorhandenen Launcher normal neu öffnen und die Updateprüfung abwarten. Ab Alpha5.2 lädt er neuere GitHub-Releases automatisch. Auf beiden PCs muss oben **Alpha5.7-Bautest** stehen. Ihr braucht keine neue ZIP von Hand herunterzuladen oder über Discord auszutauschen.
+2. Den vorhandenen Launcher normal neu öffnen und die Updateprüfung abwarten. Ab Alpha5.2 lädt er neuere GitHub-Releases automatisch. Auf beiden PCs muss oben **Alpha5.8-Bautest** stehen. Ihr braucht keine neue ZIP von Hand herunterzuladen oder über Discord auszutauschen.
 3. Auf beiden PCs **Bisherige Installation wiederherstellen** verwenden. Das gilt insbesondere für eine noch installierte **API-Diagnosemod**. Der Programm-Download allein ersetzt die installierten Testdateien nicht.
 4. Oben unter **Ordner prüfen** den eigenen **TF2-Installationsordner** und **Steam-Saveordner** prüfen. Übliche Pfade sind `…\steamapps\common\Transport Fever 2` und `…\Steam\userdata\<Kontonummer>\1066780\local\save`.
 5. Im ersten, standardmäßig geöffneten Reiter **Bautest (experimentell)** bleiben. **API-Diagnose allein** ist als zweiter Reiter für gezielte spätere Untersuchungen vorhanden und wird für diesen Versuch nicht verwendet.
@@ -40,7 +40,7 @@ Bei einer Windows-Firewallabfrage den Launcher im verwendeten LAN-/Hamachi-Netz 
 2. Nach der Freigabe innerhalb von zwei Minuten **TF2 über Steam starten** klicken oder TF2 selbst über Steam starten. Für das anschließende Laden wartet der gesamte Sitzungsstart bis zu zehn Minuten. Den Launcher offen lassen.
 3. In TF2 **Spiel laden** öffnen und ausdrücklich die **neu im eigenen Launcher angezeigte `TF2-Koop-Messtest-….sav`** auswählen. Nicht **Fortsetzen** drücken und nicht die `TF2-API-Diagnose-….sav` wählen.
 4. Rechts über **Aktivierte Mods**, neben **GRUNDOPTIONEN**, auf **OPTIONEN AUSWÄHLEN** klicken und den Reiter **Mods** öffnen.
-5. Für diese Testsave auf beiden PCs ausschließlich **TF2 Strict Sync - automatischer Bautest (Alpha5.7)** und **Legacy Fahrzeuge** aktivieren. **TF2 API-Diagnose**, alte Koop-Mods, **MP Lockstep** und **MP Bridge** deaktivieren; keine weiteren Mods einschalten. Die Modauswahl bei **Freies Spiel** ändert die Liste dieser gespeicherten Save nicht.
+5. Für diese Testsave auf beiden PCs ausschließlich **TF2 Strict Sync - automatischer Bautest (Alpha5.8)** und **Legacy Fahrzeuge** aktivieren. **TF2 API-Diagnose**, alte Koop-Mods, **MP Lockstep** und **MP Bridge** deaktivieren; keine weiteren Mods einschalten. Die Modauswahl bei **Freies Spiel** ändert die Liste dieser gespeicherten Save nicht.
 6. Die Testsave laden. Wenn einer früher fertig ist, bleibt seine Spielzeit gehalten, bis beide geladen haben und der gemeinsame Startvergleich passt.
 
 ## 5. Während der 240 Runden
@@ -65,7 +65,7 @@ Für einen neuen Versuch wieder einen frischen gemeinsamen Sitzungscode und neu 
 
 ## Erste Einrichtung, große Karte und spätere Updates
 
-Wer noch keinen Launcher ab Alpha5.2 hat, lädt einmal das vollständige Paket: **[TFCoop-Windows.zip — neueste Version](https://github.com/TastierPizza-code/TFCoop/releases/latest/download/TFCoop-Windows.zip)**. Die ZIP vollständig in einen eigenen Ordner, beispielsweise `C:\Games\TFCoop`, entpacken. Nicht in den Spielordner oder über einen alten Launcher entpacken. `TF2-Coop.exe`, `_internal` und `package_manifest.json` zusammenlassen. Git und Python werden auf Spieler-PCs nicht benötigt. Diese Anleitung gehört zu [Alpha5.7 / v0.5.7](https://github.com/TastierPizza-code/TFCoop/releases/tag/v0.5.7).
+Wer noch keinen Launcher ab Alpha5.2 hat, lädt einmal das vollständige Paket: **[TFCoop-Windows.zip — neueste Version](https://github.com/TastierPizza-code/TFCoop/releases/latest/download/TFCoop-Windows.zip)**. Die ZIP vollständig in einen eigenen Ordner, beispielsweise `C:\Games\TFCoop`, entpacken. Nicht in den Spielordner oder über einen alten Launcher entpacken. `TF2-Coop.exe`, `_internal` und `package_manifest.json` zusammenlassen. Git und Python werden auf Spieler-PCs nicht benötigt. Diese Anleitung gehört zu [Alpha5.8 / v0.5.8](https://github.com/TastierPizza-code/TFCoop/releases/tag/v0.5.8).
 
 Euer bisheriger privater Ausgangsspielstand mit der **sehr großen Karte** bleibt lokal erhalten. Es muss keine neue Karte erzeugt werden. Die öffentliche ZIP enthält keinen Spielstand. Der Launcher übernimmt das passende Dateipaar normalerweise automatisch aus dem bisherigen Testlauf oder seinem lokalen Speicher.
 
@@ -82,9 +82,9 @@ Private Spielstände liegen unter `%LOCALAPPDATA%\TF2StrictProbe\baseline`, Upda
 | Es steht noch eine ältere Version im Fenster | TF2 und Messcontroller schließen, Launcher normal neu öffnen und Updateprüfung abwarten. Bleibt das Update unerreichbar, die aktuelle ZIP oben separat entpacken. |
 | Diagnose noch installiert / Vorbereitung blockiert | TF2 schließen und **Bisherige Installation wiederherstellen** verwenden; danach im Bautestreiter neu vorbereiten. |
 | Wartet auf Mitspieler | Auf beiden PCs Host-IP, frischen gemeinsamen Sitzungscode, Hamachi-Verbindung und Firewallzugriff prüfen. |
-| Verbunden, aber kein Spielkontakt | Startfreigabe abwarten, dann TF2 starten und die neu angezeigte Messtest-Save mit der Alpha5.7-Strict-Mod laden. |
+| Verbunden, aber kein Spielkontakt | Startfreigabe abwarten, dann TF2 starten und die neu angezeigte Messtest-Save mit der Alpha5.8-Strict-Mod laden. |
 | Testmod oder Save fehlt | Eigene Spiel-/Saveordner prüfen; die Vorbereitung muss erfolgreich beendet sein. Den genauen Dateinamen im Bautestreiter verwenden. |
-| Beim Laden stehen alte Mods in der Liste | Für die ausgewählte Save **OPTIONEN AUSWÄHLEN → Mods** öffnen. Nur Alpha5.7 Strict Sync und Legacy Fahrzeuge aktivieren. |
+| Beim Laden stehen alte Mods in der Liste | Für die ausgewählte Save **OPTIONEN AUSWÄHLEN → Mods** öffnen. Nur Alpha5.8 Strict Sync und Legacy Fahrzeuge aktivieren. |
 | Unterschiedliche Testdateien / Ausgangszustände | Versionen und Modlisten vergleichen; beide wiederherstellen und mit frischem gemeinsamem Code neu vorbereiten. |
 | Lua-/Native-Fehler oder Bauabbruch | Auf beiden PCs **Testbericht als ZIP …** exportieren und beide Berichte mit Fehlertext schicken. Keine erneute Solo-Diagnose nötig. |
 | Berichtsexport nicht möglich | Zunächst den genauen Fehlertext schicken; vorhandene Sitzungsdateien und Sicherungen behalten. |

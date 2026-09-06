@@ -167,6 +167,256 @@ class BuildEngineTests(unittest.TestCase):
         self.assertIsNone(h.e.scene.connectors)
         self.assertFalse(any(str(key).startswith('a:4') for key,_ in h.e.local_bindings().items()))
 
+    def change_incidence(self,h,body):
+        """Replace one owned endpoint collection; keep its real edge values."""
+        h.lua.execute('''
+          local get=api.engine.system.streetSystem.getNode2StreetEdgeMap
+          api.engine.system.streetSystem.getNode2StreetEdgeMap=function()
+            local m=get();local values={}
+            for _,id in pairs(m[roadends[3]])do values[#values+1]=id end
+            local collection=native_incidence(values);local mt=getmetatable(collection)
+            incidence_iterator_calls=0;incidence_length_calls=0
+        '''+body+'''
+            m[roadends[3]]=collection;return m
+          end
+        ''')
+
+    def assert_incidence_plan_refuses_unchanged(self,h,reason=None):
+        before=h.snapshot();bindings=h.j.encode(h.e.local_bindings())
+        sent,nextid,money=h.lua.globals().sent,h.lua.globals().nextid,h.lua.globals().money
+        with self.assertRaises(Exception) as caught:h.plan('a:4',{'op':'PROBE_CONNECT'})
+        if reason:self.assertIn(reason,str(caught.exception))
+        self.assert_no_connector_binding(h)
+        self.assertEqual(h.snapshot(),before)
+        self.assertEqual(h.j.encode(h.e.local_bindings()),bindings)
+        self.assertEqual((h.lua.globals().sent,h.lua.globals().nextid,h.lua.globals().money),(sent,nextid,money))
+
+    def test_native_incidence_has_length_and_values_but_no_positional_index_before_and_after_connect(self):
+        h=self.disconnected_scene()
+        inspect=h.lua.eval('''function()
+          local m=api.engine.system.streetSystem.getNode2StreetEdgeMap();local out={}
+          for _,node in ipairs({roadends[1],roadends[2],roadends[3],depot_outer,stop_outer[1],stop_outer[2]})do
+            local c=m[node];local n=0
+            assert(type(c)=='userdata'and c[1]==nil,'fixture must reproduce native nonindexed shape')
+            for key,id in pairs(c)do
+              assert(type(key)=='string'and type(id)=='number'and world[id].BASE_EDGE)
+              n=n+1
+            end
+            assert(n==#c);out[#out+1]=n
+          end
+          return out
+        end''')
+        self.assertEqual([inspect()[i] for i in range(1,7)],[1]*6)
+        h.apply('a:4',{'op':'PROBE_CONNECT'})
+        self.assertEqual([inspect()[i] for i in range(1,7)],[2]*6)
+        self.assertTrue(h.snapshot()['probe']['connectivity']['connected'])
+
+    def test_incidence_iteration_order_does_not_change_connection_identity_or_snapshot(self):
+        a,b=self.disconnected_scene(),self.disconnected_scene(offset=10000)
+        b.lua.globals().incidence_reverse=True
+        self.assertEqual(a.apply('a:4',{'op':'PROBE_CONNECT'}),b.apply('a:4',{'op':'PROBE_CONNECT'}))
+        self.assertEqual(a.snapshot()['coverage']['missing'],[])
+
+    def test_plain_incidence_sequences_remain_supported_alongside_native_collections(self):
+        h=self.disconnected_scene();self.change_incidence(h,'collection=values')
+        self.assertTrue(h.apply('a:4',{'op':'PROBE_CONNECT'})['probe']['connectivity']['connected'])
+
+    def test_incidence_scalar_containers_and_invalid_lengths_refuse_without_world_mutation(self):
+        for value in ('17',"'not a collection'",'function()end'):
+            with self.subTest(container=value):
+                h=self.disconnected_scene();self.change_incidence(h,'collection='+value)
+                self.assert_incidence_plan_refuses_unchanged(h,'container unavailable')
+        for value in ('nil',"'1'",'true','-1','.5','17','0/0','math.huge'):
+            with self.subTest(length=value):
+                h=self.disconnected_scene()
+                self.change_incidence(h,'mt.__len=function()return '+value+' end; mt.__pairs=function()incidence_iterator_calls=incidence_iterator_calls+1;error("must not enumerate invalid length")end')
+                self.assert_incidence_plan_refuses_unchanged(h,'a:4.before[')
+                self.assertEqual(h.lua.globals().incidence_iterator_calls,0)
+
+    def test_incidence_requires_numeric_entity_values_and_never_substitutes_valid_keys(self):
+        for value in ('nil','true','false','tostring(values[1])','0','-1','1.5','2147483648','0/0','math.huge',"native_params({},'opaque')"):
+            with self.subTest(value=value):
+                h=self.disconnected_scene()
+                self.change_incidence(h,'''mt.__pairs=function()return function()
+                  incidence_iterator_calls=incidence_iterator_calls+1
+                  if incidence_iterator_calls==1 then return values[1],'''+value+''' end
+                end end''')
+                self.assert_incidence_plan_refuses_unchanged(h,'a:4.before[')
+                self.assertEqual(h.lua.globals().incidence_iterator_calls,1)
+
+    def test_incidence_iterator_creation_and_step_exceptions_fail_closed(self):
+        for body,reason in (
+            ("mt.__pairs=function()error('fixture iterator creation failed',0)end",'iterator unavailable'),
+            ("mt.__pairs=function()return 42 end",'iteration failed'),
+            ("mt.__pairs=function()return function()error('fixture iterator step failed',0)end end",'iteration failed'),
+            ('''mt.__pairs=function()return function()
+              incidence_iterator_calls=incidence_iterator_calls+1
+              if incidence_iterator_calls==1 then return 'slot',values[1]end
+              error('fixture iterator failed after partial observation',0)
+            end end''','iteration failed')):
+            with self.subTest(reason=reason,body=body):
+                h=self.disconnected_scene();self.change_incidence(h,body)
+                self.assert_incidence_plan_refuses_unchanged(h,reason)
+
+    def test_incidence_length_and_terminal_key_must_match_complete_iteration(self):
+        for body,reason,calls in (
+            ('''mt.__len=function()return 2 end
+              mt.__pairs=function()return function()
+                incidence_iterator_calls=incidence_iterator_calls+1
+                if incidence_iterator_calls==1 then return 'slot',values[1]end
+              end end''','count mismatch',2),
+            ('''mt.__pairs=function()return function()
+                incidence_iterator_calls=incidence_iterator_calls+1;return nil,values[1]
+              end end''','terminal value without key',1),
+            ('''mt.__pairs=function()return function()
+                incidence_iterator_calls=incidence_iterator_calls+1;return incidence_iterator_calls,values[1]
+              end end''','exceeded declared length',2)):
+            with self.subTest(reason=reason):
+                h=self.disconnected_scene();self.change_incidence(h,body)
+                self.assert_incidence_plan_refuses_unchanged(h,reason)
+                self.assertEqual(h.lua.globals().incidence_iterator_calls,calls)
+
+    def test_incidence_duplicate_entities_are_not_a_second_graph_edge(self):
+        h=self.disconnected_scene()
+        self.change_incidence(h,'''mt.__len=function()return 2 end
+          mt.__pairs=function()return function()
+            incidence_iterator_calls=incidence_iterator_calls+1
+            if incidence_iterator_calls<=2 then return incidence_iterator_calls,values[1]end
+          end end''')
+        self.assert_incidence_plan_refuses_unchanged(h,'duplicate incident street edge')
+        self.assertEqual(h.lua.globals().incidence_iterator_calls,2)
+
+    def test_incidence_never_ending_iterator_stops_after_sixteen_values_and_one_end_check(self):
+        h=self.disconnected_scene()
+        h.lua.execute('''
+          local m=api.engine.system.streetSystem.getNode2StreetEdgeMap();local prototype
+          for _,id in pairs(m[roadends[3]])do prototype=world[id]end
+          for i=1,15 do world[fresh()]=copy(prototype)end
+        ''')
+        self.change_incidence(h,'''assert(#values==16)
+          mt.__pairs=function()return function()
+            incidence_iterator_calls=incidence_iterator_calls+1
+            return incidence_iterator_calls,values[(incidence_iterator_calls-1)%16+1]
+          end end''')
+        self.assert_incidence_plan_refuses_unchanged(h,'exceeded declared length')
+        self.assertEqual(h.lua.globals().incidence_iterator_calls,17)
+
+    def test_incidence_final_length_is_rechecked_and_cannot_disappear_or_change(self):
+        for finish,reason in (('return 2','length changed during iteration'),
+                              ("error('fixture final length failed',0)",'length read failed')):
+            with self.subTest(finish=finish):
+                h=self.disconnected_scene()
+                self.change_incidence(h,'''mt.__len=function()
+                  incidence_length_calls=incidence_length_calls+1
+                  if incidence_length_calls==1 then return 1 end
+                '''+finish+' end')
+                self.assert_incidence_plan_refuses_unchanged(h,reason)
+                self.assertEqual(h.lua.globals().incidence_length_calls,2)
+
+    def test_post_connect_partial_incidence_read_never_publishes_partial_bindings(self):
+        h=self.disconnected_scene();bindings=h.j.encode(h.e.local_bindings())
+        plan=h.plan('a:4',{'op':'PROBE_CONNECT'});result=h.lua.globals().apply_command(plan.native,False)
+        self.change_incidence(h,'''assert(#values==2)
+          mt.__pairs=function()return function()
+            incidence_iterator_calls=incidence_iterator_calls+1
+            if incidence_iterator_calls==1 then return 'first',values[1]end
+            error('fixture second post-connect incidence failed',0)
+          end end''')
+        with self.assertRaisesRegex(Exception,'iteration failed'):h.e.finish(plan,result,True)
+        self.assert_no_connector_binding(h)
+        self.assertEqual(h.j.encode(h.e.local_bindings()),bindings)
+        self.assertEqual(h.lua.globals().sent,6)
+
+    def test_ordered_callback_arrays_do_not_accept_unindexed_incidence_shape(self):
+        h=self.disconnected_scene();plan=h.plan('a:4',{'op':'PROBE_CONNECT'})
+        h.lua.globals().apply_command(plan.native,False)
+        result=h.lua.eval('native_record({resultEntities=native_incidence(connector_ids)})')
+        with self.assertRaisesRegex(Exception,'build array hole at connector.resultEntities'):
+            h.e.finish(plan,result,True)
+        self.assert_no_connector_binding(h)
+
+    def change_line_membership(self,h,body):
+        h.lua.execute('''
+          local get=api.engine.system.transportVehicleSystem.getLineVehicles
+          api.engine.system.transportVehicleSystem.getLineVehicles=function(id)
+            local values={};for _,entity in pairs(get(id))do values[#values+1]=entity end
+            local collection=native_entity_collection(values);local mt=getmetatable(collection)
+            membership_calls=0
+        '''+body+'''return collection end''')
+
+    def assert_unreadable_line_membership(self,h,reason=None):
+        sent,money,now=h.lua.globals().sent,h.lua.globals().money,h.lua.globals().now
+        bindings=h.j.encode(h.e.local_bindings());snapshot=h.snapshot()
+        errors='\n'.join(snapshot['coverage']['missing'])
+        self.assertIn('a:5',errors)
+        if reason:self.assertIn(reason,errors)
+        line=next(obj for obj in snapshot['objects'] if obj['logical_id']=='a:5')
+        self.assertEqual(line['state'],{'unavailable':True})
+        self.assertNotIn('line',snapshot['probe'])
+        self.assertEqual(h.j.encode(h.e.local_bindings()),bindings)
+        self.assertEqual((h.lua.globals().sent,h.lua.globals().money,h.lua.globals().now),(sent,money,now))
+
+    def test_line_membership_uses_native_values_for_empty_and_assigned_line(self):
+        h=Harness()
+        for key,command in COMMANDS[:8]:h.apply(key,command)
+        self.assertEqual(h.snapshot()['probe']['line']['vehicles'],[])
+        h.apply(*COMMANDS[8])
+        h.lua.globals().line_id=h.e.local_bindings()['a:5']
+        self.assertTrue(h.lua.eval('''(function()
+          local c=api.engine.system.transportVehicleSystem.getLineVehicles(line_id)
+          assert(type(c)=='userdata'and #c==1 and c[1]==nil)
+          local n=0;for key,value in pairs(c)do
+            assert(type(key)=='string'and value==vehicle_id);n=n+1
+          end;return n==1
+        end)()'''))
+        self.assertEqual(h.snapshot()['probe']['line']['vehicles'],['b:3'])
+        self.assertEqual(h.snapshot()['coverage']['missing'],[])
+
+    def test_line_membership_empty_observation_never_invents_assigned_vehicle(self):
+        h=Harness();before=h.build()
+        self.change_line_membership(h,'collection=native_entity_collection({});')
+        after=h.snapshot()
+        self.assertEqual(after['probe']['line']['vehicles'],[])
+        self.assertEqual(after['probe']['vehicle']['line'],'a:5')
+        self.assertEqual(after['coverage']['missing'],[])
+        self.assertNotEqual(before,after)
+
+    def test_line_membership_rejects_invalid_values_even_with_valid_entity_keys(self):
+        for value in ('nil','false','tostring(values[1])','-1','0','1.5','2147483648','999999','0/0','math.huge'):
+            with self.subTest(value=value):
+                h=Harness();h.build()
+                self.change_line_membership(h,'''mt.__pairs=function()return function()
+                  membership_calls=membership_calls+1
+                  if membership_calls==1 then return values[1],'''+value+''' end
+                end end;''')
+                self.assert_unreadable_line_membership(h,'build entity missing' if value=='999999' else 'getLineVehicles')
+                self.assertEqual(h.lua.globals().membership_calls,1)
+
+    def test_line_membership_enforces_one_vehicle_limit_and_valid_container_length(self):
+        for change in ('collection=false;',"collection='invalid';",'collection=17;',
+                       'mt.__len=function()return 2 end;',"mt.__len=function()return '1' end;",
+                       'mt.__len=function()return -.5 end;',"mt.__len=function()error('fixture membership length failed',0)end;"):
+            with self.subTest(change=change):
+                h=Harness();h.build();self.change_line_membership(h,change)
+                self.assert_unreadable_line_membership(h,'getLineVehicles')
+
+    def test_line_membership_partial_duplicate_and_throwing_iterations_are_not_valid_snapshots(self):
+        for body,reason in (
+            ("mt.__pairs=function()error('fixture pairs failure',0)end;",'iterator unavailable'),
+            ('mt.__pairs=function()return function()return nil end end;','count mismatch'),
+            ('''mt.__pairs=function()return function()
+              membership_calls=membership_calls+1
+              if membership_calls==1 then return 'slot',values[1]end
+              error('fixture second membership read failed',0)
+            end end;''','iteration failed'),
+            ('''mt.__pairs=function()return function()
+              membership_calls=membership_calls+1;return membership_calls,values[1]
+            end end;''','exceeded declared length')):
+            with self.subTest(reason=reason):
+                h=Harness();h.build();self.change_line_membership(h,body)
+                self.assert_unreadable_line_membership(h,reason)
+                self.assertLessEqual(h.lua.globals().membership_calls,2)
+
     def test_stock_constructions_keep_distinct_ports_until_explicit_link_command(self):
         h=self.disconnected_scene();before=h.snapshot()
         self.assertFalse(before['probe']['connectivity']['connected'])

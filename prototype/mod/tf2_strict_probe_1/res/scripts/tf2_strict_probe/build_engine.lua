@@ -458,11 +458,47 @@ function M.new(json)
     -- Read only the six owned endpoints; never locate identity by world position.
     return need(api.engine.system.streetSystem.getNode2StreetEdgeMap(),'street incidence map unavailable')
   end
+  local function entity_collection(values,max,path,label,duplicate_error)
+    if type(values)~='table'and type(values)~='userdata'then invalid(label..' container unavailable',path,values)end
+    local function length()
+      local ok,n=pcall(function()return #values end)
+      if not ok then error(label..' length read failed at '..path..': '..safe_error(n),0)end
+      if type(n)~='number'then invalid(label..' length unavailable',path..'.#',n)end
+      return int(n,0,max,path..'.#')
+    end
+    local expected=length()
+    -- Native Sol2 lookup containers need not expose positional v[1..#v].
+    -- Enumerate their actual values; never reinterpret keys as entity IDs.
+    -- Only unordered street incidence and line-vehicle membership use this
+    -- reader. Ordered construction, callback and vehicle arrays retain arr().
+    local ok,iter,state,control=pcall(pairs,values)
+    if not ok then error(label..' iterator unavailable at '..path..': '..safe_error(iter),0)end
+    local out,seen,count=json.array(),{},0
+    -- At most max values plus one terminating call. Even a broken iterator
+    -- which never terminates cannot supply an unbounded or partial proof.
+    for step=1,expected+1 do
+      local read_ok,key,id=pcall(iter,state,control)
+      if not read_ok then error(label..' iteration failed at '..path..' step '..step..': '..safe_error(key),0)end
+      if key==nil then
+        if id~=nil then invalid(label..' terminal value without key',path,id)end
+        if count~=expected then error(label..' count mismatch at '..path..' (expected '..expected..', observed '..count..')',0)end
+        if length()~=expected then error(label..' length changed during iteration at '..path,0)end
+        return out
+      end
+      if count>=expected then error(label..' iterator exceeded declared length at '..path,0)end
+      local value_path=path..'.value['..step..']'
+      if type(id)~='number'then invalid(label..' entity value unavailable',value_path,id)end
+      id=existing(int(id,1,2147483647,value_path))
+      if seen[id]then error((duplicate_error or 'duplicate '..label..' entity')..' at '..path,0)end
+      seen[id]=true;count=count+1;out[count]=id;control=key
+    end
+    error(label..' iterator did not terminate at '..path,0)
+  end
   local function incident(map,node,path)
-    local edges=arr(read(map,node,path),16,path..'['..node..']');local out={}
-    for _,id in ipairs(edges)do
-      id=existing(id);if out[id]then error('duplicate incident street edge at '..path,0)end
-      local e=edge_values(id,path..'.edge')
+    local values=read(map,node,path);path=path..'['..node..']'
+    local edges=entity_collection(values,16,path,'street incidence','duplicate incident street edge');local out={}
+    for i,id in ipairs(edges)do
+      local e=edge_values(id,path..'.value['..i..'].edge')
       if e.node0~=node and e.node1~=node then error('street incidence map has unrelated edge',0)end
       out[id]=json.encode(e)
     end
@@ -809,7 +845,7 @@ function M.new(json)
           details[i]={stop=stops[i],station=int(read(s,'station',sp),nil,nil,sp..'.station'),terminal=int(read(s,'terminal',sp),nil,nil,sp..'.terminal'),
             load_mode=int(read(s,'loadMode',sp),nil,nil,sp..'.loadMode'),min_wait=dec(read(s,'minWaitingTime',sp),sp..'.minWaitingTime'),max_wait=dec(read(s,'maxWaitingTime',sp),sp..'.maxWaitingTime')}
         end
-        for i,v in ipairs(arr(api.engine.system.transportVehicleSystem.getLineVehicles(id),1,p..'.getLineVehicles'))do vehicles[#vehicles+1]=reference(v,p..'.getLineVehicles['..i..']')end;table.sort(vehicles)
+        for i,v in ipairs(entity_collection(api.engine.system.transportVehicleSystem.getLineVehicles(id),1,p..'.getLineVehicles','line vehicle membership'))do vehicles[#vehicles+1]=reference(v,p..'.getLineVehicles['..i..']')end;table.sort(vehicles)
         probe.line={logical_id=key,stops=stops,vehicles=vehicles}
         return {stops=details,vehicles=vehicles,name=component(id,'NAME').name,color=vector(read(component(id,'COLOR'),'color',key..'.COLOR'),3,key..'.COLOR.color')}
       elseif b.kind=='vehicle'then

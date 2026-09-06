@@ -1,5 +1,85 @@
 # Prüfstand
 
+## Alpha5.8: begrenzte Iteration nativer Entity-Sammlungen
+
+Beide echten Alpha5.7-Berichte enthalten identische Manifeste und zwölf identische
+Journaleinträge einschließlich der erfassten Snapshots und Prüfsummen. Gemeinsam
+bestätigt sind fünf Aufträge: Pause, Straße, Depot und zwei Haltestellen; dazu
+fünf Pausenschritte. Straße: 111.618, Depot: 10.000, Haltestellen: je 98.000.
+Beide Firmen haben danach 4.682.382 bei unverändertem Kredit von 5.000.000.
+Zeit und Pause bleiben durchgehend bei 13.400.000 Mikrosekunden und `true`.
+Es gibt in diesem Lauf keine Freigabe eines fortschreitenden Zeitschritts.
+
+Runde 5 stoppt auf beiden PCs im Lua-Plan für `PROBE_CONNECT`: Die Länge einer
+nativen Straßenanschluss-Sammlung ist positiv, direkter Zugriff auf `[1]` ergibt
+aber `nil`. Der Host hatte den übergeordneten Netzwerk-Apply bereits gesendet;
+intern scheitert dieser noch vor Lua-Apply und dem eigentlichen Enginebefehl.
+Es wurde keine Verbindungsstraße ausgeführt und kein weiterer Schritt bestätigt.
+Der angehängte Fehler-Snapshot ist der letzte gültige historische Zustand. Die
+Roh-Audits sind gekürzt und erfassen diese konkrete Sammlung nicht; ein bestimmter
+interner C++-Containertyp ist damit nicht nachgewiesen. Es gibt keinen beobachteten
+Unterschied zwischen den erfassten Weltzuständen, aber auch keinen vollständigen
+Weltvergleich oder erfolgreichen Fahrzeug-/Fahrtnachweis.
+
+Der alte Leser setzte für die innere Straßen-Inzidenzmenge ein geordnetes Array
+voraus. Der lokale Upstream iteriert deren tatsächliche Werte (`lockstep.lua`,
+Straßenkarten-Leser). Alpha5.8 verwendet einen eigenen geschützten Mengenleser:
+höchstens 16 eindeutige, numerische und existierende Kanten-IDs, vollständige
+Iteration einschließlich Ende und unveränderte Länge. Ein fehlender, fehlerhafter,
+überlanger oder unvollständiger Wert hält weiterhin an. Alle Endpunkt-, Besitz-,
+Altgraph- und Drei-Verbindungen-Prüfungen bleiben erhalten; keine Ersatz-IDs,
+Positionssuche oder leere Ersatzlisten. Ein Leseabbruch nach dem Bau veröffentlicht
+keine teilweise bestätigten Connector-Bindings.
+
+Dieselbe Indexannahme bestand in der ungeordneten Abfrage `getLineVehicles`.
+Vier lokale Upstream-Verwendungen in `mptest.lua` iterieren dort mit `pairs`
+über Fahrzeugwerte; unser Snapshot sortiert die logischen Referenzen. Deshalb
+nutzt auch diese Abfrage den gemeinsamen Leser, begrenzt auf das eine Fahrzeug
+des Testprofils. Ein tatsächlicher Fehler dieser späteren Abfrage wurde noch
+nicht beobachtet. Geordnete Callback-, Konstruktions-, Vektor- und Fahrzeugteil-
+Arrays behalten ihre bisherige Reihenfolge und strikte Indexprüfung.
+
+Die Standardnachbildung stellt beide Mengen als echte Lua-Userdata mit Länge,
+fehlendem Positionszugriff und separater Werteiteration bereit. Diese Form
+modelliert die beobachtete Index-Eigenschaft und die belegte API-Nutzung; sie ist
+kein Mitschnitt des internen TF2-Containers. Native Uhr und Spielwelt bleiben in
+den automatisierten Prüfungen Nachbildungen. Profil `build_v2`, Rezept
+`road-depot-service-v3`, native DLLs und die private Ausgangskarte bleiben gleich.
+Der echte Verbindungsbau, Fahrzeugkauf und die Linienfahrt müssen weiter auf
+beiden Nutzer-PCs bestätigt werden. Es wurde kein Spiel gestartet oder installiert.
+
+Die endgültigen Leser und Testnachbildungen bestehen 340 Bauadapter-Prüfungen
+(85 Fälle jeweils unter Lua 5.1 bis 5.4). Enthalten sind unnummerierbare native
+Sammlungen vor und nach dem Verbindungsbau, umgekehrte Iteration, echte leere
+Linienmitgliedschaft, vollständige Zuweisung, falsche Entity-Werte trotz gültiger
+Schlüssel, Duplikate, Längenänderungen und fehlgeschlagene Iteratoren. Ein nicht
+endender Iterator wird nach höchstens 17 Aufrufen gestoppt; beschädigte Beobachtungen
+werden weder als leere Mengen noch als teilweise gültige Bindings veröffentlicht.
+Geordnete Callback-Arrays lehnen dieselbe unnummerierbare Form weiterhin ab.
+
+Eine getrennte Gegenprobe lädt den unveränderten veröffentlichten Alpha5.7-Adapter,
+dessen SHA mit dem tatsächlichen Nutzerbericht übereinstimmt: Er reproduziert
+den Indexfehler in Runde 5 unter allen vier Lua-Versionen, ohne den Verbindungsbau
+auszuführen. Alpha5.8 schafft mit derselben Nachbildung alle neun Bau- und
+Zuweisungsbefehle, drei Verbindungen und das tatsächliche Modell-Linienmitglied.
+Die Gegenprobe benötigt lokal den alten Adapter; die öffentlichen Regressionen
+haben keine Abhängigkeit vom Veröffentlichungs-Checkout oder privaten Berichten.
+
+117 Python-Prüfungen für Programmstart ohne GUI, Staging, Collector-Identität,
+Updater, Update-Start, Veröffentlichung, Audit-Export, Bauprofil, Abschlussnachweis
+und Bau-Driver bestehen ebenfalls. Der Updater und beide nativen DLLs sind
+bytegleich mit der vorherigen Veröffentlichung.
+
+Der getrennte Integrationslauf besteht 30 Profil-, Driver-, Beobachtungs- und
+Lua-Datei-IPC-Fälle. Zwei Lua-5.3-Instanzen mit unterschiedlichen lokalen IDs
+erreichen darin alle 240 gemeinsamen Grenzen, zwölf tatsächlich ausgeführte
+Modellbefehle je Instanz und identische bestandene Abschlussnachweise. Ihre
+Standard-API liefert jetzt sowohl Straßeninzidenz als auch Linienmitgliedschaft
+als nicht indexierbare Userdata. Ein eigener Fehlerlauf bestätigt außerdem:
+Ungültige Inzidenzwerte stoppen bereits die Planung, ohne Connector-Senden,
+weitere Zeitfreigabe oder neue Bindings. Das ist eine Prüfung der produktiven
+Lua-/Python-Anbindung gegen nachgebildete Spiel-API und Uhr, kein TF2-Spieltest.
+
 ## Alpha5.7: ausdrückliche Straßenverbindungen und erhaltener Callback-Abschluss
 
 Der echte Alpha5.6-Versuch bestätigte die Teststraße einschließlich der drei

@@ -1,20 +1,20 @@
 # TF2: Prototyp für strikte Synchronisation
 
-**Alpha5.7-Bautest setzt den gemeinsamen automatischen 240-Runden-Versuch fort.**
-Er korrigiert die angenommene automatische Straßenverbindung und den Umgang mit
-vorübergehend unlesbaren Statusdateien nach einem Callback. Eine weitere
-Solo-Diagnose ist nicht erforderlich.
+**Alpha5.8-Bautest korrigiert den Leser nativer Straßenanschluss-Sammlungen.**
+Der gemeinsame automatische 240-Runden-Versuch und sein Bauprofil bleiben gleich.
+Die Tests bilden jetzt auch nicht direkt nummerierbare Rückgaben nach. Eine
+weitere Solo-Diagnose ist nicht erforderlich.
 
 Dieser Ordner enthält den Synchronisationskern und die Komponenten des
 kontrollierten Engineversuchs. Der Launcher bereitet eine eigene Testinstallation
 vor und kann die vorherigen Dateien anschließend wiederherstellen.
 
-Der aktuelle **Alpha5.7-Bautest-Launcher** öffnet zuerst den Reiter
+Der aktuelle **Alpha5.8-Bautest-Launcher** öffnet zuerst den Reiter
 **Bautest (experimentell)**. Nach dem Update auf beiden PCs die vorherige
 Installation, insbesondere die Diagnosemod, wiederherstellen. Dann Rollen,
 Host-IP und frischen gemeinsamen Sitzungscode festlegen, neu vorbereiten und
 verbinden. Beide laden ihre neue Messtest-Save mit **TF2 Strict Sync - automatischer
-Bautest (Alpha5.7)** und **Legacy Fahrzeuge**. Ablauf und Wiederherstellung stehen
+Bautest (Alpha5.8)** und **Legacy Fahrzeuge**. Ablauf und Wiederherstellung stehen
 in [ANLEITUNG.md](ANLEITUNG.md).
 
 **API-Diagnose allein** bleibt im zweiten Reiter für gezielte Untersuchungen
@@ -48,10 +48,11 @@ Lua-Dateianbindung sind gebaut und automatisiert geprüft. Ein echter Alpha4.2-
 Nutzertest hat alle 100 gemeinsamen Runden mit übereinstimmenden begrenzten
 Messwerten abgeschlossen: 80 Schritte à 0,2 Sekunden und 20 Pausenrunden.
 Der Host bestätigt die Abschlusswerte beider Spielinstanzen. Der Alpha5-Bauablauf
-ist mit Ersatzengines geprüft. Im echten Alpha5.6-Versuch stimmen die ersten fünf
-Journalzustände beider Teilnehmer vollständig überein: Ausgangswelt, Pause und
-Straßenbau einschließlich Firmenwerte. Danach verweigert TF2 auf einem PC den
-Depotbau; beim anderen fehlt die Callback-Aussage wegen eines Statuslesefehlers.
+ist mit Ersatzengines geprüft. Im echten Alpha5.7-Versuch stimmen alle zwölf
+Journalzustände beider Teilnehmer vollständig überein: Straße, Depot und zwei
+Haltestellen wurden gemeinsam gebaut und abgebucht. Danach scheitern beide beim
+Lesen der Anschluss-Sammlung, bevor eine Verbindungsstraße ausgeführt wird. Die
+Simulation blieb gehalten; Fahrzeugkauf und Linienfahrt sind noch nicht erreicht.
 Im Alpha5.2-Nutzertest wurde die Straße gebaut; anschließend brach das Lesen der
 Konstruktionstransformation in Runde 1 ab. Alpha5.3 behob den dabei beobachteten
 Fehler der Lua-Rückgabewerte. Im anschließenden echten Alpha5.3-Test erschien nach
@@ -104,9 +105,9 @@ strikten Synchronitätsprotokolls. Der letzte gültige Snapshot bleibt separat
 als historisch markiert. Der Strict-Mod bringt eine eigene byteidentische
 Collector-Kopie mit, sodass der Solo-Mod deaktiviert bleiben kann.
 
-Spieler mit einem Launcher ab Alpha5.2 erhalten Alpha5.7 über die vorhandene
+Spieler mit einem Launcher ab Alpha5.2 erhalten Alpha5.8 über die vorhandene
 Updatefunktion: TF2 und Messcontroller schließen, den Launcher normal öffnen
-und auf **Alpha5.7-Bautest** warten. Danach vorherige Installation wiederherstellen
+und auf **Alpha5.8-Bautest** warten. Danach vorherige Installation wiederherstellen
 und im ersten Reiter mit frischem gemeinsamem Code neu vorbereiten. Ein erneuter
 ZIP-Download ist bei funktionierender Updateprüfung nicht nötig. Nach diesem
 Versuch werden beide normalen Testbericht-ZIPs benötigt.
@@ -299,7 +300,7 @@ und ein ausreichend vollständiger Zustandsvergleich. Steam-Einladungen, große
 Karten und Wiederaufnahme nach Absturz werden durch diesen Prototyp noch nicht
 zugesichert.
 
-Die Solo-Diagnoseberichte sind ausgewertet. Der gemeinsame Alpha5.7-Bauversuch
+Die Solo-Diagnoseberichte sind ausgewertet. Der gemeinsame Alpha5.8-Bauversuch
 muss nun zeigen, ob Zeit, explizit geprüfte
 Bauobjekte, Firmenwerte und Fahrzeugbewegung trotz verschiedener Wartezeiten
 gleich bleiben. Der abgeschlossene Zeit-/Pausetest beantwortet diese zusätzliche

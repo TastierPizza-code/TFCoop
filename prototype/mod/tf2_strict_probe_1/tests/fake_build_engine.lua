@@ -59,6 +59,26 @@ function native_record(values)
   end
   return object
 end
+-- Alpha5.7 reached a genuine native incidence collection with #value > 0
+-- while value[1] was nil. The upstream/Sol2 collection contract uses pairs
+-- VALUES; this fixture exercises that contract, which the ZIP did not record.
+-- Neither numeric indexing nor the iterator keys identify an edge.
+function native_entity_collection(values)
+  local object=native_params({},'opaque');local mt=getmetatable(object)
+  mt.__len=function()return #values end
+  mt.__index=function()return nil end
+  mt.__pairs=function()
+    local index=0;local reverse=incidence_reverse==true
+    return function()
+      index=index+1;if index>#values then return nil end
+      local at=reverse and #values-index+1 or index
+      return 'opaque-incidence-slot-'..index,values[at]
+    end,object,nil
+  end
+  mt.pairs=mt.__pairs
+  return object
+end
+native_incidence=native_entity_collection
 -- The recovered Alpha5.4 reports exposed genuine component userdata whose
 -- absent timeBuild member returned nil. Preserve that distinction from a
 -- native getter exception and keep live mutable backing fields for tests.
@@ -101,9 +121,11 @@ api={type={ComponentType=setmetatable({},{__index=function(_,k)return k end}),
             for _,n in ipairs({w.BASE_EDGE.node0,w.BASE_EDGE.node1})do out[n]=out[n]or{};out[n][#out[n]+1]=id end
           end
         end
-        for _,ids in pairs(out)do table.sort(ids)end;return out
+        for node,ids in pairs(out)do table.sort(ids);out[node]=native_incidence(ids)end;return out
       end},
-      transportVehicleSystem={getLineVehicles=function(id)local out={};for n,w in pairs(world)do if w.TRANSPORT_VEHICLE and w.TRANSPORT_VEHICLE.line==id then out[#out+1]=n end end;return out end}}},
+      -- Unordered membership uses the same upstream pairs-values contract;
+      -- this models it without claiming its native C++ type was measured.
+      transportVehicleSystem={getLineVehicles=function(id)local out={};for n,w in pairs(world)do if w.TRANSPORT_VEHICLE and w.TRANSPORT_VEHICLE.line==id then out[#out+1]=n end end;return native_entity_collection(out) end}}},
   res={modelRep={find=function(name)return name==assets.vehicle_model and 7 or -1 end,getName=function(id)return id==7 and assets.vehicle_model or nil end,
       get=function(id)return id==7 and {metadata={transportVehicle={}}}or nil end},
     streetTypeRep={find=function(name)return name==assets.street_type and 8 or -1 end,getName=function(id)return id==8 and assets.street_type or nil end}},

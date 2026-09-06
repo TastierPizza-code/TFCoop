@@ -1,4 +1,4 @@
-# API-Diagnose und Baufehlerberichte in Alpha5.7
+# API-Diagnose und Baufehlerberichte in Alpha5.8
 
 **Die zwei vorhandenen Alpha5.4-Soloberichte wurden geborgen und ausgewertet.
 Eine erneute Solo-Diagnose ist für den nächsten Schritt nicht nötig.** Jetzt
@@ -51,8 +51,11 @@ dokumentierten automatischen Wert `-1`; siehe die
 Ungültige verpflichtende Zahlenwerte
 stoppen den Test weiterhin; Fehlermeldungen nennen den konkreten Feldpfad.
 
-Der weitere Ablauf mit Depot, Haltestellen, Fahrzeug und Linie
-muss im tatsächlichen gemeinsamen Test bestätigt werden.
+Die beiden Alpha5.7-Berichte bestätigen inzwischen Depot und beide Haltestellen
+bei gehaltener Simulation. Die Rohberichte sind wegen ihres Größenlimits gekürzt;
+die konkrete Straßenanschluss-Sammlung des neuen Planungsfehlers ist darin nicht
+enthalten. Die Korrektur ihres Lesers in Alpha5.8, der Verbindungsbau, Fahrzeugkauf
+und Linienfahrt müssen im tatsächlichen gemeinsamen Test bestätigt werden.
 
 ## Alpha5.5: vorhandene Berichte übernehmen
 
@@ -94,12 +97,12 @@ ausdrücklich eine weitere Solo-Messung benötigt wird, bleibt der Modus im
 zweiten Reiter **API-Diagnose allein** verfügbar:
 
 1. TF2 und bisherigen Test schließen, vorhandenen Launcher ab Alpha5.2 neu öffnen
-   und das Update auf **Alpha5.7-Bautest** abwarten; vorherige Installation wiederherstellen.
+   und das Update auf **Alpha5.8-Bautest** abwarten; vorherige Installation wiederherstellen.
 2. Oben lokale Pfade prüfen und im zweiten Reiter **API-Diagnose allein**
    **Diagnose vorbereiten** verwenden. Host-IP, Sitzungscode und Mitspieler
    werden nicht benötigt.
 3. TF2 manuell über Steam starten. Die angezeigte `TF2-API-Diagnose-….sav` mit
-   ausschließlich **TF2 API-Diagnose (Alpha5.7)** und **Legacy Fahrzeuge** laden.
+   ausschließlich **TF2 API-Diagnose (Alpha5.8)** und **Legacy Fahrzeuge** laden.
    Die Modliste unter **Spiel laden → OPTIONEN AUSWÄHLEN → Mods** ändern.
 4. Etwa zehn Sekunden warten, ohne selbst zu bauen oder die Geschwindigkeit
    umzuschalten. **Diagnosebericht als ZIP …** exportieren; ein eigener Bericht

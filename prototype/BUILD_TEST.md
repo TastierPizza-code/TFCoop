@@ -1,36 +1,40 @@
-# Alpha5.7: automatischer Bau- und Fahrzeugversuch
+# Alpha5.8: automatischer Bau- und Fahrzeugversuch
 
-Dieses Paket erweitert den erfolgreich abgeschlossenen Alpha4.2-Zeitversuch um
-ein festes Bauprofil auf der unveränderten Ausgangskarte. Die native ABI-3-
-Schrittsteuerung und die Alpha4.2-Dateisperrkorrektur bleiben unverändert.
-Die neue Szene ist noch nicht in zwei echten TF2-Instanzen bestätigt.
+Dieses Paket erweitert den abgeschlossenen Alpha4.2-Zeitversuch um ein festes
+Bauprofil auf der unveränderten Ausgangskarte. Native ABI 3, Schrittsteuerung
+und Rezept `road-depot-service-v3` bleiben gegenüber Alpha5.7 unverändert.
 
-Alpha5.7 behandelt zwei grundlegende Probleme: Der Skript-Bauweg verbindet
-aufeinanderliegende Construction-Anschlüsse nicht automatisch wie das UI;
-die bisherige Testnachbildung nahm das fälschlich an. Außerdem durfte ein
-vorübergehender Dateilesefehler nach einem Callback die Bauantwort verdrängen.
+Beide echten Alpha5.7-Berichte enthalten dieselben zwölf Journalzustände samt
+Prüfsummen: fünf bestätigte Aufträge (Pause, Straße, Depot, zwei Haltestellen)
+und fünf Pausenschritte. Endstand 4.682.382 bei Kredit 5.000.000; die Zeit bleibt
+durchgehend bei 13,4 Sekunden. Anschließend scheitert auf beiden PCs bereits
+die Planung von `PROBE_CONNECT` am Zugriff auf den ersten nummerierten Eintrag
+einer nicht leeren nativen Straßenanschluss-Sammlung. Die eigentliche
+Verbindung wurde noch nicht an die Engine gesendet.
 
-Depot und Haltestellen stehen nun mit 20 m Abstand zu den Straßenenden. Ein
-separater gemeinsamer Bauauftrag verbindet sie über bereits vorhandene,
-autoritativ beobachtete Knoten. Eine Bauantwort wird genau einmal verarbeitet;
-bei kurzzeitig unlesbarer Statusdatei bleibt der Auftrag unbestätigt, bis dieselbe
-Grenze und Zeit wieder geprüft werden können. Kein erneutes Senden oder
-Simulationsschritt ist dafür erlaubt. Ablehnungen bleiben endgültig und behalten
-ihre ursprünglichen Callback-Daten in einer getrennten begrenzten Diagnose.
+Alpha5.8 liest die tatsächlichen Einträge dieser Sammlung mit begrenzter,
+geschützter Iteration. Anzahl, eindeutige echte Kanten und Endpunkte werden
+vollständig geprüft. Geordnete Arrays, Vektoren und Matrizen behalten ihre
+bisherige Prüfung. Der genaue native Containertyp wurde im Bericht nicht
+aufgezeichnet; die Testnachbildung deckt jetzt ausdrücklich nicht direkt
+nummerierbare Rückgaben ab. Der Fehler wird nicht durch leere Ersatzlisten
+oder erfundene Entity-IDs umgangen.
 
-Beide echten Alpha5.6-Berichte enthalten dieselben ersten fünf Journaleinträge:
-Ausgangszustand, angewandte Pause, Pausenschritt, angewandte Straße und zweiter
-Pausenschritt. Zeit 13,4 Sekunden; Geld nach Straße 4.928.623 bei Kredit 5.000.000.
-Beim Depotauftrag meldet b ausdrücklich `success=false`; a verliert die
-Callback-Aussage durch einen Statuslesefehler. Beide historischen Endsnapshots
-zeigen nur die Straße. Daraus folgt kein beobachteter Welt-Desync und noch kein
-Beweis der genauen nativen Depot-Ablehnungsursache. Die getrennten Rohdaten
-bestätigen jetzt auch `timeBuild=nil` an der erfolgreich gebauten Straße.
+Die spätere Abfrage `getLineVehicles` liest ebenfalls eine ungeordnete Sammlung
+von Entity-Werten. Vier lokale Upstream-Verwendungen iterieren diese mit `pairs`;
+unser Snapshot sortiert die logischen Fahrzeugreferenzen ohnehin. Sie nutzt jetzt
+denselben strikten Sammlungsleser mit höchstens einem Fahrzeug im Testprofil.
+Ein echter Fehler oder identischer nativer Containertyp dieses späteren Aufrufs
+ist nicht beobachtet; die Korrektur beseitigt dieselbe Indexannahme vorab.
 
-Der nächste gemeinsame Versuch nutzt auf beiden PCs einen frischen Sitzungscode
-und neue Testsave-Kopien. Nur Strict Sync Alpha5.7 und Legacy Fahrzeuge aktivieren.
-Eine Solo-Diagnose ist nicht nötig; die komplette Bedienfolge steht in
-[ANLEITUNG.md](ANLEITUNG.md).
+Depot und Haltestellen haben weiterhin jeweils 20 m Abstand zur Teststraße.
+Drei Verbindungsstraßen müssen anhand des tatsächlichen Graphunterschieds
+bestätigt werden, bevor der Fahrzeugkauf freigegeben wird. Verbindungsbau,
+Kauf, Linienfahrt und Weiterlaufen sind im echten Bauversuch noch ungeprüft.
+
+Beide nutzen einen frischen gemeinsamen Sitzungscode und neue Testsave-Kopien.
+Nur Strict Sync Alpha5.8 und Legacy Fahrzeuge aktivieren. Eine Solo-Diagnose
+ist nicht nötig; die Bedienfolge steht in [ANLEITUNG.md](ANLEITUNG.md).
 
 ## Fester Ablauf in beiden Spielen
 

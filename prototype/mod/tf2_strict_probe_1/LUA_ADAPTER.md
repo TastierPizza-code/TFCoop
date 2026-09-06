@@ -7,7 +7,7 @@ only clock-setting command here is an explicit, jointly committed `SET_PAUSED`.
 
 ## Activation and baseline
 
-The Alpha5.7 launcher explicitly selects `profile="build_v2"`. This selects
+The Alpha5.8 launcher explicitly selects `profile="build_v2"`. This selects
 `build_engine.lua`, a separate fixed recipe adapter with no manually supplied
 bindings. It creates a custom `STREET_CONSTRUCTION`, stock depot and two stock
 passenger stops, explicitly connects their separated endpoints, buys an available
@@ -17,6 +17,14 @@ children. Connection edges are verified by an exact incident-graph difference
 at the six known endpoint IDs, since ordinary street callbacks can return no IDs.
 Every intended pair needs exactly one new matching edge; all old incident edges
 must be unchanged. All three results are validated before committing bindings.
+Native incidence collections are enumerated through their actual iterator rather
+than assumed to be 1-indexed arrays. Count, finite integer entity values,
+uniqueness and endpoint checks remain mandatory; ordered arrays keep their
+existing readers. The unordered `getLineVehicles` membership query uses the same
+bounded reader (at most one test vehicle), matching local upstream value-iteration
+usage. Its concrete native container type has not yet been observed in this test.
+The real Alpha5.7 run confirmed the four constructions during
+pause but stopped in connection planning before dispatch; no vehicle was bought.
 StationGroup/Construction identity aliases
 are allowed when confirmed by the station-group API. The observed shared node
 graph must connect all constructions before purchase. Vehicle configurations

@@ -108,6 +108,46 @@ class BuildLuaWorker(ActualLuaWorker):
 
 @unittest.skipUnless("lua53" in RUNTIMES, "Lua 5.3 fixture runtime unavailable")
 class FullBuildFileIntegrationTests(unittest.TestCase):
+    def test_invalid_incidence_plan_halts_before_connect_send_or_time_release(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            worker = BuildLuaWorker(directory, terrain_setup="""
+                local original=api.engine.system.streetSystem.getNode2StreetEdgeMap
+                api.engine.system.streetSystem.getNode2StreetEdgeMap=function()
+                  local m=original();local first
+                  for _,entity in pairs(m[roadends[3]])do first=entity;break end
+                  m[roadends[3]]=native_entity_collection({tostring(first)})
+                  return m
+                end
+            """)
+            engine = None
+            try:
+                engine = EngineAdapter(directory, EPOCH, probe_only=True, timeout_s=3, poll_s=.002)
+                for key, command in (("a:1", {"op": "SET_PAUSED", "value": True}),
+                                     ("a:2", {"op": "PROBE_ROAD"}), ("b:1", {"op": "PROBE_DEPOT"}),
+                                     ("a:3", {"op": "PROBE_STOP", "index": 0}),
+                                     ("b:2", {"op": "PROBE_STOP", "index": 1})):
+                    engine.apply(command, key)
+                previous = engine.snapshot()
+                with self.assertRaisesRegex(MailboxError, "street incidence entity value unavailable"):
+                    engine.apply({"op": "PROBE_CONNECT"}, "a:4")
+                status = worker.status()
+                self.assertEqual(status["status"], "halted")
+                self.assertEqual(status["diagnostics"]["failure"]["request_context"]["action"], "plan")
+                self.assertEqual(status["snapshot"], previous)
+                self.assertNotIn("canonical_state_json", status)
+                self.assertFalse(any(key.startswith("a:4") for key in status["diagnostics"]["bindings"]))
+                time.sleep(.02)
+                self.assertEqual(worker.observed_sends, 5)
+                self.assertEqual(worker.completed_frame, 0)
+                self.assertEqual(engine.time_us, 13400000)
+                self.assertEqual(control(directory / "native_control.txt")["action"], "halt")
+            finally:
+                if engine is not None:
+                    engine.close()
+                worker.close()
+
     def test_depot_rejection_keeps_actual_callback_details_even_when_gate_cannot_be_read(self):
         import tempfile
         with tempfile.TemporaryDirectory() as temporary:
