@@ -58,7 +58,7 @@ def render(markdown):
     flush()
     return """<!doctype html><html lang="de"><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>TF2-Koop Alpha5.3-Bautest · Anleitung</title>
+<title>TF2-Koop Alpha5.4-Diagnose · Anleitung</title>
 <style>
 body{margin:0;background:#eef2f6;color:#202c3c;font:17px/1.6 system-ui,Segoe UI,sans-serif}
 main{max-width:940px;margin:32px auto;padding:38px 46px;background:white;border-radius:12px}

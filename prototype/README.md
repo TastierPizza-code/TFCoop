@@ -4,10 +4,25 @@ Dieser Ordner enthält den Synchronisationskern und die Komponenten des
 kontrollierten Engineversuchs. Der Launcher bereitet eine eigene Testinstallation
 vor und kann die vorherigen Dateien anschließend wiederherstellen.
 
-Für den gemeinsamen Versuch gibt es einen **Alpha5.3-Bautest-Launcher**
+Der aktuelle **Alpha5.4-Diagnose-Launcher** bietet im ersten Reiter
+**API-Diagnose allein** eine Erfassung auf einem einzelnen PC: lokale Pfade
+prüfen, **Diagnose vorbereiten**, TF2 selbst über Steam starten und die angezeigte
+`TF2-API-Diagnose-….sav` ausschließlich mit **TF2 API-Diagnose (Alpha5.4)** und
+**Legacy Fahrzeuge** laden. Nach etwa zehn Sekunden den eigenen
+**Diagnosebericht als ZIP …** exportieren. Verbindung, IP, Sitzungscode und
+Mitspieler sind dafür nicht erforderlich. Ablauf und Wiederherstellung stehen
+in [ANLEITUNG.md](ANLEITUNG.md), Zweck und Grenzen in
+[API_DIAGNOSE.md](API_DIAGNOSE.md).
+
+Die Diagnose liest vorhandene Kartenobjekte und getrennte API-Konstruktorproben.
+Sie gibt keine Bau- oder Pausebefehle aus und startet keinen gemeinsamen
+Messcontroller. Fehlende Liveobjekte sind fehlende Abdeckung, keine erfolgreichen
+Prüfungen. Das öffentliche Paket enthält keine privaten Spielstände oder Berichte;
+exportierte Diagnoseberichte ausschließlich privat zur Auswertung weitergeben.
+
+Der bisherige gemeinsame Bautest bleibt im Reiter **Bautest (experimentell)**
 mit Host/Beitreten, Sitzungscode, Verbindungsprüfung vor dem Spielstart,
-reversibler Installation, Steam-Startknopf und Berichtsexport. Die Schritte für
-beide Spieler stehen in [ANLEITUNG.md](ANLEITUNG.md). Sein automatisches Profil
+reversibler Installation, Steam-Startknopf und Berichtsexport. Sein automatisches Profil
 hat 240 Runden: Straße, Depot und Haltestellen werden automatisch gebaut, ein
 Fahrzeug gekauft und einer Linie zugeordnet. Danach werden gemeinsame Fahrt,
 Pause ab Runde 80 und Weiterlauf ab Runde 100 geprüft; der Mitspieler antwortet
@@ -32,8 +47,11 @@ Der Host bestätigt die Abschlusswerte beider Spielinstanzen. Der Alpha5-Bauabla
 ist mit Ersatzengines geprüft. Echte Nutzertests erreichten bisher Abbrüche bei
 der Platzsuche beziehungsweise beim Lesen des Zustands nach dem Straßenbau.
 Im Alpha5.2-Nutzertest wurde die Straße gebaut; anschließend brach das Lesen der
-Konstruktionstransformation in Runde 1 ab. Die aktuelle Alpha5.3-Korrektur und
-der weitere Bauablauf müssen im echten Zwei-PC-Test bestätigt werden.
+Konstruktionstransformation in Runde 1 ab. Alpha5.3 behob den dabei beobachteten
+Fehler der Lua-Rückgabewerte. Im anschließenden echten Alpha5.3-Test erschien nach
+dem Straßenbau `invalid finite build value`. Das betroffene Zahlenfeld ist noch
+nicht bekannt. Alpha5.4 liefert dafür einen Solo-Diagnosemodus, keinen bestätigten
+Fix und keinen Nachweis für den weiteren Bauablauf oder deterministischen Multiplayer.
 Normale Bauwerkzeuge und eine aktive gemeinsame Wirtschaft sind damit noch
 nicht umfassend geprüft oder vollständig an die neue Eingabesteuerung angeschlossen.
 
@@ -61,12 +79,14 @@ Der Fehlerpfad liefert jetzt ausdrücklich ein `nil`, sodass die vorhandene
 Prüfung und der alternative Transformationsleser ausgeführt werden können.
 Das Testprofil und die Kriterien für einen erfolgreichen Abschluss bleiben gleich.
 
-Spieler mit Alpha5.2 erhalten Alpha5.3 über die vorhandene Updatefunktion:
-TF2 und Messcontroller schließen, den Launcher normal öffnen und auf die neue
-Versionsanzeige warten. Danach die bisherige Testinstallation wiederherstellen
-und mit einem frischen gemeinsamen Sitzungscode neu vorbereiten. Die neu
-importierte Testsave verwendet die Mod **TF2 Strict Sync - automatischer Bautest (Alpha5.3)**.
+Spieler mit einem Launcher ab Alpha5.2 erhalten Alpha5.4 über die vorhandene
+Updatefunktion: TF2 und Messcontroller schließen, den Launcher normal öffnen
+und auf **Alpha5.4-Diagnose** warten. Danach **Diagnose vorbereiten** im ersten
+Reiter verwenden. Die Vorbereitung setzt die bisherige strikte
+Testinstallation zurück und erstellt eine frische Save-Kopie für die Diagnosemod.
 Ein erneuter ZIP-Download ist bei funktionierender Updateprüfung nicht nötig.
+Zunächst den eigenen Diagnosebericht auswerten; der gemeinsame Bautest ist
+jetzt nicht der nächste empfohlene Versuch.
 
 Alpha4.1 korrigiert den beim ersten echten Zweirechnertest beobachteten Abbruch:
 Der alte 0,1-Sekunden-Schritt verletzte die 0,2-Sekunden-Mindestgröße der Engine.
@@ -209,7 +229,7 @@ Kalenderdatum und dessen eingestellte Fortschrittsrate sind davon zu unterscheid
 
 Die frühere Vorbereitung unter `staged/time-probe-20260906` und
 `sessions/time-probe-20260906` ist ein historischer Stand mit damaligen Codehashes.
-Der Alpha5.3-Bautest-Launcher bereitet auf jedem PC eine neue Sitzung aus den
+Der Bautestabschnitt des Launchers bereitet auf jedem PC eine neue Sitzung aus den
 aktuellen Programmdateien vor. Die öffentliche ZIP enthält **keinen Ausgangsspielstand**,
 keine lokalen Sitzungsdateien und keine Originaldateien des Spiels. Ihr Manifest
 enthält nur die SHA-256-Identität des benötigten privaten Save-Paars.
@@ -256,7 +276,8 @@ und ein ausreichend vollständiger Zustandsvergleich. Steam-Einladungen, große
 Karten und Wiederaufnahme nach Absturz werden durch diesen Prototyp noch nicht
 zugesichert.
 
-Der nächste vollständige Bauversuch muss zeigen, ob Zeit, explizit geprüfte
+Zuerst soll der Solo-Diagnosebericht die tatsächlichen API-Zugriffe eingrenzen.
+Ein späterer vollständiger Bauversuch muss zeigen, ob Zeit, explizit geprüfte
 Bauobjekte, Firmenwerte und Fahrzeugbewegung trotz verschiedener Wartezeiten
 gleich bleiben. Der abgeschlossene Zeit-/Pausetest beantwortet diese zusätzliche
 Frage noch nicht. Auch ein bestandener Bautest ersetzt keine vollständige

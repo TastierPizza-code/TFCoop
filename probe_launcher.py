@@ -138,6 +138,7 @@ def self_check(report_path: Path) -> int:
             from prototype.strict_sync import stage_probe
             from prototype.strict_sync.game_runner import read_inputs
             from prototype.strict_sync import launcher_session
+            from prototype import diagnostic_session
             from prototype.strict_sync.build_profile import BUILD_PROFILE, BUILD_ROUNDS, build_inputs
             resources, portable = resource_root(), portable_root()
             physical = resources / "prototype/strict_sync"
@@ -150,6 +151,14 @@ def self_check(report_path: Path) -> int:
             for relative in stage_probe.REQUIRED_MOD_FILES | stage_probe.REQUIRED_BUILD_FILES:
                 if not (resources / "prototype/mod/tf2_strict_probe_1" / relative).is_file():
                     raise RuntimeError("missing mod resource: " + relative)
+            audit_files = ("mod.lua", "res/config/game_script/tf2_api_audit.lua",
+                           "res/scripts/tf2_api_audit/config.lua", "res/scripts/tf2_api_audit/probe.lua",
+                           "res/scripts/tf2_api_audit/json.lua")
+            for relative in audit_files:
+                if not (resources / "prototype/mod/tf2_api_audit_1" / relative).is_file():
+                    raise RuntimeError("missing diagnostic mod resource: " + relative)
+            if not callable(diagnostic_session.prepare_diagnostic) or not callable(diagnostic_session.read_diagnostic_report):
+                raise RuntimeError("packaged solo diagnostic workflow is missing")
             examples = resources / "prototype/examples"
             checked_inputs = []
             for path in sorted(examples.glob("*.json")):
@@ -200,6 +209,8 @@ def self_check(report_path: Path) -> int:
             result["build_profile"] = {"profile": BUILD_PROFILE, "rounds": BUILD_ROUNDS,
                                        "scheduled_commands": len(scheduled), "resources_checked": True,
                                        "actual_tf2_construction_verified": False}
+            result["solo_diagnostic"] = {"resources_checked": True, "actual_tf2_runtime_verified": False,
+                                          "world_commands": False, "requires_peer": False}
             result["native"] = _passive_native_check(resources / "prototype/native/out/tf2_step_probe.dll")
             worker_dir = report_path.parent / (report_path.stem + "-workers-" + secrets.token_hex(4))
             result["model_workers"] = _model_workers(worker_dir)

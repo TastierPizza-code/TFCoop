@@ -30,11 +30,15 @@ def headless_app():
     app.root = Mock()
     app.busy = True
     app.prepared = app.controller = None
+    app.diagnostic = app.last_diagnostic = None
+    app.diagnostic_finished = False
+    app.diagnostic_ticks = 0
+    app.diagnostic_started = 0
     app.skip_update = app.closing_for_update = False
     app.baseline_ready = True
-    for name in ("status", "update_status", "baseline_status", "game", "saves", "host"):
+    for name in ("status", "update_status", "baseline_status", "game", "saves", "host", "diagnostic_status"):
         setattr(app, name, Value())
-    for name in ("prepare_button", "connect_button", "restore_button", "stop_button", "addresses"):
+    for name in ("prepare_button", "connect_button", "restore_button", "stop_button", "addresses", "diagnostic_button", "diagnostic_export_button"):
         setattr(app, name, Mock())
     app.inputs = [Mock(), Mock()]
     return app

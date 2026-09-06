@@ -1,5 +1,37 @@
 # Prüfstand vom 6. September 2026
 
+## Alpha5.4: breitere API-Diagnose auf einem PC
+
+Der tatsächliche Alpha5.3-Bericht endet nach dem Straßenbau in Runde 1 mit
+`a:2:invalid finite build value`. Der Bericht enthält keinen konkreten Feldpfad
+oder Rohwert für diese Ablehnung. Die vorigen Modellprüfungen haben die
+Datenformen dieses TF2-Laufs daher nicht hinreichend abgebildet. Die genaue
+Ursache bleibt ungeklärt; an der Zahlenvalidierung wird nicht auf Verdacht
+vorbeigearbeitet.
+
+Alpha5.4 ergänzt eine getrennte lesende Diagnosemod und einen lokalen
+Vorbereitungs-/Exportweg ohne Mitspieler. Feldzugriffe werden einzeln erfasst,
+einschließlich fehlender, werfender und nicht endlicher Werte. Vorhandene
+Weltobjekte und reine Konstruktorproben bleiben getrennt; der Bericht ist
+ausdrücklich kein gültiger Synchronitäts-Snapshot. Der Spielablauf und die
+nativen DLLs des experimentellen Bautests sind unverändert.
+
+Für diese Version bestehen **56 Prüfungen unter echtem Lua 5.1 bis 5.4**
+und **146 Python-Prüfungen**. Abgedeckt sind mehrere unabhängig fehlschlagende
+native Getter, Zahlen-/Größenlimits, der Erhalt wichtiger Felder bei Kürzung,
+deaktivierte Diagnose, verzögerte Wiederholungen nach Schreibsperren,
+Installationssicherungen, Konflikte beim Wiederherstellen sowie Launcher und
+Updater. Ein vollständiger Test koppelt die tatsächliche Vorbereitung in
+temporären Verzeichnissen mit dem GameScript in Lua 5.4 und prüft Bericht,
+ZIP-Export und Wiederherstellung. Die Spiel-API stammt dabei weiterhin aus
+einer Testnachbildung; kein TF2-Prozess und keine Spieloberfläche werden
+gestartet oder bedient.
+
+Die neue Diagnose ist noch nicht in TF2 ausgeführt worden. Ihr nächster
+Lauf soll mehrere tatsächliche Datenformen gleichzeitig erfassen. Er baut die
+fehlgeschlagene Straße nicht erneut und garantiert daher keine Reproduktion
+des Alpha5.3-Fehlers. Details und Grenzen: `API_DIAGNOSE.md`.
+
 ## Alpha5.3: fehlende native Felder und Lua-Rückgabewerte
 
 Der tatsächliche Alpha5.2-Bericht stoppt in Runde 1 beim Lesen der Transformation

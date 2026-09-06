@@ -8,12 +8,14 @@ from pathlib import Path
 import queue
 import sys
 import threading
+import time
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
 from coop.install import discover_game
 from coop.native import NativeError, game_is_running
 from prototype.strict_sync import launcher_session as workflow
+from prototype import diagnostic_session as diagnostics
 
 
 class App:
@@ -28,6 +30,10 @@ class App:
         self.controller = None
         self.last_status = ""
         self.last_run = None
+        self.diagnostic = self.last_diagnostic = None
+        self.diagnostic_finished = False
+        self.diagnostic_ticks = 0
+        self.diagnostic_started = time.monotonic()
         self.skip_update = skip_update
         self.baseline_ready = False
         self.closing_for_update = False
@@ -45,6 +51,8 @@ class App:
         self.progress_text = tk.StringVar(value="Messung: noch nicht gestartet")
         self.update_status = tk.StringVar(value="Updates werden beim Start über GitHub geprüft.")
         self.baseline_status = tk.StringVar(value="Lokalen Testspielstand prüfen …")
+        self.diagnostic_status = tk.StringVar(value="Allein möglich. TF2 und den bisherigen Test zuerst schließen, dann Diagnose vorbereiten.")
+        self.diagnostic_save = tk.StringVar(value="Die Vorbereitung legt einen eigenen Diagnosespielstand an.")
         self._build()
         if settings.get("last_run"):
             record = workflow.read_json(Path(settings["last_run"]) / "run.json")
@@ -52,6 +60,13 @@ class App:
                 if record:
                     self.last_run = workflow.PreparedRun(**record)
             except (TypeError, ValueError):
+                pass
+        if settings.get("last_diagnostic"):
+            try:
+                self.last_diagnostic = diagnostics.load_diagnostic(Path(settings["last_diagnostic"]))
+                self.diagnostic_save.set(Path(self.last_diagnostic.imported_save).name)
+                self.diagnostic_status.set("Vorherige Diagnose verfügbar. Bericht exportieren oder bei geschlossenem TF2 neu vorbereiten.")
+            except (OSError, TypeError, ValueError):
                 pass
         self._work(self._discover, self._discovered)
         root.protocol("WM_DELETE_WINDOW", self.close)
@@ -74,21 +89,48 @@ class App:
         canvas.bind("<Configure>", lambda event: canvas.itemconfigure(embedded, width=event.width))
         self.root.bind("<MouseWheel>", lambda event: canvas.yview_scroll(-int(event.delta / 120), "units"))
         ttk.Label(outer, text="TF2-Koop  /  " + workflow.VERSION, style="Title.TLabel").pack(anchor="w")
-        ttk.Label(outer, text="Straße, Depot, Fahrzeug und Linienfahrt gemeinsam prüfen", font=("Segoe UI", 12)).pack(anchor="w", pady=(3, 6))
-        ttk.Label(outer, text=f"Automatischer Bautest mit {workflow.ROUNDS} Runden. Der Test baut und fährt auf beiden PCs. Bitte währenddessen nichts selbst bauen oder umschalten.",
+        ttk.Label(outer, text="API-Daten auf diesem PC prüfen", font=("Segoe UI", 12)).pack(anchor="w", pady=(3, 6))
+        ttk.Label(outer, text="Die neue Diagnose liest mehrere Datenfelder in einem Durchlauf. Dein Freund muss dafür nicht mitstarten. Der Zahlenfehler aus Alpha5.3 ist noch nicht geklärt.",
                   wraplength=900).pack(anchor="w", pady=(0, 13))
         ttk.Label(outer, textvariable=self.update_status, wraplength=900).pack(anchor="w", pady=(0, 8))
-        form = ttk.LabelFrame(outer, text="1  ·  Auf beiden PCs vorbereiten", padding=12)
-        form.pack(fill="x")
-        form.columnconfigure(1, weight=1)
+        paths = ttk.LabelFrame(outer, text="1  ·  Ordner prüfen", padding=12)
+        paths.pack(fill="x")
+        paths.columnconfigure(1, weight=1)
         self.inputs = []
         for row, label, variable in ((0, "TF2-Installationsordner", self.game), (1, "Steam-Saveordner", self.saves)):
-            ttk.Label(form, text=label).grid(row=row, column=0, sticky="w", padx=(0, 12), pady=4)
-            entry = ttk.Entry(form, textvariable=variable)
+            ttk.Label(paths, text=label).grid(row=row, column=0, sticky="w", padx=(0, 12), pady=4)
+            entry = ttk.Entry(paths, textvariable=variable)
             entry.grid(row=row, column=1, sticky="ew", pady=4)
-            button = ttk.Button(form, text="Auswählen …", command=lambda v=variable: self.choose_directory(v))
+            button = ttk.Button(paths, text="Auswählen …", command=lambda v=variable: self.choose_directory(v))
             button.grid(row=row, column=2, padx=(8, 0))
             self.inputs.extend((entry, button))
+        baseline_button = ttk.Button(paths, text="Testspielstand übernehmen …", command=self.choose_baseline)
+        baseline_button.grid(row=2, column=0, sticky="w", pady=(8, 0))
+        self.inputs.append(baseline_button)
+        ttk.Label(paths, textvariable=self.baseline_status, wraplength=620).grid(
+            row=2, column=1, columnspan=2, sticky="w", padx=(8, 0), pady=(8, 0))
+        tabs = ttk.Notebook(outer)
+        tabs.pack(fill="both", expand=True, pady=(12, 0))
+        solo = ttk.Frame(tabs, padding=12)
+        build = ttk.Frame(tabs, padding=12)
+        tabs.add(solo, text="API-Diagnose allein")
+        tabs.add(build, text="Bautest (experimentell)")
+        ttk.Label(solo, text="2  ·  Diagnose vorbereiten", font=("Segoe UI", 12, "bold")).pack(anchor="w")
+        ttk.Label(solo, text="Die Vorbereitung stellt die native Testinstallation zurück, installiert die Diagnosemod und kopiert den lokalen Ausgangsspielstand. IP, Sitzungscode und Verbindung werden nicht benötigt.", wraplength=850).pack(anchor="w", pady=8)
+        self.diagnostic_button = ttk.Button(solo, text="Diagnose vorbereiten", command=self.prepare_diagnostic)
+        self.diagnostic_button.pack(anchor="w", pady=(0, 10))
+        ttk.Label(solo, text="3  ·  TF2 selbst über Steam starten und diesen Spielstand laden", font=("Segoe UI", 12, "bold")).pack(anchor="w")
+        ttk.Entry(solo, textvariable=self.diagnostic_save, state="readonly").pack(fill="x", pady=7)
+        ttk.Label(solo, text="Spiel laden → OPTIONEN AUSWÄHLEN / Mods: 'TF2 API-Diagnose (Alpha5.4)' und Legacy Fahrzeuge aktivieren. Strict Sync und alte Koop-Mods deaktivieren. Nach dem Laden etwa 10 Sekunden warten.", wraplength=850).pack(anchor="w")
+        ttk.Label(solo, text="Die Diagnose baut nichts und ändert keine Pause. Sie liest vorhandene Objekte und getrennt davon neu angelegte Konfigurationsobjekte. Fehlende Fahrzeuge oder Depots bleiben als ungeprüft erkennbar.", wraplength=850).pack(anchor="w", pady=9)
+        ttk.Label(solo, textvariable=self.diagnostic_status, style="Status.TLabel", wraplength=850).pack(anchor="w", pady=7)
+        self.diagnostic_export_button = ttk.Button(solo, text="Diagnosebericht als ZIP …", command=self.export_diagnostic)
+        self.diagnostic_export_button.pack(anchor="w", pady=8)
+        ttk.Label(solo, text="Nur diesen eigenen Bericht zur Auswertung schicken. Anschließend TF2 schließen und unten die bisherige Installation wiederherstellen.", wraplength=850).pack(anchor="w")
+        ttk.Label(build, text=f"Automatischer Bautest mit {workflow.ROUNDS} Runden auf beiden PCs. Der Abbruch aus Alpha5.3 ist noch ungeklärt; zunächst die Solo-Diagnose verwenden.", wraplength=850).pack(anchor="w", pady=(0, 9))
+        form = ttk.LabelFrame(build, text="Auf beiden PCs vorbereiten", padding=12)
+        form.pack(fill="x")
+        form.columnconfigure(1, weight=1)
         rolebox = ttk.Frame(form)
         rolebox.grid(row=2, column=0, columnspan=3, sticky="w", pady=(8, 4))
         for label, value in (("Ich bin Host", "a"), ("Ich trete meinem Freund bei", "b")):
@@ -116,12 +158,7 @@ class App:
         self.prepare_button.grid(row=6, column=0, columnspan=2, sticky="w", pady=5)
         ttk.Label(form, text="Sichert die bisherige Installation und importiert eine neue Testsave-Kopie.",
                   wraplength=850).grid(row=7, column=0, columnspan=3, sticky="w")
-        baseline_button = ttk.Button(form, text="Testspielstand übernehmen …", command=self.choose_baseline)
-        baseline_button.grid(row=8, column=0, sticky="w", pady=(8, 0))
-        self.inputs.append(baseline_button)
-        ttk.Label(form, textvariable=self.baseline_status, wraplength=620).grid(
-            row=8, column=1, columnspan=2, sticky="w", padx=(8, 0), pady=(8, 0))
-        connection = ttk.LabelFrame(outer, text="2  ·  Verbinden und Spiel starten", padding=12)
+        connection = ttk.LabelFrame(build, text="Verbinden und Spiel starten", padding=12)
         connection.pack(fill="x", pady=(12, 0))
         actions = ttk.Frame(connection)
         actions.pack(fill="x")
@@ -137,11 +174,11 @@ class App:
         self.bar = ttk.Progressbar(connection, maximum=workflow.ROUNDS, mode="determinate")
         self.bar.pack(fill="x", pady=(5, 7))
         ttk.Label(connection, textvariable=self.status, style="Status.TLabel", wraplength=870).pack(anchor="w")
-        savebox = ttk.Frame(outer)
+        savebox = ttk.Frame(build)
         savebox.pack(fill="x", pady=10)
         ttk.Label(savebox, text="Im Spiel ausdrücklich diese Testsave wählen:").pack(anchor="w")
         ttk.Entry(savebox, textvariable=self.save_name, state="readonly").pack(fill="x", pady=3)
-        ttk.Label(savebox, text="Spiel laden → OPTIONEN AUSWÄHLEN / Mods: 'TF2 Strict Sync - automatischer Bautest (Alpha5.3)' aktivieren; alte Koop-Mods deaktivieren.",
+        ttk.Label(savebox, text="Spiel laden → OPTIONEN AUSWÄHLEN / Mods: 'TF2 Strict Sync - automatischer Bautest (Alpha5.4)' aktivieren; Diagnosemod und alte Koop-Mods deaktivieren.",
                   wraplength=900).pack(anchor="w")
         footer = ttk.Frame(outer)
         footer.pack(fill="x", pady=(7, 0))
@@ -195,6 +232,14 @@ class App:
         self.addresses.configure(values=addresses)
         if addresses:
             self.host.set(addresses[0])
+        if self.last_diagnostic and Path(self.last_diagnostic.game_dir) == Path(self.game.get()):
+            try:
+                installed = diagnostics.diagnostic_status(self.game.get())
+                if installed.get("installed") and installed.get("request_id") == self.last_diagnostic.request_id:
+                    self.diagnostic = self.last_diagnostic
+                    self.diagnostic_status.set("Vorbereitete Diagnose wieder aufgenommen. Den angezeigten Spielstand mit der Diagnosemod laden oder vorhandenen Bericht exportieren.")
+            except (OSError, ValueError) as exc:
+                self.diagnostic_status.set("Diagnoseinstallation prüfen: " + str(exc))
         self._buttons()
 
     def _work(self, job, done):
@@ -208,11 +253,13 @@ class App:
         threading.Thread(target=run, daemon=True).start()
 
     def _buttons(self):
-        locked = self.busy or self.prepared is not None
+        locked = self.busy or self.prepared is not None or self.diagnostic is not None
         for widget in self.inputs:
             widget.configure(state="disabled" if locked else "normal")
         self.prepare_button.configure(state="disabled" if locked or not self.baseline_ready else "normal")
         active = bool(self.controller and self.controller.alive())
+        self.diagnostic_button.configure(state="disabled" if locked or active or not self.baseline_ready else "normal")
+        self.diagnostic_export_button.configure(state="normal" if self.last_diagnostic and not self.busy else "disabled")
         self.connect_button.configure(state="normal" if self.prepared and not self.controller and not self.busy else "disabled")
         self.restore_button.configure(state="disabled" if self.busy or active else "normal")
         self.stop_button.configure(state="normal" if active else "disabled")
@@ -242,12 +289,70 @@ class App:
 
     def _save_settings(self):
         workflow.write_json(self.settings_path, {"game_dir": self.game.get(), "save_dir": self.saves.get(),
-                                                "last_run": self.last_run.run_dir if self.last_run else None})
+                                                "last_run": self.last_run.run_dir if self.last_run else None,
+                                                "last_diagnostic": self.last_diagnostic.run_dir if self.last_diagnostic else None})
+
+    def prepare_diagnostic(self):
+        if self.busy or self.prepared or self.diagnostic or (self.controller and self.controller.alive()):
+            return
+        game, saves = self.game.get(), self.saves.get()
+        self.diagnostic_status.set("Bisherige Testinstallation wird zurückgebaut; Diagnose und eigene Save-Kopie werden vorbereitet …")
+        self._work(lambda: diagnostics.prepare_diagnostic(game, saves), self._diagnostic_prepared)
+
+    def _diagnostic_prepared(self, run):
+        self.diagnostic = self.last_diagnostic = run
+        self.diagnostic_finished = False
+        self.diagnostic_ticks = 0
+        self.diagnostic_started = time.monotonic()
+        self.diagnostic_save.set(Path(run.imported_save).name)
+        self.diagnostic_status.set("Vorbereitet. Jetzt TF2 selbst über Steam starten, Diagnosemod aktivieren und den angezeigten Diagnosespielstand laden.")
+        self._save_settings()
+        self._buttons()
+
+    def _poll_diagnostic(self):
+        if not self.diagnostic or self.diagnostic_finished or self.busy:
+            return
+        self.diagnostic_ticks += 1
+        if self.diagnostic_ticks % 3:
+            return
+        try:
+            report = diagnostics.read_diagnostic_report(self.diagnostic)
+            if report is None:
+                if time.monotonic() - self.diagnostic_started >= 60:
+                    self.diagnostic_status.set("Noch kein Diagnosebericht. Falls die Karte bereits geladen ist: angezeigten Diagnosespielstand und aktive Diagnosemod prüfen. Bei weiter ausbleibendem Bericht diese Meldung schicken; sie beweist keinen API-Fehler.")
+                return
+            self.diagnostic_finished = True
+            if report["status"] == "completed":
+                count = len(report.get("records", []))
+                suffix = " Bericht wurde an der Größenbegrenzung gekürzt." if report.get("truncated") else ""
+                self.diagnostic_status.set(f"Diagnosebericht vorhanden: {count} Einträge. Fehlende oder auffällige Felder stehen im Bericht; dies ist kein bestandener Synchronitätstest." + suffix + " Jetzt 'Diagnosebericht als ZIP …' speichern.")
+            else:
+                self.diagnostic_status.set("Die Diagnose meldet einen Fehler. Den Diagnosebericht als ZIP zur Auswertung speichern.")
+        except (OSError, TypeError, ValueError) as exc:
+            self.diagnostic_finished = True
+            self.diagnostic_status.set("Diagnosebericht konnte nicht geprüft werden: " + str(exc))
+
+    def export_diagnostic(self):
+        if not self.last_diagnostic:
+            messagebox.showinfo("Diagnosebericht", "Bitte zuerst eine Diagnose vorbereiten.", parent=self.root)
+            return
+        path = filedialog.asksaveasfilename(parent=self.root, title="Diagnosebericht speichern", defaultextension=".zip",
+            initialfile=f"TF2-API-Diagnose-{datetime.now():%Y%m%d-%H%M%S}.zip", filetypes=[("ZIP", "*.zip")])
+        if path:
+            try:
+                diagnostics.export_diagnostic(self.last_diagnostic, Path(path))
+                self.diagnostic_status.set("Diagnosebericht gespeichert. Diesen eigenen Bericht zur Auswertung schicken; dein Freund braucht keinen Durchlauf zu starten.")
+            except (OSError, TypeError, ValueError) as exc:
+                messagebox.showerror("Diagnosebericht", str(exc), parent=self.root)
 
     def prepare(self):
         values = (self.game.get(), self.saves.get(), self.role.get(), self.host.get(), self.code.get())
         self.status.set("Testdateien werden geprüft, bisherige Dateien gesichert und die Testsave kopiert …")
-        self._work(lambda: workflow.prepare(*values), self._prepared)
+        def prepare_build():
+            if diagnostics.diagnostic_status(values[0]).get("installed"):
+                raise ValueError("Zuerst TF2 schließen und die Diagnoseinstallation wiederherstellen.")
+            return workflow.prepare(*values)
+        self._work(prepare_build, self._prepared)
 
     def _prepared(self, prepared):
         self.prepared = self.last_run = prepared
@@ -297,13 +402,19 @@ class App:
         if self.last_run and not self.controller:
             self.last_run.stop_path.write_text("restore requested\n", encoding="ascii")
         self.status.set("Bisherige Installation wird geprüft und wiederhergestellt …")
-        self._work(lambda: workflow.restore_probe(game), self._restored)
+        self.diagnostic_status.set("Bisherige Installation wird geprüft und wiederhergestellt …")
+        def restore_all():
+            diagnostics.restore_diagnostic(game)
+            return workflow.restore_probe(game)
+        self._work(restore_all, self._restored)
 
     def _restored(self, result):
         self.prepared = self.controller = None
+        self.diagnostic = None
         if self.role.get() == "a":
             self.code.set(workflow.new_code())
         self.status.set("Bisherige Installation wiederhergestellt. Testsave-Kopien und Berichte bleiben erhalten. Für einen neuen Test neuen Code teilen.")
+        self.diagnostic_status.set("Bisherige Installation wiederhergestellt. Diagnosespielstand und Bericht bleiben erhalten.")
         self.network.set("Mitspieler: nicht verbunden")
         self.engine.set("Spielkontakt: beendet")
         self.progress_text.set("Messung: beendet")
@@ -344,6 +455,7 @@ class App:
                 self.busy = False
                 if error:
                     self.status.set(error)
+                    self.diagnostic_status.set(error)
                     messagebox.showerror(workflow.VERSION, error, parent=self.root)
                 else:
                     done(value)
@@ -372,6 +484,7 @@ class App:
                 self.controller.stop()
                 self.status.set("Launcher hat angehalten: " + str(exc))
                 self.game_button.configure(state="disabled")
+        self._poll_diagnostic()
         self.root.after(400, self.tick)
 
     def close(self):
