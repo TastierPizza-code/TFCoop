@@ -1,31 +1,30 @@
 # TF2: Prototyp für strikte Synchronisation
 
-**Alpha5.5 erkennt vollständige temporäre Diagnoseberichte aus Alpha5.4.**
-Vorhandene Berichte lassen sich nach dem Launcherupdate ohne neuen
-Spielstart exportieren. Der Bauabbruch ist damit noch nicht behoben.
+**Alpha5.6-Bautest setzt den gemeinsamen automatischen 240-Runden-Versuch fort.**
+Die zwei Alpha5.4-Soloberichte wurden geborgen und ausgewertet. Für den nächsten
+Schritt werden wieder beide PCs benötigt; eine weitere Solo-Diagnose ist nicht nötig.
 
 Dieser Ordner enthält den Synchronisationskern und die Komponenten des
 kontrollierten Engineversuchs. Der Launcher bereitet eine eigene Testinstallation
 vor und kann die vorherigen Dateien anschließend wiederherstellen.
 
-Der aktuelle **Alpha5.5-Diagnose-Launcher** bietet im ersten Reiter
-**API-Diagnose allein** eine Erfassung auf einem einzelnen PC: lokale Pfade
-prüfen, **Diagnose vorbereiten**, TF2 selbst über Steam starten und die angezeigte
-`TF2-API-Diagnose-….sav` ausschließlich mit **TF2 API-Diagnose (Alpha5.5)** und
-**Legacy Fahrzeuge** laden. Nach etwa zehn Sekunden den eigenen
-**Diagnosebericht als ZIP …** exportieren. Verbindung, IP, Sitzungscode und
-Mitspieler sind dafür nicht erforderlich. Ablauf und Wiederherstellung stehen
-in [ANLEITUNG.md](ANLEITUNG.md), Zweck und Grenzen in
-[API_DIAGNOSE.md](API_DIAGNOSE.md).
+Der aktuelle **Alpha5.6-Bautest-Launcher** öffnet zuerst den Reiter
+**Bautest (experimentell)**. Nach dem Update auf beiden PCs die vorherige
+Installation, insbesondere die Diagnosemod, wiederherstellen. Dann Rollen,
+Host-IP und frischen gemeinsamen Sitzungscode festlegen, neu vorbereiten und
+verbinden. Beide laden ihre neue Messtest-Save mit **TF2 Strict Sync - automatischer
+Bautest (Alpha5.6)** und **Legacy Fahrzeuge**. Ablauf und Wiederherstellung stehen
+in [ANLEITUNG.md](ANLEITUNG.md).
 
-Die Diagnose liest vorhandene Kartenobjekte und getrennte API-Konstruktorproben.
-Sie gibt keine Bau- oder Pausebefehle aus und startet keinen gemeinsamen
-Messcontroller. Fehlende Liveobjekte sind fehlende Abdeckung, keine erfolgreichen
-Prüfungen. Das öffentliche Paket enthält keine privaten Spielstände oder Berichte;
-exportierte Diagnoseberichte ausschließlich privat zur Auswertung weitergeben.
+**API-Diagnose allein** bleibt im zweiten Reiter für gezielte Untersuchungen
+verfügbar. Ihre Erfassung liest vorhandene Kartenobjekte und getrennte
+API-Konstruktorproben, ohne Bau- oder Pausebefehle auszugeben. Fehlende Liveobjekte
+sind fehlende Abdeckung, keine erfolgreichen Prüfungen. Zweck und Grenzen stehen
+in [API_DIAGNOSE.md](API_DIAGNOSE.md). Private Spielstände und Berichte gehören
+nicht in öffentliche Releases; Berichte ausschließlich privat weitergeben.
 
-Der bisherige gemeinsame Bautest bleibt im Reiter **Bautest (experimentell)**
-mit Host/Beitreten, Sitzungscode, Verbindungsprüfung vor dem Spielstart,
+Der gemeinsame Bautest bietet
+Host/Beitreten, Sitzungscode, Verbindungsprüfung vor dem Spielstart,
 reversibler Installation, Steam-Startknopf und Berichtsexport. Sein automatisches Profil
 hat 240 Runden: Straße, Depot und Haltestellen werden automatisch gebaut, ein
 Fahrzeug gekauft und einer Linie zugeordnet. Danach werden gemeinsame Fahrt,
@@ -53,9 +52,11 @@ der Platzsuche beziehungsweise beim Lesen des Zustands nach dem Straßenbau.
 Im Alpha5.2-Nutzertest wurde die Straße gebaut; anschließend brach das Lesen der
 Konstruktionstransformation in Runde 1 ab. Alpha5.3 behob den dabei beobachteten
 Fehler der Lua-Rückgabewerte. Im anschließenden echten Alpha5.3-Test erschien nach
-dem Straßenbau `invalid finite build value`. Das betroffene Zahlenfeld ist noch
-nicht bekannt. Alpha5.5 liefert dafür einen Solo-Diagnosemodus, keinen bestätigten
-Fix und keinen Nachweis für den weiteren Bauablauf oder deterministischen Multiplayer.
+dem Straßenbau `invalid finite build value`. Die geborgenen Alpha5.4-Berichte zeigen
+fehlendes `timeBuild` an zwei bestehenden Industriekonstruktionen. Dasselbe Feld
+als Ursache an der gebauten Teststraße anzunehmen bleibt eine Hypothese.
+Alpha5.6 berücksichtigt die beobachtete Verfügbarkeit und ergänzt genaue
+Fehlerpfade; ein vollständiger echter Bauablauf ist dadurch noch nicht nachgewiesen.
 Normale Bauwerkzeuge und eine aktive gemeinsame Wirtschaft sind damit noch
 nicht umfassend geprüft oder vollständig an die neue Eingabesteuerung angeschlossen.
 
@@ -83,14 +84,28 @@ Der Fehlerpfad liefert jetzt ausdrücklich ein `nil`, sodass die vorhandene
 Prüfung und der alternative Transformationsleser ausgeführt werden können.
 Das Testprofil und die Kriterien für einen erfolgreichen Abschluss bleiben gleich.
 
-Spieler mit einem Launcher ab Alpha5.2 erhalten Alpha5.5 über die vorhandene
+Alpha5.6 speichert ein tatsächlich fehlendes `CONSTRUCTION.timeBuild` als
+`{available=false}` im gehashten Zustand. Vorhandene Werte bleiben gemessen;
+ein fehlender Wert wird nicht durch eine erfundene Null ersetzt. `stopIndex`
+darf vor der Linienzuordnung fehlen und ist nach einer Zuordnung verpflichtend.
+`loadConfig` akzeptiert den dokumentierten Wert `-1` für automatische Auswahl.
+Numerische Lesefehler enthalten den jeweiligen Feldpfad.
+
+Bei einem strikten Bauabbruch liest ein unabhängiger, auf 98304 Bytes begrenzter
+Collector die aktuellen gebundenen Objekte. Die separate Datei `lua_api_audit.json`
+kommt in den normalen Testbericht. `lua_status.json` enthält nur Dateihinweis,
+Schreib-/Rücklesestatus und begrenzte Fehlversuchsmetadaten. Diese Rohdiagnose
+trägt `valid_snapshot=false`; ihre Fließkommazahlen bleiben außerhalb des
+strikten Synchronitätsprotokolls. Der letzte gültige Snapshot bleibt separat
+als historisch markiert. Der Strict-Mod bringt eine eigene byteidentische
+Collector-Kopie mit, sodass der Solo-Mod deaktiviert bleiben kann.
+
+Spieler mit einem Launcher ab Alpha5.2 erhalten Alpha5.6 über die vorhandene
 Updatefunktion: TF2 und Messcontroller schließen, den Launcher normal öffnen
-und auf **Alpha5.5-Diagnose** warten. Danach **Diagnose vorbereiten** im ersten
-Reiter verwenden. Die Vorbereitung setzt die bisherige strikte
-Testinstallation zurück und erstellt eine frische Save-Kopie für die Diagnosemod.
-Ein erneuter ZIP-Download ist bei funktionierender Updateprüfung nicht nötig.
-Zunächst den eigenen Diagnosebericht auswerten; der gemeinsame Bautest ist
-jetzt nicht der nächste empfohlene Versuch.
+und auf **Alpha5.6-Bautest** warten. Danach vorherige Installation wiederherstellen
+und im ersten Reiter mit frischem gemeinsamem Code neu vorbereiten. Ein erneuter
+ZIP-Download ist bei funktionierender Updateprüfung nicht nötig. Nach diesem
+Versuch werden beide normalen Testbericht-ZIPs benötigt.
 
 Alpha4.1 korrigiert den beim ersten echten Zweirechnertest beobachteten Abbruch:
 Der alte 0,1-Sekunden-Schritt verletzte die 0,2-Sekunden-Mindestgröße der Engine.

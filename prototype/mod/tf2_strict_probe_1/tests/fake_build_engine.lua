@@ -59,6 +59,15 @@ function native_record(values)
   end
   return object
 end
+-- The recovered Alpha5.4 reports exposed genuine component userdata whose
+-- absent timeBuild member returned nil. Preserve that distinction from a
+-- native getter exception and keep live mutable backing fields for tests.
+function observed_construction(values)
+  local object=native_params({},'opaque');local mt=getmetatable(object)
+  mt.__index=function(_,key)return values[key]end
+  mt.__newindex=function(_,key,value)values[key]=value end
+  return object
+end
 function observed_matrix(value)
   local values,names={},{'x','y','z','w'}
   for i=0,3 do local column=value:col(i)
@@ -105,8 +114,8 @@ function apply_command(cmd,no_result)
   sent=sent+1;local result={}
   if cmd.op=='pause'then speed=cmd.value
   elseif cmd.op=='build'then
-    local c=cmd.proposal.constructionsToAdd[1];local id=fresh();local co={fileName=c.fileName,params=native_params(copy(c.params)),transf=observed_matrix(c.transf),timeBuild=math.floor(now*1000),frozenEdges={},stations={},depots={}}
-    world[id]={CONSTRUCTION=co,NAME={name=c.name}}
+    local c=cmd.proposal.constructionsToAdd[1];local id=fresh();local co={fileName=c.fileName,params=native_params(copy(c.params)),transf=observed_matrix(c.transf),timeBuild=observed_time_build,frozenEdges={},stations={},depots={}}
+    world[id]={CONSTRUCTION=observed_construction(co),NAME={name=c.name}}
     if c.fileName==assets.road_file then
       junction=node(0,0,10);roadends={node(-80,0,10),node(80,0,10),node(0,40,10)}
       for _,n in ipairs(roadends)do co.frozenEdges[#co.frozenEdges+1]=edge(junction,n)end
@@ -119,11 +128,11 @@ function apply_command(cmd,no_result)
     end
     money=money-10000;result.resultEntities={id}
   elseif cmd.op=='buy'then
-    local id=fresh();world[id]={TRANSPORT_VEHICLE={state=0,line=-1,depot=cmd.depot,userStopped=false,noPath=false,stopIndex=0,carrier=0,transportVehicleConfig=cmd.config}}
+    local id=fresh();world[id]={TRANSPORT_VEHICLE={state=0,line=-1,depot=cmd.depot,userStopped=false,noPath=false,stopIndex=nil,carrier=0,transportVehicleConfig=cmd.config}}
     money=money-1000;vehicle_id=id;result.resultVehicleEntity=id
   elseif cmd.op=='line'then
     local id=fresh();world[id]={LINE=cmd.line,NAME={name=cmd.name},COLOR={color=cmd.color}};result.resultEntity=id
-  elseif cmd.op=='assign'then world[cmd.vehicle].TRANSPORT_VEHICLE.line=cmd.line end
+  elseif cmd.op=='assign'then world[cmd.vehicle].TRANSPORT_VEHICLE.line=cmd.line;world[cmd.vehicle].TRANSPORT_VEHICLE.stopIndex=cmd.stop end
   return no_result and{}or native_record(result)
 end
 function advance()

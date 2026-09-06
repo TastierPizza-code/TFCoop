@@ -1,4 +1,55 @@
-# API-Diagnose in Alpha5.5
+# API-Diagnose und Baufehlerberichte in Alpha5.6
+
+**Die zwei vorhandenen Alpha5.4-Soloberichte wurden geborgen und ausgewertet.
+Eine erneute Solo-Diagnose ist für den nächsten Schritt nicht nötig.** Jetzt
+folgt der gemeinsame automatische 240-Runden-Bautest auf beiden PCs. Die
+Schritt-für-Schritt-Anleitung steht in [ANLEITUNG.md](ANLEITUNG.md).
+
+## Alpha5.6: Rohdiagnose beim tatsächlichen Bauabbruch
+
+Der Strict-Mod enthält eine eigene byteidentische Kopie des begrenzten
+Rohdaten-Collectors. Ein strikter Bauabbruch löst damit automatisch eine
+unabhängige Erfassung der aktuell gebundenen Testobjekte aus. Die normale
+Solo-Diagnosemod bleibt dafür deaktiviert.
+
+Der Rohbericht wird separat als `lua_api_audit.json` in der Sitzung geschrieben
+und automatisch in die private **Testbericht-ZIP** aufgenommen. Seine Größe ist
+auf 98304 Bytes begrenzt. `lua_status.json` enthält dazu nur einen Dateihinweis,
+den Status des vollständigen Schreibens und Rücklesens sowie begrenzte
+Fehlversuchsmetadaten. Der letzte gültige Snapshot bleibt davon getrennt und ist
+als historischer Zustand markiert.
+
+Die Rohdiagnose enthält ausdrücklich `valid_snapshot=false`. Auch rohe
+Fließkommazahlen bleiben in dieser separaten Datei, außerhalb des auf Ganzzahlen
+und dezimale Zeichenketten begrenzten Synchronitätsprotokolls. Die Daten helfen
+bei der Fehlersuche; sie sind weder ein Ersatzsnapshot noch ein Beleg für
+übereinstimmende Spielwelten. Falls auch die Ausgabe scheitert, bleiben ihr
+Fehlerstatus und der eigentliche Baufehler unterscheidbar.
+
+Deshalb nach dem nächsten gemeinsamen Abbruch oder nach 240 Runden die
+**normalen Testbericht-ZIPs von beiden PCs** exportieren. Dafür nicht noch
+einmal **Diagnose vorbereiten** verwenden.
+
+## Beobachtete Verfügbarkeit und Grenzen
+
+Die geborgenen Daten zeigen `timeBuild=nil` bei zwei vorhandenen
+Industriekonstruktionen. Das belegt einen fehlenden Wert bei diesen Objekten;
+die früher gebaute Teststraße wurde im Solo-Versuch nicht erfasst. Dass ihr
+Abbruch am selben Feld lag, bleibt eine plausible Annahme.
+
+Alpha5.6 speichert ein fehlendes `CONSTRUCTION.timeBuild` ausdrücklich als
+`{available=false}` im gehashten Zustand. Ein vorhandener Wert bleibt samt
+Verfügbarkeit enthalten. Eine künstliche Null würde den Unterschied verdecken
+und wird nicht eingesetzt. `stopIndex` darf vor einer Linienzuordnung fehlen,
+ist nach Zuordnung aber verpflichtend. `loadConfig` akzeptiert außerdem den
+dokumentierten automatischen Wert `-1`; siehe die
+[offizielle Beschreibung von VehiclePart.loadConfig](https://wiki.transportfever2.com/api/modules/api.type.html).
+Ungültige verpflichtende Zahlenwerte
+stoppen den Test weiterhin; Fehlermeldungen nennen den konkreten Feldpfad.
+
+Die Änderung macht die bisherige Annahme über die gebaute Straße nicht zu
+einem Beweis. Der weitere Ablauf mit Depot, Haltestellen, Fahrzeug und Linie
+muss im tatsächlichen gemeinsamen Test bestätigt werden.
 
 ## Alpha5.5: vorhandene Berichte übernehmen
 
@@ -22,26 +73,30 @@ Die vorhandenen Daten zeigen numerische flache Matrizen mit 16 Einträgen.
 vorhanden. Dies ist ein konkreter Unterschied zu den bisherigen
 Modellannahmen, aber keine Beobachtung der später gebauten Teststraße.
 Depots, Linien und eigene Transportfahrzeuge fehlen in dieser Karte; ihre
-Livewerte sind weiterhin ungeprüft. Der Bauzustandsleser bleibt unverändert.
+Livewerte waren damit weiterhin ungeprüft. In Alpha5.5 blieb der Bauzustandsleser
+unverändert; die oben beschriebenen Anpassungen folgen erst mit Alpha5.6.
 
 
-Alpha5.5 sammelt auf einem einzelnen PC, welche Daten TF2 über seine Lua-API
-tatsächlich zugänglich macht. Anlass ist der echte Alpha5.3-Abbruch
+Der Solo-Diagnosemodus sammelt auf einem einzelnen PC, welche Daten TF2 über seine
+Lua-API tatsächlich zugänglich macht. Anlass war der echte Alpha5.3-Abbruch
 `invalid finite build value` nach dem Straßenbau. Der bisherige Bericht ordnet
 diesen Fehler keinem bestimmten Feld zu. Eine Matrix als Ursache anzunehmen
 oder einen fehlenden Zahlenwert durch null zu ersetzen wäre deshalb unbegründet.
 
-## Ablauf für den Spieler
+## Optionaler Solo-Modus für gezielte spätere Untersuchungen
 
-Der vollständige Ablauf steht in [ANLEITUNG.md](ANLEITUNG.md). Kurz:
+**Diesen Modus jetzt nicht erneut ausführen.** Die vorhandenen Berichte sind
+ausgewertet; der nächste Versuch ist der gemeinsame Bautest. Falls später
+ausdrücklich eine weitere Solo-Messung benötigt wird, bleibt der Modus im
+zweiten Reiter **API-Diagnose allein** verfügbar:
 
 1. TF2 und bisherigen Test schließen, vorhandenen Launcher ab Alpha5.2 neu öffnen
-   und das Update auf **Alpha5.5-Diagnose** abwarten.
-2. Oben lokale Pfade prüfen und im ersten Reiter **API-Diagnose allein**
+   und das Update auf **Alpha5.6-Bautest** abwarten; vorherige Installation wiederherstellen.
+2. Oben lokale Pfade prüfen und im zweiten Reiter **API-Diagnose allein**
    **Diagnose vorbereiten** verwenden. Host-IP, Sitzungscode und Mitspieler
    werden nicht benötigt.
 3. TF2 manuell über Steam starten. Die angezeigte `TF2-API-Diagnose-….sav` mit
-   ausschließlich **TF2 API-Diagnose (Alpha5.5)** und **Legacy Fahrzeuge** laden.
+   ausschließlich **TF2 API-Diagnose (Alpha5.6)** und **Legacy Fahrzeuge** laden.
    Die Modliste unter **Spiel laden → OPTIONEN AUSWÄHLEN → Mods** ändern.
 4. Etwa zehn Sekunden warten, ohne selbst zu bauen oder die Geschwindigkeit
    umzuschalten. **Diagnosebericht als ZIP …** exportieren; ein eigener Bericht
@@ -75,11 +130,11 @@ Er bedeutet nicht, dass jede API-Funktion vorhanden war, alle Werte lesbar waren
 oder alle Objektarten auf der Karte existierten. Fehlende Abdeckung darf nicht
 als bestandene Prüfung gewertet werden.
 
-Die Diagnose soll konkrete beobachtete Zugriffspfade liefern, bevor der
-Bauzustandsleser erneut geändert wird. Sie führt den fehlgeschlagenen
+Die Solo-Diagnose liefert konkrete beobachtete Zugriffspfade. Sie führt den fehlgeschlagenen
 Straßenbau nicht aus und muss seinen Fehler daher nicht reproduzieren. Sie
 kann anhand vorhandener Kartenobjekte und isolierter Proben helfen, falsche
-API-Annahmen einzugrenzen; die genaue Ursache bleibt bis zur Auswertung offen.
+API-Annahmen einzugrenzen. Die Auswertung begründet die oben beschriebenen
+Anpassungen, ersetzt aber keine Beobachtung der tatsächlich gebauten Testobjekte.
 
 Die Diagnose prüft weder deterministische Simulation noch gemeinsame Zeit,
 Pause, Geld, Fahrzeugfahrt, konkurrierende Eingaben oder freie Bauwerkzeuge.

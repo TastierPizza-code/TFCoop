@@ -22,6 +22,7 @@ import zipfile
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from prototype.release_version import PACKAGE_NAME as PACKAGE, RELEASE_TAG
+from prototype.strict_sync.stage_probe import verify_api_audit_copy
 EXE = "TF2-Coop.exe"
 BASELINE = ROOT / "prototype/staged/time-probe-20260906/save/initial.sav"
 
@@ -72,6 +73,7 @@ def build(stamp=None, save=BASELINE, *, skip_self_check=False, include_save=Fals
     stamp = stamp or datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     if not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", stamp):
         raise ValueError("stamp must be a plain bounded directory name")
+    verify_api_audit_copy(ROOT)  # The duplicated raw collector must not drift.
     save = Path(save).resolve()
     prerequisite = [ROOT / "probe_launcher.py", ROOT / "prototype/launcher.py",
                     ROOT / "prototype/ANLEITUNG.md", ROOT / "prototype/ANLEITUNG.html",
@@ -112,6 +114,7 @@ def build(stamp=None, save=BASELINE, *, skip_self_check=False, include_save=Fals
         _copy_file(path, internal / "prototype/strict_sync" / path.name)
     shutil.copytree(ROOT / "prototype/mod", internal / "prototype/mod",
                     ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "*.pyo"))
+    verify_api_audit_copy(internal)
     shutil.copytree(ROOT / "prototype/examples", internal / "prototype/examples",
                     ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "*.pyo"))
     for name in ("probe_alut.dll", "tf2_step_probe.dll"):

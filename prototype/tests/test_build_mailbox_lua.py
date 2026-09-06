@@ -11,15 +11,16 @@ import unittest
 
 from prototype.strict_sync.build_profile import BuildProof, BUILD_ROUNDS, build_inputs
 from prototype.strict_sync.core import Coordinator
-from prototype.strict_sync.engine_mailbox import EngineAdapter
+from prototype.strict_sync.engine_mailbox import EngineAdapter, MailboxError
 from prototype.strict_sync.replica import Replica
 from prototype.tests.test_engine_mailbox import EPOCH, control
 from prototype.tests.test_engine_mailbox_lua import ActualLuaWorker, MOD, RUNTIMES
 
 
 class BuildLuaWorker(ActualLuaWorker):
-    def __init__(self, directory, runtime="lua53", *, terrain_setup="", **options):
+    def __init__(self, directory, runtime="lua53", *, terrain_setup="", audit_failure=False, **options):
         self.terrain_setup = terrain_setup
+        self.audit_failure = audit_failure
         super().__init__(directory, runtime=runtime, **options)
 
     def run(self):
@@ -36,7 +37,11 @@ class BuildLuaWorker(ActualLuaWorker):
             config.mailbox_dir = self.directory.resolve().as_posix()
             config.initial_bindings = lua.table()
             modules = {"tf2_strict_probe/json": j, "tf2_strict_probe/config": config,
-                       "tf2_strict_probe/build_assets": assets}
+                       "tf2_strict_probe/build_assets": assets,
+                       "tf2_strict_probe/api_audit": lua.execute((scripts / "api_audit.lua").read_text("utf-8"))}
+            if self.audit_failure:
+                modules["tf2_strict_probe/api_audit"] = lua.execute(
+                    "return {collect=function() error('fixture unavailable collector',0) end}")
             lua.globals().require = lambda name: modules[name]
             modules["tf2_strict_probe/build_engine"] = lua.execute((scripts / "build_engine.lua").read_text("utf-8"))
             lua.execute("api.cmd.sendCommand=function(command,callback) callback(apply_command(command),true) end")
@@ -82,6 +87,119 @@ class BuildLuaWorker(ActualLuaWorker):
 
 @unittest.skipUnless("lua53" in RUNTIMES, "Lua 5.3 fixture runtime unavailable")
 class FullBuildFileIntegrationTests(unittest.TestCase):
+    def test_failed_build_captures_independent_fields_and_never_acknowledges_bad_snapshot(self):
+        import tempfile
+        for runtime in RUNTIMES:
+            with self.subTest(runtime=runtime), tempfile.TemporaryDirectory() as temporary:
+                directory = Path(temporary)
+                worker = BuildLuaWorker(directory, runtime=runtime, terrain_setup="""
+                    local original=apply_command
+                    apply_command=function(command)
+                      local result=original(command)
+                      for _,object in pairs(world) do
+                        if object.CONSTRUCTION then
+                          object.CONSTRUCTION.timeBuild=0/0
+                          object.CONSTRUCTION.transf=nil
+                          object.CONSTRUCTION.frozenEdges=nil
+                        end
+                      end
+                      return result
+                    end
+                """)
+                engine = None
+                try:
+                    engine = EngineAdapter(directory, EPOCH, probe_only=True, timeout_s=3, poll_s=.002)
+                    engine.apply({"op": "SET_PAUSED", "value": True}, "a:1")
+                    previous = engine.snapshot()
+                    with self.assertRaisesRegex(MailboxError, "Lua adapter reported error/halt: capability_missing"):
+                        engine.apply({"op": "PROBE_ROAD"}, "a:2")
+                    status = worker.status()
+                    self.assertEqual(status["status"], "halted")
+                    self.assertNotIn("canonical_state_json", status)
+                    self.assertEqual(status["snapshot"], previous)
+                    self.assertEqual(status["diagnostics"]["snapshot_scope"], "last_valid_before_failure")
+                    failure = status["diagnostics"]["failure"]
+                    self.assertFalse(failure["valid_snapshot"])
+                    self.assertFalse(failure["failed_observation"]["valid_snapshot"])
+                    self.assertTrue(failure["failed_observation"]["missing"])
+                    self.assertEqual(failure["request_context"]["command_key"], "a:2")
+                    self.assertTrue(failure["api_audit"]["written"])
+                    self.assertEqual(failure["api_audit"]["file"], "lua_api_audit.json")
+                    report = json.loads((directory / "lua_api_audit.json").read_bytes())
+                    self.assertEqual(report["status"], "completed")
+                    self.assertFalse(report["valid_snapshot"])
+                    fields = {item["path"]: item for item in report["records"]}
+                    self.assertIn("bindings.a:2.CONSTRUCTION.timeBuild", fields)
+                    self.assertIn("bindings.a:2.CONSTRUCTION.transf", fields)
+                    self.assertIn("bindings.a:2.CONSTRUCTION.frozenEdges", fields)
+                    self.assertEqual(engine.frame, 0)
+                    self.assertEqual(worker.completed_frame, 0)
+                    self.assertEqual(control(directory / "native_control.txt")["action"], "halt")
+                    self.assertLessEqual((directory / "lua_status.json").stat().st_size, 262144)
+                    time.sleep(.02)
+                    self.assertEqual(worker.status(), status)
+                    self.assertEqual(worker.observed_sends, 2)
+                finally:
+                    if engine is not None:
+                        engine.close()
+                    worker.close()
+
+    def test_raw_collector_failure_preserves_original_halt_without_world_steps(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            worker = BuildLuaWorker(directory, audit_failure=True, terrain_setup="world[0].TERRAIN.waterLevel=20")
+            try:
+                with self.assertRaisesRegex(MailboxError, "Lua adapter reported error/halt: build_site_unavailable"):
+                    EngineAdapter(directory, EPOCH, probe_only=True, timeout_s=3, poll_s=.002)
+                status = worker.status()
+                self.assertIn("API collector failed", status["diagnostics"]["failure"]["audit_error"])
+                self.assertNotIn("api_audit", status["diagnostics"]["failure"])
+                self.assertFalse((directory / "lua_api_audit.json").exists())
+                self.assertEqual(worker.completed_frame, 0)
+                self.assertEqual(worker.observed_sends, 0)
+            finally:
+                worker.close()
+
+    def test_rejected_vehicle_receipt_still_reports_exact_new_entity_without_binding_it(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            worker = BuildLuaWorker(directory, terrain_setup="""
+                local original=apply_command
+                apply_command=function(command)
+                  local result=original(command)
+                  for _,object in pairs(world) do
+                    if object.TRANSPORT_VEHICLE then object.TRANSPORT_VEHICLE.carrier=99 end
+                  end
+                  return result
+                end
+            """)
+            engine = None
+            try:
+                engine = EngineAdapter(directory, EPOCH, probe_only=True, timeout_s=5, poll_s=.002)
+                commands = [("a:1", {"op": "SET_PAUSED", "value": True}),
+                            ("a:2", {"op": "PROBE_ROAD"}), ("b:1", {"op": "PROBE_DEPOT"}),
+                            ("a:3", {"op": "PROBE_STOP", "index": 0}),
+                            ("b:2", {"op": "PROBE_STOP", "index": 1})]
+                for key, command in commands:
+                    engine.apply(command, key)
+                with self.assertRaisesRegex(MailboxError, "bought vehicle differs from requested recipe"):
+                    engine.apply({"op": "PROBE_VEHICLE"}, "b:3")
+                status = worker.status()
+                self.assertNotIn("b:3", status["diagnostics"]["bindings"])
+                self.assertNotIn("b:3", {item["logical_id"] for item in engine.snapshot()["objects"]})
+                report = json.loads((directory / "lua_api_audit.json").read_bytes())
+                fields = {item["path"]: item for item in report["records"]}
+                carrier = fields["bindings.callback:b:3.TRANSPORT_VEHICLE.carrier"]
+                self.assertEqual(carrier["value"], 99)
+                self.assertEqual(engine.frame, 0)
+                self.assertFalse(report["valid_snapshot"])
+            finally:
+                if engine is not None:
+                    engine.close()
+                worker.close()
+
     def test_failed_site_publishes_rejection_counts_before_any_game_command(self):
         import tempfile
         with tempfile.TemporaryDirectory() as temporary:

@@ -157,6 +157,7 @@ def self_check(report_path: Path) -> int:
             for relative in audit_files:
                 if not (resources / "prototype/mod/tf2_api_audit_1" / relative).is_file():
                     raise RuntimeError("missing diagnostic mod resource: " + relative)
+            result["shared_api_audit_sha256"] = stage_probe.verify_api_audit_copy(resources)
             if not callable(diagnostic_session.prepare_diagnostic) or not callable(diagnostic_session.read_diagnostic_report):
                 raise RuntimeError("packaged solo diagnostic workflow is missing")
             examples = resources / "prototype/examples"

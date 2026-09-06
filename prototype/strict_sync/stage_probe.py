@@ -8,6 +8,7 @@ loaded later. Neither an equal manifest nor this stage operation proves sync.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 from pathlib import Path
 import re
@@ -23,9 +24,14 @@ from .core import MAX_INT, MAX_MESSAGE_BYTES, canonical_json, decode_message, di
 ROOT = Path(__file__).resolve().parents[2]
 MOD = "tf2_strict_probe_1"
 CONFIG = "res/scripts/tf2_strict_probe/config.lua"
+API_AUDIT = "res/scripts/tf2_strict_probe/api_audit.lua"
+# GENERATED COPY CONTRACT: edit the solo collector, then copy its complete bytes
+# to API_AUDIT. Package build/self-check reject drift; no cross-mod runtime require.
+SOLO_API_AUDIT = "prototype/mod/tf2_api_audit_1/res/scripts/tf2_api_audit/probe.lua"
 REQUIRED_MOD_FILES = {
     "mod.lua", CONFIG, "res/scripts/tf2_strict_probe/json.lua",
     "res/scripts/tf2_strict_probe/engine.lua", "res/config/game_script/tf2_strict_probe.lua",
+    API_AUDIT,
 }
 REQUIRED_PYTHON = {"core.py", "replica.py", "transport.py", "runner.py",
                    "engine_mailbox.py", "game_runner.py", "stage_probe.py", "build_profile.py"}
@@ -117,6 +123,26 @@ def _source_file(path: Path) -> Path:
     if not path.is_file() or path.is_symlink() or path.resolve() != path.absolute():
         raise StageError(f"Missing or linked prototype source: {path}")
     return path
+
+
+def verify_api_audit_copy(repository_root: Path = ROOT) -> str:
+    """Require byte-identical solo/strict raw collectors in a distributable package.
+
+    The strict mod owns its own required copy. Staging and runtime do not need the
+    solo mod installed or enabled; this cross-check runs only on source/package
+    resources to keep the intentionally copied collector from drifting.
+    """
+    root = Path(repository_root).absolute()
+    copies = []
+    for path in (root / SOLO_API_AUDIT, root / "prototype/mod" / MOD / API_AUDIT):
+        with _source_file(path).open("rb") as source:
+            data = source.read(1024 * 1024 + 1)
+        if not data or len(data) > 1024 * 1024:
+            raise StageError("Shared raw API collector is empty or oversized.")
+        copies.append(data)
+    if copies[0] != copies[1]:
+        raise StageError("Shared raw API collector drift: copy the complete solo probe.lua bytes to the strict api_audit.lua resource.")
+    return hashlib.sha256(copies[0]).hexdigest()
 
 
 def _stock_audio(game: Path) -> Path:

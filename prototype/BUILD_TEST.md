@@ -1,14 +1,43 @@
-# Alpha5.1: automatischer Bau- und Fahrzeugversuch
+# Alpha5.6: automatischer Bau- und Fahrzeugversuch
 
 Dieses Paket erweitert den erfolgreich abgeschlossenen Alpha4.2-Zeitversuch um
 ein festes Bauprofil auf der unveränderten Ausgangskarte. Die native ABI-3-
 Schrittsteuerung und die Alpha4.2-Dateisperrkorrektur bleiben unverändert.
 Die neue Szene ist noch nicht in zwei echten TF2-Instanzen bestätigt.
 
+**Der nächste Versuch läuft wieder gemeinsam auf beiden PCs.** Die vorhandenen
+Alpha5.4-Soloberichte sind geborgen und ausgewertet; eine weitere Solo-Diagnose
+ist nicht erforderlich. Im Alpha5.6-Launcher ist **Bautest (experimentell)** der
+erste, standardmäßig geöffnete Reiter. Beide PCs aktualisieren, die vorherige
+Diagnose-/Testinstallation wiederherstellen, mit frischem gemeinsamen Code neu
+vorbereiten und die neue Messtest-Save ausschließlich mit **TF2 Strict Sync -
+automatischer Bautest (Alpha5.6)** und **Legacy Fahrzeuge** laden.
+
 Außerdem korrigiert Alpha5 einen Rundungsfehler beim Übergang vom Laden zum
 laufenden Protokoll. Bei zwei identischen Messwerten der Windows-Uhr konnte
 die bisherige Rechenreihenfolge die Protokollzeit minimal zurücksetzen und
 einen sofortigen Stopp auslösen. Die neue Reihenfolge erhält den Zeitursprung.
+
+## Tatsächlich verfügbare Werte in Alpha5.6
+
+Die Soloberichte zeigen `timeBuild=nil` an zwei vorhandenen Industriekonstruktionen.
+Die früher gebaute Teststraße wurde damit nicht erfasst; `timeBuild` bleibt als
+Ursache ihres allgemeinen Zahlenfehlers plausibel, aber unbewiesen.
+
+Der Zustandsleser speichert ein fehlendes `CONSTRUCTION.timeBuild` jetzt als
+`{available=false}`. Ist ein Wert vorhanden, werden Verfügbarkeit und tatsächlicher
+Wert gespeichert. Beides geht in den gemeinsamen Zustandsvergleich ein; ein
+fehlender Wert wird nicht künstlich auf null gesetzt. `stopIndex` darf vor
+einer Linienzuordnung fehlen, muss bei zugeordnetem Fahrzeug aber vorhanden
+und gültig sein. Für `loadConfig` ist zusätzlich der dokumentierte automatische
+Wert `-1` zulässig, wie in der
+[offiziellen Beschreibung von VehiclePart.loadConfig](https://wiki.transportfever2.com/api/modules/api.type.html)
+angegeben. Nicht verfügbare oder ungültige verpflichtende Werte stoppen
+weiterhin den Test; Fehlermeldungen nennen jetzt den betroffenen Feldpfad.
+
+Diese Änderungen und der restliche Ablauf müssen im tatsächlichen Zwei-PC-Test
+bestätigt werden. Die geborgenen Berichte liefern keine Beobachtung von Live-Depots,
+Linien oder eigenen Transportfahrzeugen dieser Testszene.
 
 ## Fester Ablauf in beiden Spielen
 
@@ -82,6 +111,18 @@ Der gemeinsame Abschluss erfordert die Bestätigung beider Teilnehmer.
 `peer-report.json` enthält den abschließenden Nachweis und tatsächliche Geldänderungen.
 Diese Dateien sind im Berichtsexport enthalten. Fehlersnapshots sind als zuletzt
 beobachtet gekennzeichnet. Ein Journal ist auf 64 MiB begrenzt.
+
+Bei einem strikten Bauabbruch erfasst der Mod außerdem automatisch eine unabhängige
+API-Rohdiagnose der aktuell gebundenen Objekte. Sie ist auf 98304 Bytes begrenzt,
+weist `valid_snapshot=false` aus und wird als separate `lua_api_audit.json` in
+den normalen Testberichtsexport aufgenommen. `lua_status.json` enthält nur den
+Dateihinweis, den Schreib-/Rücklesestatus und begrenzte Fehlversuchsmetadaten.
+Rohe Fließkommazahlen bleiben außerhalb des strikten Synchronitätsprotokolls;
+der letzte gültige Snapshot ist getrennt als historisch markiert.
+Die Erfassung hängt nicht vom bereits fehlgeschlagenen Zustandsleser und nicht
+von einer aktiven Solo-Diagnosemod ab. Sie ist weder ein Ersatzsnapshot noch ein
+zusätzlicher Synchronitätsnachweis. Deshalb nach Abbruch oder Abschluss die
+**normalen Testbericht-ZIPs beider PCs** exportieren; keine weitere Solo-Diagnose starten.
 
 Der Nachweis umfasst die Testszene, Firmenwerte und gemeinsame Enginezeit.
 Ein Teilnehmer erzeugt den jeweiligen Pause-/Weiterlaufwunsch; der Koordinator

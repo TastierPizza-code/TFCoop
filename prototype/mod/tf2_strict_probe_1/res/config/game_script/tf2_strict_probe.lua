@@ -11,6 +11,7 @@ function data()
   local request, revision, signature, pending, in_flight = 0, 0, nil, nil, false
   local seen_sequence={a=0,b=0}
   local current_status, last_snapshot, last_canonical
+  local failed_observation, failure_diagnostics, request_context
   local published_revision=0
   local function decimal(v, positive)
     if type(v)~='string' or not v:match('^%d+$') or #v>20 or (#v>1 and v:sub(1,1)=='0')
@@ -31,7 +32,7 @@ function data()
     -- truncates the reader's file. Leave a successfully published revision
     -- stable; retry only a new revision whose previous write did not finish.
     if current_status.revision==published_revision then return true end
-    local ok,raw=pcall(json.encode,current_status); if not ok then return false end
+    local ok,raw=pcall(json.encode,current_status); if not ok or #raw>MAX_BYTES then return false end
     local f=io.open(path..'/lua_status.json','wb'); if not f then return false end
     local written,ret=pcall(function() return f:write(raw) end)
     local closed,close_ret=pcall(function() return f:close() end)
@@ -45,11 +46,53 @@ function data()
       snapshot=last_snapshot,canonical_state_json=last_canonical,diagnostics={bindings=E and E.local_bindings() or {},
         site_search=E and E.site_diagnostics or nil}}
     if extra then for k,v in pairs(extra) do current_status[k]=v end end
+    if status=='halted' then
+      -- A halt is never a state acknowledgement. Keep the last valid snapshot
+      -- explicitly historical. Raw API observations live in their own file:
+      -- their native floats must never enter the integer-only state protocol.
+      current_status.canonical_state_json=nil
+      current_status.diagnostics.snapshot_scope=last_snapshot and 'last_valid_before_failure' or 'unavailable'
+      current_status.diagnostics.failure=failure_diagnostics
+      local ok,raw=pcall(json.encode,current_status)
+      if not ok or #raw>MAX_BYTES then
+        current_status.snapshot=nil
+        current_status.diagnostics.snapshot_scope='omitted_for_status_limit'
+        ok,raw=pcall(json.encode,current_status)
+        if not ok or #raw>MAX_BYTES then
+          current_status.diagnostics={snapshot_scope='omitted_for_status_limit',
+            failure={valid_snapshot=false,audit_error='failure diagnostics exceeded status limit'}}
+        end
+      end
+    end
     return write_status()
   end
   local function halt(reason, extra)
     halted=true; pending=nil
     local details={error=tostring(reason):sub(1,1024)}
+    if not failure_diagnostics and config.profile=='build_v1' then
+      failure_diagnostics={valid_snapshot=false,request_context=request_context,failed_observation=failed_observation}
+      if E and details.error~='controller requested halt' then
+        local ok,report=pcall(function()
+          return require('tf2_strict_probe/api_audit').collect(api,game,json,
+            {request_id=tostring(config.epoch)..':'..tostring(request),
+              bindings=E.diagnostic_bindings and E.diagnostic_bindings() or E.local_bindings()})
+        end)
+        if ok then
+          local written,problem=pcall(function()
+            if type(report)~='table' or report.valid_snapshot~=false then error('invalid audit envelope',0) end
+            local raw=json.encode(report)
+            if #raw>98304 then error('audit byte limit',0) end
+            local f=io.open(path..'/lua_api_audit.json','wb'); if not f then error('audit open failed',0) end
+            local write_ok,ret=pcall(function() return f:write(raw) end)
+            local close_ok,closed=pcall(function() return f:close() end)
+            if not write_ok or not ret or not close_ok or not closed then error('audit write/close failed',0) end
+            if read('lua_api_audit.json',98304)~=raw then error('audit readback failed',0) end
+          end)
+          failure_diagnostics.api_audit={file='lua_api_audit.json',written=written,valid_snapshot=false}
+          if not written then failure_diagnostics.audit_error=tostring(problem):sub(1,256) end
+        else failure_diagnostics.audit_error='API collector failed ('..type(report)..')' end
+      end
+    end
     if extra then for k,v in pairs(extra) do details[k]=v end end
     publish('halted',true,details)
   end
@@ -72,11 +115,25 @@ function data()
     return true
   end
   local function snapshot(expected)
+    -- Preserve bounded metadata from an invalid attempt separately. Never
+    -- replace last_snapshot with an observation that failed validation.
+    failed_observation={valid_snapshot=false,expected_sim_time_us=expected,phase='reading'}
     local s=E.snapshot(); local canonical=json.encode(s)
+    failed_observation.phase='validation'
+    if type(s.sim_time_us)=='number' and s.sim_time_us==s.sim_time_us and math.abs(s.sim_time_us)<9007199254740992 then
+      failed_observation.sim_time_us=s.sim_time_us
+    end
+    if type(s.coverage)=='table' and type(s.coverage.missing)=='table' then
+      local missing=json.array({})
+      for i=1,math.min(#s.coverage.missing,32) do missing[i]=tostring(s.coverage.missing[i]):sub(1,512) end
+      failed_observation.missing=missing
+      failed_observation.missing_count=#s.coverage.missing
+    end
     if #canonical>MAX_STATE_BYTES then error('bounded tracked snapshot too large',0) end
     if expected~=nil and s.sim_time_us~=expected then error('observed simulation time differs from requested boundary',0) end
     if #s.coverage.missing>0 then error('capability_missing: '..table.concat(s.coverage.missing,'; '),0) end
     last_snapshot,last_canonical=s,canonical
+    failed_observation=nil
     return canonical
   end
   local function start()
@@ -115,6 +172,7 @@ function data()
     if halted then return end
     if c.action~='halt' and not native(c.boundary) then return end
     request,signature=c.request,sig
+    request_context={action=c.action,boundary=c.boundary,command_key=c.command_key,expected_sim_time_us=c.expected_sim_time_us}
     if c.action=='halt' then halt('controller requested halt'); return end
     if in_flight then error('command callback still pending',0) end
     if c.action=='snapshot' then

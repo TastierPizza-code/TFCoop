@@ -375,7 +375,8 @@ def export_diagnostics(prepared, destination):
             (prepared.directory, ("host.log", "peer.log", "lobby.log", "host-report.json", "peer-report.json",
                                   "host-progress.json", "peer-progress.json", "lobby-progress.json", "preparation-error.json",
                                   "peer-journal.jsonl"), ""),
-            (Path(prepared.session), ("probe_manifest.json", "native_status.txt", "lua_status.json", "loader_status.txt"), "session/")):
+            (Path(prepared.session), ("probe_manifest.json", "native_status.txt", "lua_status.json",
+                                      "lua_api_audit.json", "loader_status.txt"), "session/")):
             for name in names:
                 path = directory / name
                 limit = (64 if name == "peer-journal.jsonl" else 16) * 1024 * 1024

@@ -1,5 +1,50 @@
 # Prüfstand vom 6. September 2026
 
+## Alpha5.6: gemeinsamer Bautest nach Auswertung der Rohdaten
+
+Die beiden geborgenen Alpha5.4-Berichte enthalten dieselben 281 Beobachtungen.
+Bei zwei vorhandenen Industriekonstruktionen liefert `CONSTRUCTION.timeBuild`
+tatsächlich `nil`. Der Bauzustandsleser bildet diese Abwesenheit jetzt explizit
+ab, ohne einen Zeitpunkt zu erfinden. Vorhandene Zeitwerte, echte Null und
+fehlende Werte bleiben unterscheidbar und gehen in den vollständigen Digest
+ein. Ungültige vorhandene Werte und Getterausnahmen bleiben Fehler.
+
+`TRANSPORT_VEHICLE.stopIndex` darf vor einer Linienzuordnung fehlen; nach der
+Zuordnung wird ein gültiger Index verlangt. `VehiclePart.loadConfig=-1` ist als
+dokumentierter automatischer Auswahlwert zulässig. Fehler in Zahlenfeldern
+nennen Feldpfad und Lua-Typ. Weitere fehlende Pflichtwerte, Firmenabweichungen
+und unterschiedliche Feldverfügbarkeit halten den Versuch weiterhin an.
+
+Beim Bauabbruch erfasst der unveränderte unabhängige API-Collector begrenzte
+Rohdaten der gebundenen Objekte. Auch eine eindeutige Callback-ID eines neu
+erzeugten Objekts bleibt bei anschließender Validierungsablehnung für die
+Diagnose verfügbar; sie wird nicht als gültiges Sync-Binding übernommen.
+Die Datei `lua_api_audit.json` wird zusammen
+mit dem Testbericht exportiert. Ihre nativen Zahlen sind vom strikten
+Synchronitätsprotokoll getrennt; sie ist ausdrücklich kein gültiger Snapshot.
+Der letzte gültige Snapshot bleibt bei einem Fehler als historisch markiert.
+Begrenzte Metadaten des fehlgeschlagenen Leseversuchs werden zusätzlich
+aufbewahrt. Ein fehlgeschlagener Collector hebt den ursprünglichen Halt nicht
+auf. Die Diagnosemod muss für diesen gemeinsamen Versuch nicht aktiviert sein.
+
+188 Python-Prüfungen bestanden, einschließlich Snapshot-/Digest-Verträgen,
+Datei-Adapter, Installationssicherungen, Launcher, Ressourcen und Updater.
+Weitere acht Export-/Fehlerintegrationsprüfungen bestanden. Dazu kommen
+184 Bauadapter- und 116 generische GameScript-Prüfungen unter Lua 5.1 bis 5.4.
+Der vollständige Bauablauf bestand auf zwei getrennten Lua-Testinstanzen alle
+240 Runden mit unterschiedlichen lokalen Objekt-IDs, fehlender Bauzeit und
+fehlendem Halteindex vor der Zuweisung. Die Spiel-API und die native Uhr sind
+dabei ausdrücklich Testnachbildungen. Fehlerfälle prüfen zusätzlich die
+getrennte Rohdatei, den konkreten Fehlertext und ausbleibende Schrittfreigaben.
+
+Kein Spiel wurde während dieser Entwicklung gestartet, bedient oder verändert.
+Die neue Version muss erst auf den beiden echten TF2-Instanzen geprüft werden.
+Dass das Bauzeitfeld auch bei der früher fehlgeschlagenen Teststraße fehlte,
+ist weiterhin nicht nachgewiesen. Spätere Depot-, Fahrzeug- und Linienfelder
+waren in der Solo-Diagnose nicht als Liveobjekte vorhanden. Ein bestandener
+Folgetest würde nur den beobachteten Ablauf bestätigen; freies gleichzeitiges
+Bauen, Cursor und die normale Pause-Taste sind noch nicht angeschlossen.
+
 ## Alpha5.5: abgeschlossene Diagnoseberichte erkennen
 
 Zwei tatsächliche Alpha5.4-Läufe hatten je 281 vollständige, ungekürzte

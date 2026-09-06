@@ -158,6 +158,121 @@ class BuildEngineTests(unittest.TestCase):
         a.lua.globals().advance();b.lua.globals().advance()
         self.assertEqual(a.snapshot(),b.snapshot())
 
+    def test_observed_nil_construction_timestamp_is_explicit_coverage(self):
+        h=Harness();s=h.apply('a:2',{'op':'PROBE_ROAD'})
+        h.lua.globals().road_id=h.e.local_bindings()['a:2']
+        self.assertEqual(h.lua.eval('type(world[road_id].CONSTRUCTION)'), 'userdata')
+        self.assertIsNone(h.lua.eval('world[road_id].CONSTRUCTION.timeBuild'))
+        self.assertEqual(s['objects'][0]['state']['time_build'],{'available':False})
+        self.assertEqual(s['coverage']['observed_unavailable'],['a:2.CONSTRUCTION.timeBuild'])
+        self.assertEqual(s['coverage']['missing'],[])
+
+    def test_zero_and_present_timestamp_values_differ_from_absence_and_each_other(self):
+        h=Harness();absent=h.apply('a:2',{'op':'PROBE_ROAD'})
+        h.lua.globals().road_id=h.e.local_bindings()['a:2']
+        h.lua.execute('world[road_id].CONSTRUCTION.timeBuild=0')
+        zero=h.snapshot()
+        self.assertEqual(zero['objects'][0]['state']['time_build'],{'available':True,'value':'0'})
+        self.assertEqual(zero['coverage']['observed_unavailable'],[])
+        h.lua.execute('world[road_id].CONSTRUCTION.timeBuild=13400')
+        present=h.snapshot()
+        self.assertEqual(present['objects'][0]['state']['time_build'],{'available':True,'value':'13400'})
+        self.assertNotEqual(absent,zero);self.assertNotEqual(zero,present)
+        h.lua.execute('world[road_id].CONSTRUCTION.timeBuild=13401')
+        self.assertNotEqual(present,h.snapshot())
+
+    def test_present_invalid_timestamp_still_refuses_with_field_and_lua_type(self):
+        for value,kind in [("'invalid'",'string'),('0/0','number'),('math.huge','number'),('false','boolean'),("native_params({},'opaque')",'userdata')]:
+            h=Harness();h.apply('a:2',{'op':'PROBE_ROAD'})
+            h.lua.globals().road_id=h.e.local_bindings()['a:2']
+            h.lua.execute('world[road_id].CONSTRUCTION.timeBuild='+value)
+            s=h.snapshot();errors='\n'.join(s['coverage']['missing'])
+            self.assertIn('a:2.CONSTRUCTION.timeBuild',errors)
+            self.assertIn('Lua type='+kind,errors)
+            self.assertEqual(s['objects'][0]['state'],{'unavailable':True})
+            self.assertNotIn('0x',errors)
+
+    def test_timestamp_getter_exception_is_not_recorded_as_observed_absence(self):
+        for error in ("'timestamp getter failed'","native_params({},'opaque')"):
+            h=Harness();h.apply('a:2',{'op':'PROBE_ROAD'})
+            h.lua.globals().road_id=h.e.local_bindings()['a:2']
+            h.lua.execute('''
+              local mt=getmetatable(world[road_id].CONSTRUCTION);local original=mt.__index
+              mt.__index=function(self,key)if key=='timeBuild'then error('''+error+''',0)end;return original(self,key)end
+            ''')
+            s=h.snapshot();errors='\n'.join(s['coverage']['missing'])
+            self.assertIn('getter threw at a:2.CONSTRUCTION.timeBuild',errors)
+            self.assertNotIn('a:2.CONSTRUCTION.timeBuild',s['coverage']['observed_unavailable'])
+            self.assertEqual(s['objects'][0]['state'],{'unavailable':True})
+            self.assertNotIn('userdata:',errors)
+
+    def test_absent_timestamp_does_not_relax_matrix_or_road_numeric_fields(self):
+        cases=[("world[road_id].CONSTRUCTION.transf[7]='bad'",'CONSTRUCTION.transf[7]','string'),
+               ('world[edge_id].BASE_EDGE_STREET.streetType=nil','BASE_EDGE_STREET.streetType','nil'),
+               ('world[edge_id].BASE_EDGE.typeIndex=false','BASE_EDGE.typeIndex','boolean'),
+               ('world[edge_id].BASE_EDGE.tangent0.x=0/0','BASE_EDGE.tangent0.x','number')]
+        for setup,path,kind in cases:
+            h=Harness();h.apply('a:2',{'op':'PROBE_ROAD'})
+            h.lua.globals().road_id=h.e.local_bindings()['a:2']
+            h.lua.execute('edge_id=world[road_id].CONSTRUCTION.frozenEdges[1];'+setup)
+            errors='\n'.join(h.snapshot()['coverage']['missing'])
+            self.assertIn(path,errors);self.assertIn('Lua type='+kind,errors)
+
+    def test_documented_automatic_load_minus_one_is_preserved_and_minus_two_refused(self):
+        h=Harness();before=h.build()
+        h.lua.execute('world[vehicle_id].TRANSPORT_VEHICLE.transportVehicleConfig.vehicles[1].part.loadConfig={-1}')
+        after=h.snapshot();self.assertEqual(after['coverage']['missing'],[])
+        vehicle=next(x['state'] for x in after['objects'] if x['kind']=='vehicle')
+        self.assertEqual(vehicle['config']['vehicles'][0]['load_config'],[-1])
+        self.assertNotEqual(before,after)
+        h.lua.execute('world[vehicle_id].TRANSPORT_VEHICLE.transportVehicleConfig.vehicles[1].part.loadConfig={-2}')
+        errors='\n'.join(h.snapshot()['coverage']['missing'])
+        self.assertIn('part.loadConfig[1]',errors);self.assertIn('Lua type=number',errors)
+
+    def test_unassigned_stop_index_absence_and_actual_zero_are_distinct(self):
+        h=Harness()
+        for key,command in COMMANDS[:6]:h.apply(key,command)
+        absent=h.snapshot();self.assertEqual(absent['coverage']['missing'],[])
+        vehicle=next(x['state'] for x in absent['objects'] if x['kind']=='vehicle')
+        self.assertEqual(vehicle['stop_index'],{'available':False})
+        self.assertIn('b:3.TRANSPORT_VEHICLE.stopIndex',absent['coverage']['observed_unavailable'])
+        h.lua.execute('world[vehicle_id].TRANSPORT_VEHICLE.stopIndex=0')
+        zero=h.snapshot();vehicle=next(x['state'] for x in zero['objects'] if x['kind']=='vehicle')
+        self.assertEqual(vehicle['stop_index'],{'available':True,'value':0})
+        self.assertNotEqual(absent,zero)
+
+    def test_assigned_stop_index_remains_required_integer_and_getter_errors_fail(self):
+        for value in ('nil',"'invalid'",'0/0','-.5','-1'):
+            h=Harness();h.build();h.lua.execute('world[vehicle_id].TRANSPORT_VEHICLE.stopIndex='+value)
+            errors='\n'.join(h.snapshot()['coverage']['missing'])
+            self.assertIn('b:3.TRANSPORT_VEHICLE.stopIndex',errors)
+        h=Harness()
+        for key,command in COMMANDS[:6]:h.apply(key,command)
+        h.lua.execute("setmetatable(world[vehicle_id].TRANSPORT_VEHICLE,{__index=function(_,k)if k=='stopIndex'then error('bad stop getter')end end})")
+        self.assertIn('getter threw at b:3.TRANSPORT_VEHICLE.stopIndex','\n'.join(h.snapshot()['coverage']['missing']))
+
+    def test_vehicle_depot_line_move_and_config_numeric_errors_name_actual_field(self):
+        cases=[
+          ('world[depot_id].VEHICLE_DEPOT.stateTime=nil','VEHICLE_DEPOT.stateTime','nil'),
+          ("world[line_id].LINE.stops[1].maxWaitingTime='bad'",'LINE.stops[1].maxWaitingTime','string'),
+          ('world[vehicle_id].TRANSPORT_VEHICLE.transportVehicleConfig.vehicles[1].maintenanceState=false','transportVehicleConfig.vehicles[1].maintenanceState','boolean'),
+          ("world[vehicle_id].TRANSPORT_VEHICLE.transportVehicleConfig.vehicles[1].part.color={x='bad',y=0,z=0}",'part.color.x','string'),
+          ('world[vehicle_id].TRANSPORT_VEHICLE.transportVehicleConfig.vehicleGroups={0}','transportVehicleConfig.vehicleGroups[1]','number'),
+          ('advance();world[vehicle_id].MOVE_PATH.dyn.pathPos.pos01=math.huge','MOVE_PATH.dyn.pathPos.pos01','number'),
+        ]
+        for setup,path,kind in cases:
+            h=Harness();h.build()
+            h.lua.globals().depot_id=h.e.local_bindings()['b:1:depot']
+            h.lua.globals().line_id=h.e.local_bindings()['a:4']
+            h.lua.execute(setup)
+            errors='\n'.join(h.snapshot()['coverage']['missing'])
+            self.assertIn(path,errors);self.assertIn('Lua type='+kind,errors)
+
+    def test_company_and_simulation_numeric_errors_include_paths(self):
+        for setup,path,kind in [('money=false','company.balance','boolean'),("now='bad'",'game.interface.getGameTime.time','string'),('speed=nil','game.interface.getGameSpeed','nil')]:
+            h=Harness();h.lua.execute(setup)
+            with self.assertRaisesRegex(Exception,path.replace('.','\\.')+r'.*Lua type='+kind):h.snapshot()
+
     def test_native_indexed_transform_missing_col_member_is_a_supported_read(self):
         h=Harness();s=h.apply('a:2',{'op':'PROBE_ROAD'})
         h.lua.globals().road_id=h.e.local_bindings()['a:2']
@@ -286,6 +401,44 @@ class BuildEngineTests(unittest.TestCase):
         h=Harness();h.build()  # Every fake maker omits all result fields.
         self.assertEqual(h.lua.globals().sent,8)
 
+    def test_rejected_vehicle_recipe_retains_exact_callback_id_only_for_diagnosis(self):
+        h=Harness()
+        for key,command in COMMANDS[:5]:h.apply(key,command)
+        before=h.snapshot();verified=json.loads(h.j.encode(h.e.local_bindings()))
+        plan=h.plan('b:3',{'op':'PROBE_VEHICLE'})
+        result=h.lua.globals().apply_command(plan.native,False)
+        exact_id=h.lua.globals().vehicle_id
+        h.lua.execute("world[vehicle_id].TRANSPORT_VEHICLE.transportVehicleConfig.vehicles[1].maintenanceState='bad'")
+        with self.assertRaisesRegex(Exception,'maintenanceState'):
+            h.e.finish(plan,result,True)
+        self.assertEqual(json.loads(h.j.encode(h.e.local_bindings())),verified)
+        self.assertIsNone(h.e.local_bindings()['b:3'])
+        self.assertIsNone(h.e.scene.vehicle)
+        diagnostic=json.loads(h.j.encode(h.e.diagnostic_bindings()))
+        self.assertEqual(diagnostic,dict(verified,**{'callback:b:3':exact_id}))
+        self.assertLessEqual(len(diagnostic),12)
+        # The pre-existing tracked objects are unchanged by a diagnostic entry.
+        self.assertEqual(before['objects'],h.snapshot()['objects'])
+        h.e.finish(plan,h.table({}),False)
+        self.assertEqual(json.loads(h.j.encode(h.e.diagnostic_bindings())),verified)
+
+    def test_successful_finish_has_no_duplicate_diagnostic_callback_binding(self):
+        h=Harness();h.build()
+        self.assertEqual(h.j.encode(h.e.diagnostic_bindings()),h.j.encode(h.e.local_bindings()))
+        self.assertNotIn('callback:',h.j.encode(h.e.diagnostic_bindings()))
+
+    def test_ambiguous_or_nonexistent_callback_is_not_a_diagnostic_candidate(self):
+        h=Harness()
+        for key,command in COMMANDS[:5]:h.apply(key,command)
+        plan=h.plan('b:3',{'op':'PROBE_VEHICLE'})
+        result=h.lua.globals().apply_command(plan.native,False)
+        actual=h.lua.globals().vehicle_id
+        for supplied,reason in [({'resultEntity':actual,'resultVehicleEntity':actual+1},'ambiguous callback'),
+                                ({'resultVehicleEntity':actual+1000},'build entity missing')]:
+            with self.assertRaisesRegex(Exception,reason):h.e.finish(plan,h.table(supplied),True)
+            self.assertIsNone(h.e.local_bindings()['b:3'])
+            self.assertNotIn('callback:',h.j.encode(h.e.diagnostic_bindings()))
+
     def test_native_callback_missing_unused_member_preserves_authoritative_id(self):
         h=Harness()
         h.lua.execute('''
@@ -379,6 +532,14 @@ class BuildEngineTests(unittest.TestCase):
     def test_stale_or_unknown_line_reference_is_unreadable(self):
         h=Harness();h.build();h.lua.execute('world[vehicle_id].TRANSPORT_VEHICLE.line=999999')
         self.assertTrue(h.snapshot()['coverage']['missing'])
+
+    def test_invalid_native_line_reference_reports_field_path_and_remains_strict(self):
+        for value,kind in [("native_params({},'opaque')",'userdata'),('false','boolean'),('-2','number'),('1.5','number')]:
+            h=Harness();h.build();h.lua.execute('world[vehicle_id].TRANSPORT_VEHICLE.line='+value)
+            errors='\n'.join(h.snapshot()['coverage']['missing'])
+            self.assertIn('b:3.TRANSPORT_VEHICLE.line',errors)
+            self.assertIn('Lua type='+kind,errors)
+            self.assertNotIn('bad argument',errors)
 
     def test_disconnected_equal_coordinate_node_changes_actual_connectivity(self):
         h=Harness();before=h.build()
