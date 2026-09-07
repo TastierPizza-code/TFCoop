@@ -35,8 +35,10 @@ TIMING_WINDOWS = 12
 PROGRESS_TOTAL = ROUNDS + TIMING_WINDOWS
 STREAM_MODE = "stream_v1"
 TIMING_MODE = "timing_v1"
+LIVE_MODE = "live_input_v1"
 TEST_MODES = {
-    STREAM_MODE: "Neuer 1x-Dauertest",
+    LIVE_MODE: "Pause selbst steuern",
+    STREAM_MODE: "Referenztest aus Alpha5.12",
     TIMING_MODE: "Vergleichstest aus Alpha5.11",
 }
 STREAM_STEPS = 600
@@ -210,6 +212,10 @@ class PreparedRun:
     def stop_path(self):
         return self.directory / "stop.txt"
 
+    @property
+    def live_input_path(self):
+        return self.directory / "live-input.json"
+
 
 def lobby_manifest(file_manifest, test_mode):
     if test_mode not in TEST_MODES:
@@ -218,7 +224,7 @@ def lobby_manifest(file_manifest, test_mode):
 
 
 def prepare(game_dir, save_dir, role, host, code, *, source_root=None, save=None, runs_root=None,
-            test_mode=STREAM_MODE):
+            test_mode=LIVE_MODE):
     if test_mode not in TEST_MODES:
         raise ValueError("Bitte einen gültigen Testablauf auswählen.")
     if role not in ("a", "b"):
@@ -244,6 +250,9 @@ def prepare(game_dir, save_dir, role, host, code, *, source_root=None, save=None
                                installed["imported_save"], installed["backup_path"], role,
                                host, epoch, lobby_manifest(result["manifest_digest"], test_mode), test_mode)
         (run / "session.key").write_bytes(secret)
+        if test_mode == LIVE_MODE:
+            from .live_input import create
+            create(prepared.live_input_path, epoch, role)
         write_json(run / "run.json", asdict(prepared))
         return prepared
     except Exception as exc:
@@ -269,6 +278,9 @@ class SessionController:
         self.stopping = False
         self.started_at = 0
         self.failure = ""
+        self._input_writer = None
+        self.last_submitted_seq = 0
+        self.finish_requested = False
 
     def _spawn(self, label, kind, args):
         log = self.run.directory / (label + ".log")
@@ -279,18 +291,25 @@ class SessionController:
 
     def _game_args(self, mode):
         directory = self.run.directory
-        return [mode, "--session", self.run.session, "--epoch", self.run.epoch,
+        flag = {LIVE_MODE: "--live-probe", STREAM_MODE: "--stream-probe",
+                TIMING_MODE: "--timing-probe"}[self.run.test_mode]
+        args = [mode, "--session", self.run.session, "--epoch", self.run.epoch,
                 "--key-file", directory / "session.key", "--report", directory / (mode + "-report.json"),
                 "--progress", directory / (mode + "-progress.json"), "--stop-file", self.run.stop_path,
                 "--rounds", ROUNDS, "--profile", PROFILE, "--timeout", 30,
-                "--startup-timeout", 600, "--port", PORT,
-                "--stream-probe" if self.run.test_mode == STREAM_MODE else "--timing-probe"]
+                "--startup-timeout", 600, "--port", PORT, flag]
+        if self.run.test_mode == LIVE_MODE and mode == "peer":
+            args += ["--live-input-file", self.run.live_input_path]
+        return args
 
     def start(self):
         if self.started or self.run.stop_path.exists():
             raise ValueError("Für einen weiteren Versuch bitte eine neue Testsitzung vorbereiten.")
         if game_is_running():
             raise ValueError("Bitte TF2 schließen. Erst verbinden und auf die Startmeldung warten.")
+        if self.run.test_mode == LIVE_MODE:
+            from .live_input import InputWriter
+            self._input_writer = InputWriter(self.run.live_input_path, self.run.epoch, self.run.role)
         self.started, self.started_at = True, self.clock()
         try:
             if self.run.role == "a":
@@ -312,6 +331,16 @@ class SessionController:
     def alive(self):
         return any(child.poll() is None for child in self.children.values())
 
+    def submit_live(self, command):
+        status = self.poll()
+        if not self._input_writer or not live_input_ready(status):
+            raise ValueError("Die gemeinsame Eingabephase ist noch nicht bereit oder bereits beendet.")
+        sequence = self._input_writer.submit(command)
+        self.last_submitted_seq = sequence
+        if command.get("op") == "END_TEST":
+            self.finish_requested = True
+        return sequence
+
     def poll(self):
         directory = self.run.directory
         lobby = read_json(directory / "lobby-progress.json") or {}
@@ -319,8 +348,9 @@ class SessionController:
         host = read_json(directory / "host-progress.json") or {}
         # Two peers' 600 native measurements exceed the compact progress limit.
         # Keep progress bounded separately while accepting the fixed test report.
-        peer_report = read_json(directory / "peer-report.json", limit=4 * 1024 * 1024) or {}
-        host_report = read_json(directory / "host-report.json", limit=4 * 1024 * 1024) or {}
+        report_limit = (16 if self.run.test_mode == LIVE_MODE else 4) * 1024 * 1024
+        peer_report = read_json(directory / "peer-report.json", limit=report_limit) or {}
+        host_report = read_json(directory / "host-report.json", limit=report_limit) or {}
         completed = bool(peer_report.get("finished"))
         coordinated = bool(host.get("coordinated_completed") or host_report.get("coordinated_completed"))
         failure = failure_reason(self.failure, peer, peer_report, host, host_report)
@@ -361,6 +391,11 @@ class SessionController:
                 self.stop()
         return {"lobby": lobby, "peer": peer, "host": host, "failure": failure,
                 "test_mode": self.run.test_mode,
+                "live": peer.get("live") or host.get("live") or {},
+                "live_result": host_report.get("live") or peer_report.get("live") or {},
+                "role": self.run.role, "submitted_seq": self.last_submitted_seq,
+                "finish_requested": self.finish_requested,
+                "peer_started": self.peer_started,
                 "stream": peer.get("stream") or host.get("stream") or {},
                 "stream_result": host_report.get("stream") or peer_report.get("stream") or {},
                 "timing": peer.get("timing") or host.get("timing") or {},
@@ -370,10 +405,46 @@ class SessionController:
                 "stopping": self.stopping, "alive": self.alive()}
 
 
+def live_input_ready(status):
+    live = status.get("live") or {}
+    return bool(status.get("test_mode") == LIVE_MODE and status.get("peer_started")
+                and status.get("alive") and not status.get("failure") and not status.get("stopping")
+                and not status.get("completed") and not status.get("finish_requested")
+                and live.get("started") and not live.get("completed") and not live.get("ending"))
+
+
+def live_input_status(status):
+    live = status.get("live") or {}
+    if not live.get("started"):
+        return "Die Tasten werden nach dem gemeinsamen automatischen Aufbau freigegeben."
+    acknowledged = (live.get("acknowledged_seq") or {}).get(status.get("role"), 0)
+    submitted = status.get("submitted_seq", 0)
+    pending = max(0, submitted - acknowledged)
+    confirmed = live.get("confirmed_paused")
+    state = "pausiert" if confirmed is True else "läuft" if confirmed is False else "Startbestätigung ausstehend"
+    terminal = status.get("completed") or status.get("stopping") or status.get("failure")
+    measured = live.get("paused_duration_ms", 0)
+    pause = (" Lange Pause erfasst." if live.get("long_pause_met") is True else
+             f" Aktuelle gemessene Pause: {int(measured) // 1000} / 35 Sekunden." if confirmed is True else "")
+    return (f"Gemeinsamer Zustand: {state} · Eigene Wünsche beidseitig bestätigt: {acknowledged}. "
+            + (f"Ohne gemeinsame Bestätigung beendet: {pending} Wünsche." if pending and terminal else
+               f"Noch {pending} zur Bestätigung offen." if pending else "Kein eigener Wunsch offen.")
+            + pause
+            + (" Gemeinsamer Abschluss angefordert." if status.get("finish_requested") or live.get("ending") else ""))
+
+
 def describe_status(status):
     if status["failure"]:
         return "Test angehalten: " + status["failure"]
     if status["completed"]:
+        if status.get("test_mode") == LIVE_MODE:
+            live = status.get("live_result") or {}
+            met = live.get("required_interactions_met")
+            coverage = ("Die vorgesehenen Pause-/Fortsetzen-Proben sind erfasst" if met is True else
+                        "Nicht alle vorgesehenen Bedienproben wurden erfasst" if met is False else
+                        "Bedienproben anhand beider Berichte auswerten")
+            return ("Eingabetest mit gemeinsamem Abschluss beendet. " + coverage +
+                    ". Beide Berichte exportieren und TF2 schließen. Dies prüft die gemessene Testszene.")
         stream = status.get("stream_result") or {}
         if stream:
             met = stream.get("paced_stream_1x_met")
@@ -399,6 +470,11 @@ def describe_status(status):
         return "Test wird beendet. Die Spielzeit bleibt gehalten. TF2 selbst schließen."
     peer = status["peer"]
     if peer.get("state") == "running":
+        live = status.get("live") or {}
+        if live.get("started"):
+            return ("Jetzt die gemeinsamen Tasten unten nach Anleitung verwenden. "
+                    "Jeder pausiert und setzt selbst fort; eine Pause mindestens 45 Sekunden halten. "
+                    "Danach 'Messung gemeinsam abschließen'. Im Spiel nichts bauen oder umschalten.")
         stream = status.get("stream") or {}
         if stream.get("started"):
             seconds = min(STREAM_STEPS, stream.get("advanced_steps", 0)) // 5

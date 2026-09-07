@@ -1,24 +1,60 @@
-# Alpha5.12: Aufbau, fortlaufende 1x-Fahrt und gemeinsame Testpause
+# Alpha5.13: Aufbau und frei ausgelöste gemeinsame Pause
 
-Beide Testmodi beginnen mit demselben Profil `build_v2`. Der neue Standard
-**Neuer 1x-Dauertest** (`stream_v1`, Protokoll `paced-stream-v1`) prüft anschließend
-120 Sekunden zusätzliche Spielzeit. **Vergleichstest aus Alpha5.11** (`timing_v1`,
-Protokoll `hold-and-pace-v1`) erhält den bisherigen Ablauf mit zwölf kurzen
-Fahrtabschnitten. Beide Teilnehmer müssen denselben Modus wählen und frisch
-vorbereiten. Die Lobby prüft den Modus zusammen mit den gemeinsamen Testdateien.
+Alle drei Modi beginnen mit demselben `build_v2`: zwölf automatische Befehle
+und 240 Aufbauschritte. Neuer Standard ist **Pause selbst steuern**
+(`live_input_v1`). **Referenztest aus Alpha5.12** (`stream_v1`) und
+**Vergleichstest aus Alpha5.11** (`timing_v1`) bleiben erhalten. Beide müssen
+denselben Modus wählen und frisch vorbereiten. Die Lobby bindet ihn zusammen
+mit den gemeinsamen Testdateien. Große Karte und sauberes Savepaar bleiben
+gültig. Frische Kopien enthalten Strict Sync Alpha5.13 und Legacy Fahrzeuge.
+Bedienfolge: [ANLEITUNG.md](ANLEITUNG.md).
 
-Die bisherige sehr große Karte und ihr sauberes privates Savepaar bleiben
-unverändert. Beide bisherigen Teilnehmer haben es bereits; ein neuer Import
-ist nicht nötig. Frische Kopien enthalten Strict Sync Alpha5.12 und Legacy
-Fahrzeuge. Bedienfolge: [ANLEITUNG.md](ANLEITUNG.md).
+## Alpha5.13: dynamische Eingabephase
 
-**Echte Evidenz:** Alpha5.11 wurde auf beiden PCs mit gleichen erfassten Zuständen
-abgeschlossen. Seine 278 Journalzeilen waren bytegleich; alle zwölf zusätzlichen
-Fahrtgrenzen und Firmenwerte stimmten überein. Das 1x-Tempoziel wurde verfehlt:
-60 Sekunden Spielzeit benötigten in den Fahrtmethoden 66,155 beziehungsweise
-66,299 Sekunden, noch ohne die Übergänge zwischen ihnen. Die neue
-Alpha5.12-Steuerung ist bisher nur ohne Spielstart vorgeprüft. Frühere tatsächliche
-Versuche und die Grenzen ihrer Aussage stehen im [Prüfstand](VERIFICATION.md).
+Nach dem gemeinsamen Aufbau erzeugen nur echte Launcher-Klicks Wünsche.
+Es gibt keinen automatischen Pauseplan für diese Phase. Ein Klick bekommt
+Sitzung, Spieler, fortlaufende Nummer und expliziten Zielzustand; `END_TEST`
+fordert einen gemeinsamen Abschluss an. Die lokale Annahme ist noch keine
+Ausführungsbestätigung. Pro Spieler werden höchstens 128 Wünsche angenommen,
+pro Sammelrunde höchstens acht weitergereicht. Dateien werden atomar ersetzt;
+mutierte Historie, fremde Identität oder Übergröße werden zurückgewiesen.
+
+Der Host wartet auf beide versiegelten Listen. Vor Änderungen werden frische
+Welten an der gehaltenen Grenze verglichen. Beide wenden denselben geordneten
+Plan an. Gegensätzliche Wünsche derselben Sammelrunde enden mit Pause, auch
+wenn schnelle eigene Klicks beide Zielzustände enthalten. Unterschiedliche
+Runden bleiben nacheinander wirksam. Erneutes Fortsetzen ist danach möglich.
+Erst passende echte Callback-Ergebnisse und Weltbeobachtungen beider PCs
+bestätigen die Sequenzen. Doppelte Transportnachrichten führen die Änderung
+nicht erneut aus.
+
+Während Fahrt bleiben die vorhandenen Freigaben von zwei Schritten und die
+regelmäßigen Weltprüfungen alle 50 Schritte erhalten. Zusätzlich gibt es
+Eingabeabfragen. In Pause führen wiederholte begrenzte HOLD-Runden frische
+Beobachtungen und Eingabeabfragen ohne Fortschrittsschritt aus. Ein langer
+beabsichtigter Stillstand ist damit keine einzelne unbeantwortete Netzwerkphase.
+2048 Sammelrunden oder 3000 zusätzliche Fortschrittsschritte sind harte Grenzen;
+ihr Erreichen hält den Versuch mit Fehlerbericht an und ist kein Bestehen.
+
+Ein `END_TEST` verarbeitet nur die gemeinsam versiegelten Wünsche und verlangt
+einen finalen frischen Weltvergleich beider Peers. Später lokal angenommene
+Wünsche können unbestätigt bleiben und zählen nicht als ausgeführt. Deshalb
+vor dem Abschluss die Bestätigungen abwarten. Der alte Knopf **Test beenden**
+bricht die Sitzung ab; **Messung gemeinsam abschließen** ist der reguläre Weg.
+
+`live` im Bericht hält Eingaben, Pläne, echte Ergebnisse, gemeinsame Bestätigungen,
+native Fortschritte und frische Weltgrenzen getrennt fest. `required_interactions_met`
+bewertet tatsächliche Pause-/Fortsetzen-Übergänge beider Spieler und mindestens
+35 Sekunden einer zusammenhängenden unveränderten Pause. Die Anleitung sieht
+45 Sekunden und das Abwarten der gemessenen Pause vor. Konflikte werden separat
+gezählt und nur für gegensätzliche Wünsche verschiedener Spieler als solche
+ausgewiesen. Ein sauberer früher Abschluss kann unvollständige Bedienproben haben.
+
+**Evidenz:** Alpha5.12 wurde auf zwei PCs akzeptiert, siehe
+[Referenz](docs/ACCEPTED_BASELINE.md). Alpha5.13 ist zunächst durch Dateien,
+Protokollmodelle und echten lokalen TCP-Verkehr zwischen Engine-Modellen
+vorgeprüft. Das startet kein TF2 und ersetzt keinen tatsächlichen Zwei-PC-Lauf.
+Normale UI-Pause, freies Bauen und die vollständige Spielwelt bleiben ungeprüft.
 
 ## Fester Ablauf in beiden Spielen
 
@@ -43,7 +79,7 @@ Eingabewege; niemand muss diese Aktionen manuell auslösen. Die Runden enthalten
 29 Pausenschritte und 211 echte Schritte à 200000 Mikrosekunden, insgesamt
 42,2 Sekunden Enginezeit. Die Wartezeiten im Netzwerk zählen nicht als Spielzeit.
 
-## Neuer Standard: 120 Sekunden fortlaufende Spielzeit
+## Erhaltener Alpha5.12-Referenzmodus: 120 Sekunden fortlaufende Spielzeit
 
 Nach der bestätigten Aufbaugrenze bei Frame 240 legt der gemeinsame Plan
 **600 Fortschrittsschritte à 200000 Mikrosekunden** fest. Die erste und zweite

@@ -41,6 +41,9 @@ def headless_app():
     for name in ("prepare_button", "connect_button", "restore_button", "stop_button", "addresses", "diagnostic_button", "diagnostic_export_button"):
         setattr(app, name, Mock())
     app.inputs = [Mock(), Mock()]
+    app.last_live_status = {}
+    app.live_buttons = [Mock(), Mock(), Mock()]
+    app.live_status = Value()
     return app
 
 

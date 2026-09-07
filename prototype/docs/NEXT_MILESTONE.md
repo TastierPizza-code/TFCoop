@@ -1,16 +1,20 @@
 # Nächste Etappe: frei ausgelöste Eingaben
 
-Status: identifiziert und als nächste Entwicklungsetappe festgelegt; noch nicht
-implementiert oder im Spiel getestet. Die [akzeptierte Alpha5.12-Referenz](ACCEPTED_BASELINE.md)
-bleibt unverändert. Es wird kein weiteres Tempoexperiment vorgeschaltet.
+Status: Der Pause-Teil ist in Alpha5.13 implementiert und ohne Spielstart
+vorgeprüft: frei ausgelöste Wünsche beider Launcher, Eingabeverarbeitung während
+Pause und gemeinsamer Abschluss. Der echte Zwei-PC-Versuch steht noch aus.
+Der begrenzte manuelle Bauauftrag und die normale TF2-Eingabe bleiben offen.
+Die [akzeptierte Alpha5.12-Referenz](ACCEPTED_BASELINE.md) bleibt unverändert und
+als `stream_v1` auswählbar. Es wird kein weiteres Tempoexperiment vorgeschaltet.
 
 ## Fehlendes Verhalten
 
 Im jetzigen `stream_v1` sind alle 600 Schritte und beide Pausebefehle bereits beim
 Start festgelegt. Die Spieler können den Auslösezeitpunkt nicht bestimmen.
 Die vorhandene strikte Lua-Anbindung kann `SET_PAUSED` bereits mit echter
-Engine-Rückmeldung an einer gehaltenen Grenze anwenden. Es fehlt der dynamische
-Weg von einem echten Klick beider Spieler bis zur gemeinsamen Entscheidung.
+Engine-Rückmeldung an einer gehaltenen Grenze anwenden. Alpha5.13 ergänzt den
+dynamischen Weg vom echten Klick bis zur gemeinsamen Entscheidung als eigenen
+Modus `live_input_v1`.
 
 Der nächste Meilenstein führt daher echte, beliebig ausgelöste Wünsche ein:
 zunächst Pause/Fortsetzen über eigene Teststeuerungen im Launcher, danach einen
@@ -18,7 +22,7 @@ manuell ausgelösten, bekannten Straßen- oder Depotauftrag. Die Teststeuerungen
 werden ausdrücklich als solche bezeichnet. Sie beweisen noch nicht, dass die
 normalen TF2-Werkzeuge ihre ursprüngliche lokale Ausführung sicher zurückhalten.
 
-## Geplanter gemeinsamer Eingabeweg
+## Gemeinsamer Eingabeweg in Alpha5.13
 
 1. Ein echter Klick erzeugt einen begrenzten semantischen Auftrag mit Sitzung,
    Spieler, fortlaufender Nummer, eindeutiger Identität und explizitem Zielzustand.

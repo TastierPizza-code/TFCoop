@@ -35,7 +35,7 @@ REQUIRED_MOD_FILES = {
 }
 REQUIRED_PYTHON = {"core.py", "replica.py", "transport.py", "runner.py",
                    "engine_mailbox.py", "game_runner.py", "stage_probe.py", "build_profile.py",
-                   "timing_probe.py", "stream_probe.py", "stream_engine.py"}
+                   "timing_probe.py", "stream_probe.py", "stream_engine.py", "live_probe.py", "live_input.py"}
 PROFILES = {"time_v1", "build_v2"}
 REQUIRED_BUILD_FILES = {"res/scripts/tf2_strict_probe/build_engine.lua",
                         "res/scripts/tf2_strict_probe/build_assets.lua",

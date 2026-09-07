@@ -29,6 +29,7 @@ class App:
         self.prepared = None
         self.controller = None
         self.last_status = ""
+        self.last_live_status = {}
         self.last_run = None
         self.diagnostic = self.last_diagnostic = None
         self.diagnostic_finished = False
@@ -42,7 +43,7 @@ class App:
         self.game = tk.StringVar(value=settings.get("game_dir", ""))
         self.saves = tk.StringVar(value=settings.get("save_dir", ""))
         self.role = tk.StringVar(value="a")
-        self.test_mode = tk.StringVar(value=workflow.STREAM_MODE)
+        self.test_mode = tk.StringVar(value=workflow.LIVE_MODE)
         self.host = tk.StringVar(value="")
         self.code = tk.StringVar(value=workflow.new_code())
         self.status = tk.StringVar(value="Beide: TF2 und den bisherigen Koop-Launcher schließen. Dann Pfade prüfen und Test vorbereiten.")
@@ -50,6 +51,7 @@ class App:
         self.network = tk.StringVar(value="Mitspieler: noch nicht verbunden")
         self.engine = tk.StringVar(value="Spielkontakt: noch nicht gestartet")
         self.progress_text = tk.StringVar(value="Messung: noch nicht gestartet")
+        self.live_status = tk.StringVar(value="Die Tasten werden nach dem gemeinsamen automatischen Aufbau freigegeben.")
         self.update_status = tk.StringVar(value="Updates werden beim Start über GitHub geprüft.")
         self.baseline_status = tk.StringVar(value="Lokalen Testspielstand prüfen …")
         self.diagnostic_status = tk.StringVar(value="Allein möglich. TF2 und den bisherigen Test zuerst schließen, dann Diagnose vorbereiten.")
@@ -90,7 +92,7 @@ class App:
         canvas.bind("<Configure>", lambda event: canvas.itemconfigure(embedded, width=event.width))
         self.root.bind("<MouseWheel>", lambda event: canvas.yview_scroll(-int(event.delta / 120), "units"))
         ttk.Label(outer, text="TF2-Koop  /  " + workflow.VERSION, style="Title.TLabel").pack(anchor="w")
-        ttk.Label(outer, text="Gemeinsamen Aufbau und fortlaufende Fahrt bei 1x prüfen", font=("Segoe UI", 12)).pack(anchor="w", pady=(3, 6))
+        ttk.Label(outer, text="Gemeinsame Pause und Fortsetzen selbst steuern", font=("Segoe UI", 12)).pack(anchor="w", pady=(3, 6))
         ttk.Label(outer, text="Auf beiden PCs neu vorbereiten. Vorher TF2 schließen und eine vorhandene Diagnoseinstallation unten wiederherstellen. Für diesen Bautest ist kein neuer Solo-Diagnoselauf nötig.",
                   wraplength=900).pack(anchor="w", pady=(0, 13))
         ttk.Label(outer, textvariable=self.update_status, wraplength=900).pack(anchor="w", pady=(0, 8))
@@ -114,7 +116,7 @@ class App:
         tabs.pack(fill="both", expand=True, pady=(12, 0))
         solo = ttk.Frame(tabs, padding=12)
         build = ttk.Frame(tabs, padding=12)
-        tabs.add(build, text="Aufbau + 1x-Test (experimentell)")
+        tabs.add(build, text="Gemeinsamer Eingabetest (experimentell)")
         tabs.add(solo, text="API-Diagnose allein")
         ttk.Label(solo, text="2  ·  Diagnose vorbereiten", font=("Segoe UI", 12, "bold")).pack(anchor="w")
         ttk.Label(solo, text="Die Vorbereitung stellt die native Testinstallation zurück, installiert die Diagnosemod und kopiert den lokalen Ausgangsspielstand. IP, Sitzungscode und Verbindung werden nicht benötigt.", wraplength=850).pack(anchor="w", pady=8)
@@ -128,14 +130,14 @@ class App:
         self.diagnostic_export_button = ttk.Button(solo, text="Diagnosebericht als ZIP …", command=self.export_diagnostic)
         self.diagnostic_export_button.pack(anchor="w", pady=8)
         ttk.Label(solo, text="Nur diesen eigenen Bericht zur Auswertung schicken. Anschließend TF2 schließen und unten die bisherige Installation wiederherstellen.", wraplength=850).pack(anchor="w")
-        ttk.Label(build, text=f"Zuerst {workflow.ROUNDS} Aufbaurunden. Der neue Dauertest fährt danach 120 Sekunden Spielzeit mit Kontrollpunkten alle zehn Sekunden und einer automatischen Pause in der Mitte. Nur zuschauen; nichts selbst bauen oder umschalten.", wraplength=850).pack(anchor="w", pady=(0, 9))
+        ttk.Label(build, text=f"Zuerst {workflow.ROUNDS} automatische Aufbaurunden. Danach steuert ihr Pause und Fortsetzen frei mit den gemeinsamen Tasten unten im Launcher. Nur dort umschalten; im Spiel noch nichts selbst bauen. Die Kamera dürft ihr bewegen.", wraplength=850).pack(anchor="w", pady=(0, 9))
         modes = ttk.LabelFrame(build, text="Auf beiden PCs denselben Test wählen", padding=8)
         modes.pack(fill="x", pady=(0, 8))
         for value, label in workflow.TEST_MODES.items():
             button = ttk.Radiobutton(modes, text=label, value=value, variable=self.test_mode)
             button.pack(anchor="w")
             self.inputs.append(button)
-        ttk.Label(modes, text="Der Vergleichstest verwendet weiterhin die bisherigen zwölf Abschnitte mit fünf Sekunden. Ein Wechsel braucht eine neue Vorbereitung; vorhandene Spielstände bleiben erhalten.", wraplength=850).pack(anchor="w", pady=(5, 0))
+        ttk.Label(modes, text="Alpha5.12 bleibt als automatischer Referenztest erhalten, Alpha5.11 als älterer Vergleich. Dort nur zuschauen. Ein Moduswechsel braucht eine neue Vorbereitung.", wraplength=850).pack(anchor="w", pady=(5, 0))
         form = ttk.LabelFrame(build, text="Auf beiden PCs vorbereiten", padding=12)
         form.pack(fill="x")
         form.columnconfigure(1, weight=1)
@@ -182,6 +184,19 @@ class App:
         self.bar = ttk.Progressbar(connection, maximum=workflow.PROGRESS_TOTAL, mode="determinate")
         self.bar.pack(fill="x", pady=(5, 7))
         ttk.Label(connection, textvariable=self.status, style="Status.TLabel", wraplength=870).pack(anchor="w")
+        manual = ttk.LabelFrame(build, text="Gemeinsame Eingaben · erst nach dem Aufbau", padding=10)
+        manual.pack(fill="x", pady=(10, 0))
+        buttons = ttk.Frame(manual)
+        buttons.pack(anchor="w")
+        self.live_buttons = []
+        for label, command in (("Gemeinsam pausieren", {"op": "SET_PAUSED", "value": True}),
+                               ("Gemeinsam fortsetzen", {"op": "SET_PAUSED", "value": False}),
+                               ("Messung gemeinsam abschließen", {"op": "END_TEST"})):
+            button = ttk.Button(buttons, text=label, command=lambda c=command: self.submit_live(c), state="disabled")
+            button.pack(side="left", padx=(0, 8))
+            self.live_buttons.append(button)
+        ttk.Label(manual, textvariable=self.live_status, wraplength=850).pack(anchor="w", pady=(8, 3))
+        ttk.Label(manual, text="Jeder soll selbst pausieren und fortsetzen. Eine Pause mindestens 45 Sekunden halten. 'Test beenden' oben bricht ab; für einen regulären Abschluss die gemeinsame Taste hier verwenden.", wraplength=850).pack(anchor="w")
         savebox = ttk.Frame(build)
         savebox.pack(fill="x", pady=10)
         ttk.Label(savebox, text="Im Spiel ausdrücklich diese Testsave wählen:").pack(anchor="w")
@@ -271,6 +286,9 @@ class App:
         self.connect_button.configure(state="normal" if self.prepared and not self.controller and not self.busy else "disabled")
         self.restore_button.configure(state="disabled" if self.busy or active else "normal")
         self.stop_button.configure(state="normal" if active else "disabled")
+        live_enabled = active and not self.busy and workflow.live_input_ready(self.last_live_status)
+        for widget in self.live_buttons:
+            widget.configure(state="normal" if live_enabled else "disabled")
 
     def choose_directory(self, variable):
         directory = filedialog.askdirectory(parent=self.root, initialdir=variable.get() or None)
@@ -406,6 +424,19 @@ class App:
             self.controller.stop()
             self.status.set("Messcontroller werden geordnet beendet. Ein laufender Abschluss kann bis zu 30 Sekunden dauern.")
             self.game_button.configure(state="disabled")
+            self.last_live_status = {}
+            self._buttons()
+
+    def submit_live(self, command):
+        try:
+            if not self.controller:
+                raise ValueError("Zuerst beide Spieler verbinden und den Aufbau abwarten.")
+            sequence = self.controller.submit_live(command)
+            self.last_live_status = self.controller.poll()
+            self.live_status.set(f"Wunsch {sequence} lokal angenommen. " + workflow.live_input_status(self.last_live_status))
+            self._buttons()
+        except Exception as exc:
+            messagebox.showerror("Gemeinsame Eingabe", str(exc), parent=self.root)
 
     def restore(self):
         game = self.game.get()
@@ -420,6 +451,8 @@ class App:
 
     def _restored(self, result):
         self.prepared = self.controller = None
+        self.last_live_status = {}
+        self.live_status.set("Die Tasten werden nach dem gemeinsamen automatischen Aufbau freigegeben.")
         self.diagnostic = None
         if self.role.get() == "a":
             self.code.set(workflow.new_code())
@@ -477,6 +510,8 @@ class App:
         if self.controller:
             try:
                 status = self.controller.poll()
+                self.last_live_status = status
+                self.live_status.set(workflow.live_input_status(status))
                 self.status.set(workflow.describe_status(status))
                 connected = status["lobby"].get("state") == "connected"
                 self.network.set("Mitspieler: verbunden · gleiche Testdateien" if connected else "Mitspieler: Verbindung wartet / beendet")
@@ -489,11 +524,18 @@ class App:
                 in_timing = timing.get("started") is True or str(timing.get("stage", "")).startswith("timing")
                 stream = status.get("stream") or {}
                 in_stream = stream.get("started") is True
-                self.progress_text.set("Test abgeschlossen · Tempo und Synchronität getrennt ausgewertet" if status["completed"] else
+                in_live = bool((status.get("live") or {}).get("started"))
+                live_phase = ("Eingabephase: angehalten" if status["failure"] or status["stopping"] else
+                              "Eingabephase: gemeinsamer Abschluss wird bestätigt" if status.get("finish_requested") or (status.get("live") or {}).get("ending") else
+                              "Eingabephase: gemeinsame Tasten sind bereit")
+                self.progress_text.set("Eingabetest abgeschlossen · Bedienproben im Ergebnis prüfen" if status["completed"] and status["test_mode"] == workflow.LIVE_MODE else
+                                       "Test abgeschlossen · Tempo und Synchronität getrennt ausgewertet" if status["completed"] else
+                                       live_phase if in_live else
                                        f"1x-Dauertest: {min(workflow.STREAM_STEPS, stream.get('advanced_steps', 0)) // 5} / 120 Sekunden Spielzeit" if in_stream else
                                        f"1x-/Warteversuch: Abschnitt {min(workflow.TIMING_WINDOWS, timing.get('segment_index', 0) + 1)} / {workflow.TIMING_WINDOWS}" if in_timing else
                                        f"Aufbau: Runde {status['round']} / {workflow.ROUNDS}")
                 self.bar["value"] = (workflow.PROGRESS_TOTAL if status["completed"] else
+                                     workflow.ROUNDS if in_live else
                                      workflow.ROUNDS + workflow.STREAM_CHECKPOINTS * min(workflow.STREAM_STEPS, stream.get("advanced_steps", 0)) / workflow.STREAM_STEPS if in_stream else
                                      workflow.ROUNDS + min(workflow.TIMING_WINDOWS, timing.get("segment_index", 0)) if in_timing else
                                      min(workflow.ROUNDS, status["round"]))
@@ -501,6 +543,8 @@ class App:
                 self._buttons()
             except Exception as exc:
                 self.controller.stop()
+                self.last_live_status = {}
+                self._buttons()
                 self.status.set("Launcher hat angehalten: " + str(exc))
                 self.game_button.configure(state="disabled")
         self._poll_diagnostic()

@@ -90,6 +90,7 @@ async def host(args, secret, *, expected_manifest=None, capabilities=MODEL_CAPAB
                      peers=sorted(connections), coordinated_completed=(state == "completed"),
                      timing=coordinator.timing_progress() if hasattr(coordinator, "timing_progress") else None,
                      stream=coordinator.stream_progress() if hasattr(coordinator, "stream_progress") else None,
+                     live=coordinator.live_progress() if hasattr(coordinator, "live_progress") else None,
                      completion_scope="both_engine_receipts" if state == "completed" else None)
 
     async def dispatch(actions):
@@ -196,19 +197,22 @@ async def host(args, secret, *, expected_manifest=None, capabilities=MODEL_CAPAB
             task.cancel()
         await asyncio.gather(*remaining, return_exceptions=True)
         stream_progress = coordinator.stream_progress() if hasattr(coordinator, "stream_progress") else {}
-        historical = bool(stream_progress.get("started"))
+        live_progress = coordinator.live_progress() if hasattr(coordinator, "live_progress") else {}
+        observed_progress = live_progress if live_progress.get("started") else stream_progress
+        historical = bool(observed_progress.get("started"))
         write_report(args.report, {"backend": backend, "halted": coordinator.halted,
                                    "reason": coordinator.halt_reason, "round": coordinator.round,
                                    "peer_error": peer_error,
                                    "frame": coordinator.frame, "sim_time_us": coordinator.sim_time_us,
                                    "state_digest": coordinator.state_digest, "actions": log,
                                    "state_digest_scope": "last_matching_world_boundary",
-                                   "state_digest_frame": (stream_progress.get("last_observed_frame") if historical
+                                   "state_digest_frame": (observed_progress.get("last_observed_frame") if historical
                                                           else coordinator.frame),
-                                   "state_digest_sim_time_us": (stream_progress.get("last_observed_time_us") if historical
+                                   "state_digest_sim_time_us": (observed_progress.get("last_observed_time_us") if historical
                                                                 else coordinator.sim_time_us),
                                    "timing": coordinator.timing_report() if hasattr(coordinator, "timing_report") else None,
                                    "stream": coordinator.stream_report() if hasattr(coordinator, "stream_report") else None,
+                                   "live": coordinator.live_report() if hasattr(coordinator, "live_report") else None,
                                    "coordinated_completed": not coordinator.halted and done.is_set(),
                                    "completion_scope": "both_engine_receipts" if not coordinator.halted and done.is_set() else None})
     return 0 if not coordinator.halted else 2

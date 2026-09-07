@@ -145,6 +145,8 @@ def self_check(report_path: Path) -> int:
             from prototype.strict_sync.engine_mailbox import EngineAdapter
             from prototype.strict_sync.stream_probe import STREAM_CAPABILITY, CHUNK_STEPS, CHECKPOINT_STEPS, TOTAL_STEPS
             from prototype.strict_sync.stream_engine import StreamEngine
+            from prototype.strict_sync.live_probe import LIVE_CAPABILITY, LiveCoordinator, LiveReplica
+            from prototype.strict_sync.live_input import InputReader, InputWriter, MAX_REQUESTS, MAX_BATCH
             resources, portable = resource_root(), portable_root()
             physical = resources / "prototype/strict_sync"
             required = set(stage_probe.REQUIRED_PYTHON) | {"model.py", "__init__.py"}
@@ -191,6 +193,13 @@ def self_check(report_path: Path) -> int:
                     or not callable(StreamEngine.advance) or not callable(StreamEngine.checkpoint)
                     or launcher_session.TIMING_MODE not in launcher_session.TEST_MODES):
                 raise RuntimeError("packaged stream experiment or comparison mode is incomplete")
+            if (LIVE_CAPABILITY not in measurement_capabilities(SimpleNamespace(live_probe=True))
+                    or launcher_session.LIVE_MODE not in launcher_session.TEST_MODES
+                    or launcher_session.STREAM_MODE not in launcher_session.TEST_MODES
+                    or not callable(LiveCoordinator.live_report) or not callable(LiveReplica.live_report)
+                    or not callable(InputReader.take) or not callable(InputWriter.submit)
+                    or MAX_REQUESTS != 128 or MAX_BATCH != 8):
+                raise RuntimeError("packaged live input experiment is incomplete")
             scheduled = [command for number in range(BUILD_ROUNDS) for peer in ("a", "b")
                          for command in build_inputs(peer, number)]
             from collections import Counter

@@ -1,10 +1,18 @@
 # TF2: Prototyp für strikte Synchronisation
 
-**Alpha5.12-Dauertest** erweitert den automatischen Aufbau um fortlaufende Fahrt mit 1x als Ziel. Der neue Standard `stream_v1` prüft 120 Sekunden zusätzliche Spielzeit mit frischen Weltvergleichen alle zehn Sekunden. Der bisherige Ablauf bleibt als **Vergleichstest aus Alpha5.11** auswählbar. Beide laufen im aktuellen Launcher; ein Programm-Downgrade ist nicht nötig.
+**Alpha5.13-Eingabetest** führt `live_input_v1` als Standard ein: Nach dem automatischen Aufbau erzeugen echte Launcher-Klicks beider Spieler Pause-, Fortsetzen- und Abschlusswünsche. **Referenztest aus Alpha5.12** (`stream_v1`) und **Vergleichstest aus Alpha5.11** (`timing_v1`) bleiben separat auswählbar. Der neue Eingabeweg ist ohne Spielstart vorgeprüft; echte Zwei-PC-Evidenz dafür steht noch aus.
 
-Auf beiden PCs aktualisieren, die vorherige Installation wiederherstellen und mit demselben Testmodus einen neuen gemeinsamen Versuch vorbereiten. Die saubere Basis der bisherigen sehr großen Karte bleibt unverändert. Die beiden bisherigen Teilnehmer haben sie bereits übernommen und brauchen weder neue Dateien noch einen erneuten Import. Frische Testsave-Kopien enthalten bereits **TF2 Strict Sync - automatischer Bautest (Alpha5.12)** und **Legacy Fahrzeuge**. Bedienfolge: [ANLEITUNG.md](ANLEITUNG.md).
+Auf beiden PCs aktualisieren, die vorherige Installation wiederherstellen und mit demselben Modus neu vorbereiten. Die saubere Basis der sehr großen Karte bleibt unverändert. Die bisherigen Teilnehmer brauchen keinen erneuten Import. Frische Testsave-Kopien enthalten **TF2 Strict Sync - gemeinsamer Eingabetest (Alpha5.13)** und **Legacy Fahrzeuge**. Bedienfolge: [ANLEITUNG.md](ANLEITUNG.md).
 
-## Ablauf des neuen Dauertests
+## Neuer Eingabeweg
+
+`live_input.py` speichert echte Wünsche in einer atomaren, sitzungsgebundenen Datei außerhalb der nativen Sitzung. Beide Peers versiegeln pro Abfragerunde die nächste Liste. `live_probe.py` wartet auf beide, liest bei Änderungen frische Weltzustände und wendet denselben Plan an. Explizite Zielzustände und eindeutige Sequenzen verhindern Toggle- und Duplikateffekte. Gegensätzliche Wünsche derselben Runde werden mit Vorrang für Pause geordnet.
+
+In Pause folgen begrenzte wiederholte HOLD-Abfragen mit frischen Zuständen und ohne Fortschrittsschritt. Fortsetzen hängt nicht von einem laufenden Tick ab. Bestätigter Zustand und bestätigte Sequenzen werden erst nach gemeinsamer Rückmeldung angezeigt; lokale Annahme bleibt separat. Jeder Peer kann den regulären Abschluss anfordern, der eine letzte frische beidseitige Weltprüfung verlangt. Nach der letzten Sammelrunde eingegangene Wünsche zählen nicht als ausgeführt.
+
+128 Wünsche je Spieler, acht pro Liste, 2048 Abfragerunden und 3000 zusätzliche Fortschrittsschritte begrenzen den Versuch. Grenzerreichen hält mit Diagnose an. Der Bericht trennt Protokollende von tatsächlichen Pause-/Fortsetzen-Übergängen beider Spieler und einer langen unveränderten Pause. Er beweist keine native UI-Eingabe oder freie Platzierung. Der akzeptierte Takt in `stream_engine.py` bleibt erhalten.
+
+## Ablauf des erhaltenen Alpha5.12-Dauertests
 
 Zuerst läuft das unveränderte Profil `build_v2`: zwölf vorgegebene Befehle und 240 Schritte. Straße, Depot, zwei Haltestellen und drei Verbindungen werden gebaut; ein Fahrzeug wird gekauft, einer Linie zugewiesen und fährt. 211 Fortschrittsschritte ergeben 42,2 Sekunden Enginezeit, 29 Pausenschritte halten den beobachteten Zustand an. Der Bauabschlussnachweis bleibt bei Frame 240 erhalten.
 
@@ -37,7 +45,7 @@ Ein Moduswechsel erfordert auf beiden PCs eine neue Vorbereitung und denselben n
 ## Komponenten
 
 - `strict_sync/core.py` und `replica.py` ordnen den Bauablauf und vergleichen seine Grenzen. `stream_probe.py` verwaltet den festen Dauertestplan, Freigaben, frische Kontrollpunkte und die automatische Pause. `timing_probe.py` erhält den Vergleichsmodus.
-- `strict_sync/stream_engine.py` trennt die bestätigte native Schrittgrenze von der letzten vollständigen Lua-Beobachtung. `engine_mailbox.py` bleibt der native/Lua-Adapter. `game_runner.py` verbindet beide Testmodi mit TCP, Fortschritt und Berichten. Rein native Antworten erhalten keinen historischen Welthash und keinen fingierten aktuellen Snapshot.
+- `strict_sync/stream_engine.py` trennt die bestätigte native Schrittgrenze von der letzten vollständigen Lua-Beobachtung. `engine_mailbox.py` bleibt der native/Lua-Adapter. `game_runner.py` verbindet die drei Testmodi mit TCP, Fortschritt und Berichten. Rein native Antworten erhalten keinen historischen Welthash und keinen fingierten aktuellen Snapshot.
 - `native/step_probe.*` unterstützt ausschließlich den geprüften Spielbuild 35924 und Native ABI 3. Die Mindestschrittweite bleibt 200000 Mikrosekunden; Originalassertions werden nicht entfernt. HOLD lässt Wartungsarbeit weiterlaufen. Details: [STEP_BOUNDARY.md](native/STEP_BOUNDARY.md).
 - `mod/tf2_strict_probe_1` führt begrenzte Testbefehle aus und liest Firmenwerte und gebundene Objekte. Identitäten stammen aus überprüften Rückgaben und Graphänderungen. Der generische Eingabepfad bleibt offen: [DEFERRED_COMMAND_ADAPTER.md](native/DEFERRED_COMMAND_ADAPTER.md).
 - `strict_sync/stage_probe.py`, Installerjournal und Launcher erstellen frische Sitzungen und Savekopien. Spielbuild, Quelle und Ausgangsbasis werden per Hash gebunden. Die vorherige Installation lässt sich nach Prozessende wiederherstellen.

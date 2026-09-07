@@ -2,8 +2,9 @@
 
 Does not install files or start/control game windows. The user must have staged
 the diagnostic proxy and mod, then manually start TF2 and load a separate test save.
-Normal building tools are outside this experiment; inputs come from a reviewed
-JSON test sequence. Every run needs a fresh prepared directory/epoch on each PC.
+Normal building tools are outside this experiment. The optional live test accepts
+explicit pause/end requests through a bounded local queue after the fixed build.
+Every run needs a fresh prepared directory/epoch on each PC.
 """
 from __future__ import annotations
 
@@ -31,6 +32,8 @@ from .stage_probe import validate_lease_path
 from .transport import authenticate_client, receive, send
 from .timing_probe import TimingCoordinator, TimingReplica, TIMING_CAPABILITY
 from .stream_probe import StreamCoordinator, StreamReplica, STREAM_CAPABILITY, STREAM_WORLD_RECEIPTS
+from .live_probe import LiveCoordinator, LiveReplica, LIVE_CAPABILITY, LIVE_WORLD_RECEIPTS
+from .live_input import InputReader
 
 
 CAPABILITIES = tuple(sorted(("experimental_file_mailbox", "lua_actual_snapshots",
@@ -224,8 +227,13 @@ def selected_profile(args, setup):
         raise ValueError("selected test profile does not match the prepared shared manifest")
     if profile == BUILD_PROFILE and getattr(args, "rounds", None) != BUILD_ROUNDS:
         raise ValueError("build_v2 requires the complete fixed 240-round recipe")
-    if getattr(args, "timing_probe", False) and getattr(args, "stream_probe", False):
+    if sum(bool(getattr(args, name, False)) for name in ("timing_probe", "stream_probe", "live_probe")) > 1:
         raise ValueError("choose exactly one post-build experiment")
+    if getattr(args, "live_probe", False):
+        if profile != BUILD_PROFILE or getattr(args, "delay_ms", 0) != 0:
+            raise ValueError("live probe requires build_v2 without legacy message delays")
+        if getattr(args, "timeout", 30) < 15:
+            raise ValueError("live probe requires at least 15 seconds per protocol phase")
     if getattr(args, "stream_probe", False):
         if profile != BUILD_PROFILE or getattr(args, "delay_ms", 0) != 0:
             raise ValueError("stream probe requires build_v2 without legacy message delays")
@@ -240,6 +248,8 @@ def selected_profile(args, setup):
 
 
 def measurement_capabilities(args):
+    if getattr(args, "live_probe", False):
+        return tuple(sorted((*CAPABILITIES, LIVE_CAPABILITY)))
     if getattr(args, "stream_probe", False):
         return tuple(sorted((*CAPABILITIES, STREAM_CAPABILITY)))
     return tuple(sorted((*CAPABILITIES, TIMING_CAPABILITY))) if getattr(args, "timing_probe", False) else CAPABILITIES
@@ -313,6 +323,8 @@ async def game_peer(args, secret, directory, setup):
     proof_result = None
     journal = None
     stream_world_journaled = set()
+    live_world_journaled = set()
+    live_input_reader = None
     facts = {}
     progress = Progress(external_path(getattr(args, "progress", None), directory),
                         peer=getattr(args, "peer", None))
@@ -323,6 +335,14 @@ async def game_peer(args, secret, directory, setup):
             raise StopRequested("measurement stopped by local user")
     try:
         profile = selected_profile(args, setup)
+        if getattr(args, "live_probe", False):
+            input_path = external_path(getattr(args, "live_input_file", None), directory)
+            if input_path is None:
+                raise ValueError("live peer requires a prepared input queue outside the session")
+            # Validate the exact queue identity and structure before consuming
+            # a game session or creating a launch lease. The reader validates
+            # again on every collection while the live test is running.
+            live_input_reader = InputReader(input_path, args.epoch, args.peer)
         if profile == BUILD_PROFILE:
             build_proof = BuildProof()
             journal_path = external_path(getattr(args, "journal", None) or
@@ -369,9 +389,12 @@ async def game_peer(args, secret, directory, setup):
             initial = engine.snapshot()
             journal.append("initial", frame=engine.frame, number=0, snapshot=initial)
             build_proof.observe(initial, frame=engine.frame)
-        replica_class = (StreamReplica if getattr(args, "stream_probe", False) else
+        replica_class = (LiveReplica if getattr(args, "live_probe", False) else
+                         StreamReplica if getattr(args, "stream_probe", False) else
                          TimingReplica if getattr(args, "timing_probe", False) else Replica)
-        options = {"stop_requested": stop_requested} if replica_class in (TimingReplica, StreamReplica) else {}
+        options = {"stop_requested": stop_requested} if replica_class in (TimingReplica, StreamReplica, LiveReplica) else {}
+        if replica_class is LiveReplica:
+            options["live_input_source"] = live_input_reader.take
         replica = replica_class(args.peer, args.epoch, setup["manifest_digest"], measurement_capabilities(args),
                                 engine, input_source, frame=engine.frame,
                                 step_us=ENGINE_STEP_US, **options)
@@ -393,7 +416,9 @@ async def game_peer(args, secret, directory, setup):
                      message=message.get("kind"), delay_ms=getattr(args, "delay_ms", 0),
                      timing=replica.timing_progress() if hasattr(replica, "timing_progress") else None,
                      stream=replica.stream_progress() if hasattr(replica, "stream_progress") else None,
-                     phase_label=("Fortlaufende Fahrt und gemeinsame Kontrollpunkte" if str(message.get("kind", "")).startswith("stream_") else
+                     live=replica.live_progress() if hasattr(replica, "live_progress") else None,
+                     phase_label=("Frei ausgelöste Testpause gemeinsam verarbeiten" if str(message.get("kind", "")).startswith("live_") else
+                                  "Fortlaufende Fahrt und gemeinsame Kontrollpunkte" if str(message.get("kind", "")).startswith("stream_") else
                                   "Fahrzeug beobachten: 1x-Zieltempo" if message.get("kind") == "timing_run" else
                                   "Warteprobe: Spielzeit bleibt gehalten" if message.get("kind") == "timing_prepare" else
                                   phase_label(message.get("round"), message.get("command")) if build_proof else "Gemeinsame Zeit und Pause prüfen"))
@@ -436,6 +461,23 @@ async def game_peer(args, secret, directory, setup):
                     stream_world_journaled.add(receipt_key)
                 progress("running", round=replica.round, frame=replica.frame,
                          stream=replica.stream_progress(), phase_label="Fortlaufende Fahrt und gemeinsame Kontrollpunkte")
+            if response and str(response.get("kind", "")).startswith("live_"):
+                receipt_key = (response["kind"], response.get("index"), response.get("plan_hash"))
+                if journal and response["kind"] in LIVE_WORLD_RECEIPTS and receipt_key not in live_world_journaled:
+                    stream_engine = replica.stream_engine
+                    if not stream_engine or not stream_engine.observations_fresh:
+                        raise ProtocolError("live world receipt lacks a fresh Lua observation")
+                    observed = stream_engine.last_observed_snapshot
+                    if (response["frame"] != stream_engine.last_observed_frame
+                            or response["sim_time_us"] != observed["sim_time_us"]
+                            or response["paused"] is not observed["paused"]
+                            or response["state_digest"] != engine.state_digest):
+                        raise ProtocolError("live world receipt belongs to another observation")
+                    journal.append(response["kind"], frame=stream_engine.last_observed_frame,
+                                   number=replica.round, snapshot=observed)
+                    live_world_journaled.add(receipt_key)
+                progress("running", round=replica.round, frame=replica.frame,
+                         live=replica.live_progress(), phase_label="Gemeinsame Teststeuerung: Pause, Fortsetzen oder Abschließen")
             if response is not None:
                 await stoppable(send(writer, response), stop_requested, args.timeout)
     except (OSError, asyncio.TimeoutError, asyncio.IncompleteReadError, ProtocolError, ValueError) as exc:
@@ -444,6 +486,8 @@ async def game_peer(args, secret, directory, setup):
     finally:
         last_observed_snapshot = None
         last_observed_frame = None
+        last_acknowledged_native_frame = None
+        last_acknowledged_native_sim_time_us = None
         if engine:
             try:
                 stream_engine = getattr(replica, "stream_engine", None) if replica else None
@@ -454,6 +498,8 @@ async def game_peer(args, secret, directory, setup):
                                           engine.snapshot())
                 last_observed_frame = (stream_engine.last_observed_frame if stream_engine else
                                        replica.frame if replica else engine.frame)
+                last_acknowledged_native_frame = stream_engine.frame if stream_engine else engine.frame
+                last_acknowledged_native_sim_time_us = stream_engine.time_us if stream_engine else engine.time_us
             except Exception as exc:
                 failure = failure or f"snapshot during cleanup failed: {exc}"
             try:
@@ -522,12 +568,15 @@ async def game_peer(args, secret, directory, setup):
                                    "build_proof": proof_result if finished else None,
                                    "timing": replica.timing_report() if replica and hasattr(replica, "timing_report") else None,
                                    "stream": replica.stream_report() if replica and hasattr(replica, "stream_report") else None,
+                                   "live": replica.live_report() if replica and hasattr(replica, "live_report") else None,
                                    "journal": str(journal.path) if journal else None,
                                    "round": replica.round if replica else None,
                                    "frame": replica.frame if replica else None,
                                    "snapshot": last_observed_snapshot if finished else None,
                                    "snapshot_scope": "verified_completion" if finished else None,
                                    "last_observed_frame": last_observed_frame,
+                                   "last_acknowledged_native_frame": last_acknowledged_native_frame,
+                                   "last_acknowledged_native_sim_time_us": last_acknowledged_native_sim_time_us,
                                    "last_observed_sim_time_us": (last_observed_snapshot.get("sim_time_us")
                                                                   if last_observed_snapshot else None),
                                    "last_observed_snapshot": last_observed_snapshot if not finished else None})
@@ -537,6 +586,10 @@ async def game_peer(args, secret, directory, setup):
                  phase_label=phase_label(BUILD_ROUNDS) if finished and build_proof else reason,
                  timing=replica.timing_progress() if replica and hasattr(replica, "timing_progress") else None,
                  stream=replica.stream_progress() if replica and hasattr(replica, "stream_progress") else None,
+                 live=replica.live_progress() if replica and hasattr(replica, "live_progress") else None,
+                 last_observed_frame=last_observed_frame,
+                 last_acknowledged_native_frame=last_acknowledged_native_frame,
+                 last_acknowledged_native_sim_time_us=last_acknowledged_native_sim_time_us,
                  completion_scope="local_received_host_completion" if finished else None,
                  startup_facts=facts)
     return 0 if finished else 2
@@ -565,14 +618,20 @@ def main(argv=None):
     parser.add_argument("--journal", type=Path, help="build snapshot journal outside the session")
     parser.add_argument("--timing-probe", action="store_true", help="after the build, compare bounded 1x windows and asymmetric controlled waits")
     parser.add_argument("--stream-probe", action="store_true", help="after the build, use paced small grants, ten-second world checkpoints and scheduled pause commands")
+    parser.add_argument("--live-probe", action="store_true", help="after the build, accept explicit pause/resume/end requests from a bounded local input queue")
+    parser.add_argument("--live-input-file", type=Path, help="prepared live peer input queue outside the native/Lua session")
     args = parser.parse_args(argv)
     if (not 1 <= args.port <= 65535 or not 1 <= args.rounds <= 10000 or not 0 < args.timeout <= 60
             or not 0 < args.startup_timeout <= 3600 or not 0 <= args.delay_ms <= 5000):
         parser.error("invalid port/rounds/timeout")
     if args.mode == "host" and not args.ready:
         parser.error("host requires --ready")
-    if args.mode == "peer" and (not args.peer or not args.inputs):
+    if args.mode == "peer" and (not args.peer or not args.inputs and not args.live_probe):
         parser.error("peer requires --peer and --inputs")
+    if args.live_input_file and (args.mode != "peer" or not args.live_probe):
+        parser.error("--live-input-file belongs only to a --live-probe peer")
+    if args.mode == "peer" and args.live_probe and not args.live_input_file:
+        parser.error("live peer requires --live-input-file")
     directory, setup = read_setup(args.session)
     selected_profile(args, setup)
     secret = args.key_file.read_bytes().strip()
@@ -586,7 +645,8 @@ def main(argv=None):
                                 startup_timeout=args.startup_timeout, progress=progress,
                                 stop_requested=lambda: bool(stop_file and stop_file.exists()),
                                 step_us=ENGINE_STEP_US,
-                                coordinator_factory=(StreamCoordinator if args.stream_probe else
+                                coordinator_factory=(LiveCoordinator if args.live_probe else
+                                                     StreamCoordinator if args.stream_probe else
                                                      TimingCoordinator if args.timing_probe else None)))
     return asyncio.run(game_peer(args, secret, directory, setup))
 

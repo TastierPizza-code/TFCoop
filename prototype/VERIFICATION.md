@@ -1,5 +1,57 @@
 # Prüfstand
 
+## Alpha5.13: frei ausgelöste Launcher-Eingaben, echte Spielprüfung noch offen
+
+Der neue Standard `live_input_v1` ergänzt echte Pause-/Fortsetzen- und
+Abschlusswünsche aus beiden Launchern. Die normale TF2-UI bleibt unangebunden.
+Es wurde für diese Version kein Spiel gestartet und kein Desktop bedient.
+Die folgenden Vorabprüfungen verwenden ausdrücklich Engine- und Uhrenmodelle:
+
+- `test_live_input.py`: 15 Datei-/Prozess-/Parallelitätstests prüfen atomare
+  Annahme, exklusive Schreibrechte, strikte Sitzung/Sequenz, unveränderte
+  Historie, begrenzte Listen, Windows-Sharing und terminales `END_TEST`.
+- `test_live_probe.py`: Dynamische Eingaben, Pausevorrang, vollständige
+  beidseitige Ergebnisse, unveränderte Pausen, getrennte kurze und lange
+  Pausen, Phasentimeouts, fehlende oder doppelte Nachrichten, frische
+  Kontrollpunkte und der gemeinsame letzte Abschluss werden geprüft.
+  Eine fehlende optionale Konfliktprobe verfälscht die Pflichtabnahme nicht.
+- `test_live_driver.py`: Der produktive Host und beide Spieltreiber sprechen
+  über echtes lokales TCP und lesen tatsächlich geschriebene Queuedateien.
+  Die Welten bleiben Modelle. Ein erweiterter Lauf enthält 1000 modellierte
+  Pausen-Heartbeats und 930 kleine Fahrtfreigaben. Sein real erzeugter
+  Hostbericht ist über 4 MiB groß und wird mit dem begrenzten 16-MiB-Lesepfad
+  vollständig gelesen und exportiert. Beide Weltjournale stimmen überein.
+- Die Driverprüfungen halten die letzte Bestätigung eines Peers zurück,
+  verzögern alte Poll-/Checkpoint-Duplikate und erzeugen native Messfehler,
+  Weltdifferenzen sowie verlorene oder mutierte Eingabequeues. Keine dieser
+  Situationen erlaubt einen vorzeitigen regulären Abschluss oder eine weitere
+  Freigabe nach erkanntem Fehler. Ungültige Queueidentitäten scheitern vor
+  der Erstellung einer Spielstartberechtigung.
+- Launcherprüfungen führen reale Ereignisbehandlung ohne Tk-Fenster aus.
+  Sie unterscheiden lokale Annahme von gemeinsamer Bestätigung, sperren
+  nach `END_TEST` und bei Abbruch und erhalten alle drei Testmodi.
+  Paket-, Installations- und Updaterprüfungen bleiben zusätzlich erforderlich.
+
+`required_interactions_met` verlangt nach korrektem Abschluss tatsächliche
+Pause- und Fortsetzen-Übergänge beider Spieler sowie mindestens 35 Sekunden
+einer zusammenhängenden unveränderten Pause. Der Host misst monotone Zeit
+zwischen gemeinsam bestätigten frischen Grenzen, die Peers getrennt ihre
+lokalen Spannen. Netzwerk-/Dateiwartezeit innerhalb dieser Pause zählt mit;
+mehrere kurze Pausen werden nicht addiert. Konflikte verschiedener Spieler
+werden separat ausgewiesen. Die Anleitung verlangt 45 Sekunden und das
+Abwarten der gemessenen langen Pause auf beiden PCs.
+
+Native Fortschrittsgrenzen, historische Weltbeobachtungen, lokal angenommene
+Wünsche und gemeinsam bestätigte Ausführung bleiben getrennt. Ein nach der
+letzten Sammlung angenommener Wunsch kann unbestätigt bleiben. Der finale
+Weltvergleich beweist nur die erfasste Szene. Freies Bauen, normale UI-Pause,
+vollständige Weltdeterministik und Bildflüssigkeit sind damit nicht nachgewiesen.
+Ein echter Alpha5.13-Zwei-PC-Lauf muss als neue Evidenz ergänzt werden.
+
+Die akzeptierte Referenz `stream_v1`, ihr Taktgeber und der native/Lua-Adapter
+bleiben unverändert. Alpha5.12 ist im Launcher weiterhin ausführbar; seine
+Release-Dateien und der Quelltag werden nicht überschrieben.
+
 ## Alpha5.12: akzeptierter tatsächlicher Zwei-PC-Referenzlauf
 
 Am 7. September 2026 wurden beide Originalberichte geprüft. Die Archive sind
@@ -25,7 +77,7 @@ Darstellungsoptimierung wird zurückgestellt. Die Akzeptanz gilt für diese
 beobachtete Szene, nicht für noch fehlende freie Eingaben oder die vollständige
 Spielwelt. Paketidentität, Grenzen und Sicherung: [akzeptierte Referenz](docs/ACCEPTED_BASELINE.md).
 
-Der neue Standard `stream_v1` beginnt mit dem vorhandenen Bauprofil:
+Der erhaltene Referenzmodus `stream_v1` beginnt mit dem vorhandenen Bauprofil:
 zwölf Befehle, 240 Schritte und separat abgeschlossener Bauprüfung. Danach
 legt `paced-stream-v1` 600 weitere native Fortschrittsschritte à 200000
 Mikrosekunden fest, also 120 Sekunden zusätzliche Simulationszeit. Jeweils

@@ -31,7 +31,8 @@ class StreamLauncherTests(unittest.TestCase):
              patch.object(workflow, "install_probe", return_value={
                  "imported_save": str(saves / "fresh.sav"), "backup_path": str(self.root / "backup")}):
             prepared = workflow.prepare(self.root, saves, "a", "127.0.0.1", workflow.new_code(),
-                source_root=self.root, save=self.root / "base.sav", runs_root=self.root / "runs")
+                source_root=self.root, save=self.root / "base.sav", runs_root=self.root / "runs",
+                test_mode=workflow.STREAM_MODE)
         self.assertEqual(prepared.test_mode, workflow.STREAM_MODE)
         self.assertEqual(prepared.manifest, workflow.lobby_manifest("b" * 64, workflow.STREAM_MODE))
         self.assertEqual(json.loads((prepared.directory / "run.json").read_text())["test_mode"],
