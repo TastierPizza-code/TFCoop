@@ -50,7 +50,7 @@ class BaselineTests(unittest.TestCase):
         return baseline.resolve_baseline(self.package, self.state, selected)
 
     def test_public_package_without_local_pair_explains_private_migration(self):
-        with self.assertRaisesRegex(baseline.BaselineError, "alten Paketordner.*Testspielstand/initial.sav"):
+        with self.assertRaisesRegex(baseline.BaselineError, "bereitgestellten Testspielstand.*zugehörige .sav.lua"):
             self.resolve()
         self.assertFalse(self.state.exists())
         self.assertEqual(list(self.package.iterdir()), [self.package / "package_manifest.json"])
@@ -143,6 +143,31 @@ class BaselineTests(unittest.TestCase):
         changed = self.resolve(selected)
         self.assertNotEqual(original.parent, changed.parent)
         self.assertEqual(Path(str(original) + ".lua").read_bytes(), self.lua_data)
+
+    def test_new_release_rejects_old_cache_and_prior_run_until_new_pair_is_imported(self):
+        old_source = self.prior_run()
+        original_cache = self.resolve()
+        new_sav = b"new separately supplied clean private baseline"
+        new_lua = b"return {fixture = 'clean baseline metadata'}\n"
+        self.manifest(baseline={
+            "sav_sha256": hashlib.sha256(new_sav).hexdigest(),
+            "sav_lua_sha256": hashlib.sha256(new_lua).hexdigest(),
+            "sav_bytes": len(new_sav), "sav_lua_bytes": len(new_lua)})
+        # Neither the old current cache nor an old recorded run is a substitute.
+        with self.assertRaisesRegex(baseline.BaselineError, "Prüfsummen"):
+            self.resolve()
+        with self.assertRaises(baseline.BaselineError):
+            self.resolve(old_source)
+        supplied = self.pair(self.root / "provided privately/initial.sav", sav=new_sav, lua=new_lua)
+        new_cache = self.resolve(supplied)
+        self.assertNotEqual(original_cache.parent, new_cache.parent)
+        self.assertEqual(new_cache.read_bytes(), new_sav)
+        self.assertEqual(Path(str(new_cache) + ".lua").read_bytes(), new_lua)
+        self.assertEqual(original_cache.read_bytes(), self.save_data)
+        self.assertEqual(Path(str(original_cache) + ".lua").read_bytes(), self.lua_data)
+        supplied.unlink()
+        Path(str(supplied) + ".lua").unlink()
+        self.assertEqual(self.resolve(), new_cache)
 
     def test_damaged_cache_is_preserved_before_new_atomic_pair_is_published(self):
         selected = self.pair(self.root / "private/initial.sav")

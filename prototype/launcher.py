@@ -199,7 +199,7 @@ class App:
         try:
             baseline = workflow.baseline_save()
             if not baseline.is_file() or not Path(str(baseline) + ".lua").is_file():
-                raise ValueError("Testspielstand aus dem bisherigen Paket einmal übernehmen.")
+                raise ValueError("Bereitgestellten Testspielstand einmal über „Testspielstand übernehmen …“ auswählen.")
         except (OSError, ValueError) as exc:
             baseline_error = str(exc)
         game = discover_game()
@@ -271,7 +271,7 @@ class App:
 
     def choose_baseline(self):
         selected = filedialog.askopenfilename(parent=self.root,
-            title="Aus dem bisherigen Paket: Testspielstand / initial.sav auswählen",
+            title="Bereitgestellten Testspielstand (.sav) auswählen",
             filetypes=[("TF2-Spielstand", "*.sav")])
         if selected:
             from prototype.baseline import resolve_baseline

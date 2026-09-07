@@ -1,6 +1,6 @@
 # TFCoop maintenance
 
-- The user works on this PC concurrently. Do not use computer control or start, stop, install into, or interact with TF2 during development. Use headless checks; installation and in-game tests are performed by the user through the launcher.
+- The user works on this PC concurrently. Do not use computer control or simulate desktop input. The user has explicitly authorized real local TF2 record/replay tests in sequential processes, reversible preparation, and closing those owned test processes. Use tools/local_game_replay.py with its installer journal, launch lease and exact process ownership checks; announce launches. Automatic app.loadGame currently returns false, so use --manual-load and tell the user the exact fresh imported save name. Other development checks remain headless. Never close or modify an unrelated running game.
 - Current public repository: https://github.com/TastierPizza-code/TFCoop. Keep current source and releases there when delivering a new version; the user has requested GitHub delivery and startup updates.
 - Current launcher entry: probe_launcher.py; implementation: prototype/. Older coop/mod/upstream code is retained for comparison and shared helpers.
 - Use prototype/release_version.py for the numeric release tag. Keep launcher display, mod name, guides and release notes consistent.

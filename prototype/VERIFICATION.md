@@ -1,5 +1,113 @@
 # Prüfstand
 
+## Alpha5.9: Lebensdauer nativer Objekte und neue Ausgangssave
+
+Ein echter lokaler Alpha5.8-Durchlauf bestätigt alle zwölf Aufträge und 240
+Zeitschritte: Straße, Depot, zwei Haltestellen, drei Verbindungen, Fahrzeugkauf,
+Linie, Zuweisung, Abfahrt und automatische Pause. Die erfasste Enginezeit steigt
+von 13,4 auf 55,6 Sekunden. Das Konto sinkt von 5.000.000 auf 4.656.092,
+das Darlehen bleibt bei 5.000.000. Das Fahrzeug verlässt das Depot und erreicht
+eine maximale beobachtete Entfernung von 141,81 Metern zur Anfangsposition.
+Alle 507 Journalzeilen, ihre Hashkette und der Abschlussnachweis sind geprüft.
+
+Ein zweiter frischer TF2-Prozess spielt genau diesen gespeicherten Befehlsstrom
+ab. Bis einschließlich Frame 99 sind alle bestätigten Zustände identisch:
+elf Aufträge und 99 Schritte. Beim Lesen vor dem nächsten Pausenschritt scheitert
+`a:2.CONSTRUCTION.frozenEdges[1]` mit `nil`. Es gibt keine weitere Schrittfreigabe;
+die Zeit bleibt bei 27,6 Sekunden. Die folgenden Graphfehler entstehen aus den
+dadurch fehlenden gelesenen Knotennamen. Der unabhängige Rohbericht liest dieselbe
+Liste anschließend wieder mit Länge drei und drei gültigen numerischen Einträgen.
+Das ist ein fehlgeschlagener Replay mit einem Lesefehler, kein abgeschlossener
+Wiederholbarkeitsnachweis und kein beobachteter abweichender gültiger Weltzustand.
+
+Der fehlerhafte Pfad entnimmt die Liste einem nur temporär gehaltenen Component.
+Andere Lesepfade halten dessen Besitzer während der Umwandlung fest. Das passt
+zu einer geliehenen nativen Unterstruktur, deren Besitzer durch Lua-GC zu früh
+freigegeben werden kann. Sol dokumentiert nicht besitzende Referenzen und eigene
+Mechanismen zum Erhalten von Elternobjekten; welche Bindung TF2 intern konkret
+verwendet, wurde damit nicht direkt gemessen.
+[Sol-Referenzen](https://sol2.readthedocs.io/en/latest/api/usertype_memory.html),
+[Elternobjekte erhalten](https://sol2.readthedocs.io/en/v2.20.6/api/filters.html).
+
+Alpha5.9 hält die beobachteten Besitzer und Unterstrukturen für die gesamte
+Umwandlung einer Bauoperation fest. Verschachtelte Aufrufe teilen diesen Schutz.
+Die Referenzen werden bei Erfolg und Fehler freigegeben und nicht über Spielticks
+gesammelt; eine feste Obergrenze verhindert unbeschränktes Wachstum. Getter werden
+nicht wiederholt, fehlende Werte nicht ersetzt und geordnete Arrays nicht neu
+sortiert. Native DLLs und Bauprofil bleiben unverändert. Die Korrektur benötigt
+noch den nächsten echten Spielversuch; ein erfolgreicher Alpha5.9-Game-Replay
+wird hier ausdrücklich nicht behauptet.
+
+Die 340 bisherigen Bauadapter-Prüfungen bestehen weiterhin. Hinzu kommen 32
+Prüfungen (acht unter jeder Lua-Version 5.1 bis 5.4) mit echten Userdata,
+`__gc`-Finalisierung und geliehenen Unterstrukturen. Die Fixture erzwingt echte
+Speicherbereinigung bei Zugriffen und enthält keinen Fehler-Sonderschalter für
+`frozenEdges`. Unveränderter Alpha5.8-Code mit derselben SHA-256 wie im echten
+Record reproduziert damit den konkreten Listenfehler auf allen vier Runtimes.
+Alpha5.9 besteht den Bauablauf, verschachtelte Aufrufe und Freigaben bei Erfolg
+und Fehler. Das belegt den Fehlermechanismus der Nachbildung und den allgemeinen
+Schutz, ersetzt aber nicht die nächste reale TF2-Nachprüfung.
+
+Die finale Quellprüfung besteht außerdem aus 184 Python-Prüfungen für Einstieg,
+Staging, Import, Update, Veröffentlichung, Launcher, Bauprofil und Teststeuerung,
+neun Lua-/Mailbox-Prüfungen sowie 16 lokalen Record-/Replay-Prüfungen. Die beiden
+vollständigen Integrationen durchlaufen das Bauprofil mit nachgebildeten Spiel-
+und nativen APIs: einmal mit zwei verbundenen Lua-VMs, einmal mit zwei nacheinander
+erzeugten VMs und aufgezeichnetem Befehlsstrom. Diese Prüfungen starten kein TF2.
+
+Der Nutzer hat die bisherige sehr große Karte einmal mit ausschließlich Legacy
+Fahrzeugen und Strict Sync neu gespeichert. Beide echten Spielprotokolle
+bestätigen die jeweiligen frisch importierten Savenamen und genau diese zwei
+aktiven Mods. Das neue Savepaar hat eigene Prüfsummen; alte Cacheeinträge werden
+nicht umgedeutet. Für das nächste Paket muss der Freund dieses Paar einmal privat
+übernehmen. Danach bleiben die richtige Modliste und der lokale Cache bei
+unveränderter Baseline erhalten. Private Saves und Berichte werden nicht publiziert.
+
+## Lokaler Record/Replay-Prüfer
+
+`strict_sync/local_replay.py` zeichnet die tatsächlich gesendeten Aufträge sowie
+jede zurückgelieferte Beobachtung des begrenzten Bauprofils auf. Ein zweiter,
+frischer Lauf liest den vollständig validierten Befehlsstrom des ersten Laufs
+und vergleicht das Ergebnis nach jedem Auftrag und Zeitschritt. Er erzeugt keine
+neuen Aufträge aus dem Testrezept. Beide Läufe müssen dasselbe vollständige
+Savepaar und Manifest, aber getrennte Sitzungen und native Epochen verwenden.
+Abweichungen beenden den Vergleich vor dem nächsten Auftrag. Der Nachweis bleibt
+auf die erfassten Objekte beschränkt; er ist weder ein Live-Netzwerktest noch
+ein vollständiger Weltvergleich.
+
+15 Unit-Prüfungen und eine vollständige sequentielle Lua-/Datei-IPC-Integration
+bestehen. Letztere verwendet zwei nacheinander erzeugte Lua-5.3-VMs mit
+nachgebildeten Spiel- und nativen APIs: jeweils 240 Runden, zwölf Aufträge,
+unterschiedliche lokale Objekt-IDs und passende Abschlussnachweise. Dies ist
+ausdrücklich noch kein erfolgreicher Lauf mit zwei echten TF2-Prozessen.
+
+`tools/local_game_replay.py` bereitet jeweils genau einen echten Spielprozess
+mit dem vorhandenen Installer vor. Es lädt dessen frisch importierte Savekopie
+über das Console-Skript oder fordert mit `--manual-load` den genauen Namen zum
+manuellen Laden an. Es prüft Prozessidentität, Skriptargument, Loader-PID,
+Epoche, installierte Dateien und Lua-Bereitschaft, bevor es den Prüfer freigibt.
+Nach dem Spielende wird die Installation wiederhergestellt. Der Modus
+`--probe-load-only` prüft nur den Start und sendet keine Messaufträge. 25 isolierte
+Orchestrator-Prüfungen bestehen; alle Prozess-, Installations- und Engineaufrufe
+dieser Prüfungen sind nachgebildet.
+
+Mit ausdrücklicher Nutzerfreigabe wurden zwei echte Menüproben durchgeführt:
+Steam übergibt `--script` mit absolutem Pfad; das Skript meldet das Hauptmenü
+und beendet den eindeutig zugeordneten Prozess über `app.quit()`. Kein Save
+wurde dabei geladen, kein Bautest ausgeführt und keine Desktop-Eingabe benutzt.
+Der dokumentierte `app.loadGame`-Aufruf liefert auf diesem Spielbuild bei einem
+vollständigen Savepfad `false`; auch der zuvor versuchte Basenname öffnete keine
+Karte. Ein solches `false` wird jetzt sofort als Ladeablehnung gemeldet. Die oben
+beschriebenen echten Bautests wurden vom Nutzer manuell geladen. Die anschließende
+Aufzeichnung, Wiedergabe und das Beenden liefen ohne Desktop-Eingaben ab.
+
+Der bisherige Ausgangssave enthält die alten Mod-IDs `mp_lockstep` und `tf2coop`.
+Seine `.sav.lua` enthält nur Skriptzustände, keine Modauswahl. Für einen einmal
+manuell mit Legacy-Fahrzeugen und Strict Sync neu gespeicherten Ausgangssave
+wurde die Strict-Mod mit `enabled=false` vorbereitet. Ein solches neues Savepaar
+benötigt neue Prüfsummen; es darf nicht stillschweigend als alter Ausgangssave
+in einem veröffentlichten Paket akzeptiert werden.
+
 ## Alpha5.8: begrenzte Iteration nativer Entity-Sammlungen
 
 Beide echten Alpha5.7-Berichte enthalten identische Manifeste und zwölf identische

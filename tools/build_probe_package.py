@@ -24,7 +24,7 @@ sys.path.insert(0, str(ROOT))
 from prototype.release_version import PACKAGE_NAME as PACKAGE, RELEASE_TAG
 from prototype.strict_sync.stage_probe import verify_api_audit_copy
 EXE = "TF2-Coop.exe"
-BASELINE = ROOT / "prototype/staged/time-probe-20260906/save/initial.sav"
+BASELINE = ROOT / "prototype/staged/local-clean-20260907/save/initial.sav"
 
 
 def file_hash(path):
@@ -64,7 +64,7 @@ def _licenses(bundle, *, include_save):
         notice += "\nPrivate build: includes the separately authorized shared test save pair. Do not publish this build.\n"
     else:
         notice += "\nPublic release: no savegame, original game executable or original audio is included.\n"
-        notice += "The shared test save is imported locally from an existing private test installation.\n"
+        notice += "The shared test save is imported locally from the separately provided private save pair.\n"
     (bundle / "THIRD_PARTY_NOTICES.md").write_text(notice, encoding="utf-8")
     _copy_file(ROOT / "docs/UPSTREAM.patch", bundle / "docs/UPSTREAM.patch")
 

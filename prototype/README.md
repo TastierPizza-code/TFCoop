@@ -1,20 +1,25 @@
 # TF2: Prototyp für strikte Synchronisation
 
-**Alpha5.8-Bautest korrigiert den Leser nativer Straßenanschluss-Sammlungen.**
-Der gemeinsame automatische 240-Runden-Versuch und sein Bauprofil bleiben gleich.
-Die Tests bilden jetzt auch nicht direkt nummerierbare Rückgaben nach. Eine
-weitere Solo-Diagnose ist nicht erforderlich.
+**Alpha5.9-Bautest hält native Elternobjekte während ihrer vollständigen
+Beobachtung fest.** Der gemeinsame automatische 240-Runden-Versuch und sein
+Bauprofil bleiben gleich. Die neue private Basis verwendet die bisherige sehr
+große Karte mit bereits ausgewählten Testmods. Beide Spieler übernehmen das
+neue Savepaar einmal; eine weitere Solo-Diagnose ist nicht erforderlich.
 
 Dieser Ordner enthält den Synchronisationskern und die Komponenten des
 kontrollierten Engineversuchs. Der Launcher bereitet eine eigene Testinstallation
 vor und kann die vorherigen Dateien anschließend wiederherstellen.
 
-Der aktuelle **Alpha5.8-Bautest-Launcher** öffnet zuerst den Reiter
+Der aktuelle **Alpha5.9-Bautest-Launcher** öffnet zuerst den Reiter
 **Bautest (experimentell)**. Nach dem Update auf beiden PCs die vorherige
-Installation, insbesondere die Diagnosemod, wiederherstellen. Dann Rollen,
+Installation, insbesondere die Diagnosemod, wiederherstellen. Über
+**Testspielstand übernehmen …** die neu bereitgestellte `Testspielstand/initial.sav`
+mit unveränderter `initial.sav.lua` daneben auswählen. Die alte Paketbasis hat
+andere Prüfsummen. Dann Rollen,
 Host-IP und frischen gemeinsamen Sitzungscode festlegen, neu vorbereiten und
 verbinden. Beide laden ihre neue Messtest-Save mit **TF2 Strict Sync - automatischer
-Bautest (Alpha5.8)** und **Legacy Fahrzeuge**. Ablauf und Wiederherstellung stehen
+Bautest (Alpha5.9)** und **Legacy Fahrzeuge**. Diese Modliste ist bereits in der
+neuen Basis gespeichert und muss nicht jedes Mal umgestellt werden. Ablauf und Wiederherstellung stehen
 in [ANLEITUNG.md](ANLEITUNG.md).
 
 **API-Diagnose allein** bleibt im zweiten Reiter für gezielte Untersuchungen
@@ -47,25 +52,39 @@ Spielstand und Veröffentlichung stehen in [GITHUB_UPDATES.md](docs/GITHUB_UPDAT
 Lua-Dateianbindung sind gebaut und automatisiert geprüft. Ein echter Alpha4.2-
 Nutzertest hat alle 100 gemeinsamen Runden mit übereinstimmenden begrenzten
 Messwerten abgeschlossen: 80 Schritte à 0,2 Sekunden und 20 Pausenrunden.
-Der Host bestätigt die Abschlusswerte beider Spielinstanzen. Der Alpha5-Bauablauf
-ist mit Ersatzengines geprüft. Im echten Alpha5.7-Versuch stimmen alle zwölf
-Journalzustände beider Teilnehmer vollständig überein: Straße, Depot und zwei
-Haltestellen wurden gemeinsam gebaut und abgebucht. Danach scheitern beide beim
-Lesen der Anschluss-Sammlung, bevor eine Verbindungsstraße ausgeführt wird. Die
-Simulation blieb gehalten; Fahrzeugkauf und Linienfahrt sind noch nicht erreicht.
+Der Host bestätigt die Abschlusswerte beider Spielinstanzen. Ein echter lokaler
+Alpha5.8-Record hat inzwischen alle 240 Runden einschließlich Straßenverbindungen,
+Fahrzeugkauf, Linienfahrt und vorgegebener Pausen bestanden. Der Replay in einem
+zweiten, frisch gestarteten TF2-Prozess bestätigte dieselben Beobachtungen bis
+einschließlich Frame 99. Danach brach das Lesen von `CONSTRUCTION.frozenEdges[1]`
+ab; eine unmittelbar spätere Rohdiagnose konnte die drei Kanten wieder lesen.
+Dieser nacheinander ausgeführte Versuch auf einem PC war kein Live-Netzwerktest.
+Der echte vollständige Replay sowie die Nachprüfung der Alpha5.9-Korrektur stehen
+noch aus. Im früheren Alpha5.7-Zweirechnerversuch waren Straße, Depot und zwei
+Haltestellen mit übereinstimmenden Journalzuständen gebaut worden; damals stoppte
+der Anschlussleser vor dem Verbindungsbau.
 Im Alpha5.2-Nutzertest wurde die Straße gebaut; anschließend brach das Lesen der
 Konstruktionstransformation in Runde 1 ab. Alpha5.3 behob den dabei beobachteten
 Fehler der Lua-Rückgabewerte. Im anschließenden echten Alpha5.3-Test erschien nach
 dem Straßenbau `invalid finite build value`. Die geborgenen Alpha5.4-Berichte zeigen
 fehlendes `timeBuild` an zwei bestehenden Industriekonstruktionen. Dasselbe Feld
 fehlt laut den neuen Alpha5.6-Rohdaten auch an der erfolgreich gebauten
-Teststraße. Seine Abwesenheit wird seit Alpha5.6 ausdrücklich abgebildet;
-ein vollständiger echter Bauablauf ist dadurch noch nicht nachgewiesen.
+Teststraße. Seine Abwesenheit wird seit Alpha5.6 ausdrücklich abgebildet.
 Normale Bauwerkzeuge und eine aktive gemeinsame Wirtschaft sind damit noch
 nicht umfassend geprüft oder vollständig an die neue Eingabesteuerung angeschlossen.
 
 Der konkrete Prüfstand und die Grenzen der Ergebnisse stehen in
 [VERIFICATION.md](VERIFICATION.md).
+
+Der Alpha5.9-Bauadapter hält gelesene Komponenten und Zwischencontainer während
+einer vollständigen `bind_initial`-, `plan`-, `finish`- oder `snapshot`-Operation
+stark referenziert. Erst nachdem ihre Beobachtungen in normale Lua-Werte übertragen
+wurden, werden diese Referenzen freigegeben; auch Fehlerpfade räumen sie auf.
+Die Anzahl verschiedener Elternobjekte ist begrenzt. Das schließt eine gefundene
+Lücke beim Lesen mehrstufiger geliehener API-Werte, ohne Getter zu wiederholen,
+Listen umzudeuten oder Digestregeln zu ändern. Dass genau eine Lua-GC-Freigabe
+den echten Replayabbruch ausgelöst hat, bleibt eine Hypothese. Gezielte lokale
+Prüfungen dieser Lücke ersetzen den nächsten echten Versuch nicht.
 
 Alpha5.1 korrigiert die im echten Test gescheiterte Baustellensuche: größerer
 Suchbereich, feinere Geländeprüfung und eine gemeinsam beim Straßenbau geebnete
@@ -105,11 +124,12 @@ strikten Synchronitätsprotokolls. Der letzte gültige Snapshot bleibt separat
 als historisch markiert. Der Strict-Mod bringt eine eigene byteidentische
 Collector-Kopie mit, sodass der Solo-Mod deaktiviert bleiben kann.
 
-Spieler mit einem Launcher ab Alpha5.2 erhalten Alpha5.8 über die vorhandene
+Spieler mit einem Launcher ab Alpha5.2 erhalten Alpha5.9 über die vorhandene
 Updatefunktion: TF2 und Messcontroller schließen, den Launcher normal öffnen
-und auf **Alpha5.8-Bautest** warten. Danach vorherige Installation wiederherstellen
-und im ersten Reiter mit frischem gemeinsamem Code neu vorbereiten. Ein erneuter
-ZIP-Download ist bei funktionierender Updateprüfung nicht nötig. Nach diesem
+und auf **Alpha5.9-Bautest** warten. Danach vorherige Installation wiederherstellen,
+das neue private Savepaar einmal übernehmen und im ersten Reiter mit frischem
+gemeinsamem Code neu vorbereiten. Ein erneuter Download der Programm-ZIP ist bei
+funktionierender Updateprüfung nicht nötig. Nach diesem
 Versuch werden beide normalen Testbericht-ZIPs benötigt.
 
 Alpha4.1 korrigiert den beim ersten echten Zweirechnertest beobachteten Abbruch:
@@ -257,11 +277,16 @@ Der Bautestabschnitt des Launchers bereitet auf jedem PC eine neue Sitzung aus d
 aktuellen Programmdateien vor. Die öffentliche ZIP enthält **keinen Ausgangsspielstand**,
 keine lokalen Sitzungsdateien und keine Originaldateien des Spiels. Ihr Manifest
 enthält nur die SHA-256-Identität des benötigten privaten Save-Paars.
-`baseline.py` prüft passende lokale Kopien und übernimmt sie aus dem letzten
-vorbereiteten Testlauf, einem alten privaten Paket oder einer ausdrücklichen
-Dateiauswahl. Die geprüfte Kopie bleibt in `%LOCALAPPDATA%\TF2StrictProbe\baseline`
-über Programmupdates hinweg erhalten. Lokale Pfade und Sitzungsnummern werden
-erst beim Nutzer erzeugt.
+`baseline.py` prüft passende lokale Kopien und übernimmt ausschließlich das Paar
+mit den erwarteten Prüfsummen. Alpha5.9 verwendet die neue saubere Basis unter
+`staged/local-clean-20260907/save/initial.sav`; öffentliche Pakete enthalten davon
+nur die Hashes und Größen. Beide Spieler wählen einmal das separat bereitgestellte
+`Testspielstand/initial.sav` mit passender `.sav.lua`. Alte Paketbasen und deren
+Cacheeinträge werden bei abweichender Identität nicht akzeptiert oder gelöscht.
+Die geprüfte neue Kopie bleibt in `%LOCALAPPDATA%\TF2StrictProbe\baseline`
+über Programmupdates mit derselben Basis hinweg erhalten. Die private Weitergabe
+umfasst beide unveränderten Dateien. Lokale Pfade und Sitzungsnummern werden erst
+beim Nutzer erzeugt.
 
 Ein echter Messlauf braucht einen frischen Spielprozess, den gemeinsamen
 Ausgangssave und ausschließlich die dafür aktivierte Testmod. Die bisherigen
@@ -296,13 +321,14 @@ werden.
 Für das vollständige freie Bauen fehlen weiterhin die überprüfte Erfassung
 aller normalen Eingaben vor ihrer Wirkung, vollständige Konstruktionsparameter,
 die richtige Verarbeitung im erzeugenden Spielthread, echte Abschlussbeobachtung
-und ein ausreichend vollständiger Zustandsvergleich. Steam-Einladungen, große
+und ein ausreichend vollständiger Zustandsvergleich. Steam-Einladungen, beliebige
 Karten und Wiederaufnahme nach Absturz werden durch diesen Prototyp noch nicht
 zugesichert.
 
-Die Solo-Diagnoseberichte sind ausgewertet. Der gemeinsame Alpha5.8-Bauversuch
-muss nun zeigen, ob Zeit, explizit geprüfte
-Bauobjekte, Firmenwerte und Fahrzeugbewegung trotz verschiedener Wartezeiten
-gleich bleiben. Der abgeschlossene Zeit-/Pausetest beantwortet diese zusätzliche
-Frage noch nicht. Auch ein bestandener Bautest ersetzt keine vollständige
-Prüfung des freien gemeinsamen Spielbetriebs.
+Die Solo-Diagnoseberichte und die lokalen Alpha5.8-Läufe sind ausgewertet.
+Ein lokaler 240-Runden-Erfolg und ein bis Frame 99 übereinstimmender Replay sind
+begrenzt auf die beobachteten Werte. Die Alpha5.9-Korrektur benötigt noch ihre
+echte Nachprüfung. Zusätzlich bleibt zu prüfen, ob Zeit, Bauobjekte, Firmenwerte
+und Fahrzeugbewegung beim gemeinsamen Netzwerktest trotz verschiedener Wartezeiten
+gleich bleiben. Auch ein bestandener Bautest ersetzt keine vollständige Prüfung
+des freien gemeinsamen Spielbetriebs.

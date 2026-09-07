@@ -47,7 +47,7 @@ def baseline_save():
     if getattr(sys, "frozen", False):
         from prototype.baseline import resolve_baseline
         return resolve_baseline(base, local_root())
-    return base / "prototype/staged/time-probe-20260906/save/initial.sav"
+    return base / "prototype/staged/local-clean-20260907/save/initial.sav"
 
 
 def local_root():

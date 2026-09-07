@@ -67,18 +67,28 @@ nicht stillschweigend als derselbe Ausgangsstand akzeptiert.
 `prototype/baseline.py` sucht in dieser Reihenfolge nach dem passenden Paar:
 
 1. Bereits geprüfter lokaler Speicher unter `%LOCALAPPDATA%\TF2StrictProbe\baseline`.
-2. `Testspielstand/initial.sav` mit zugehöriger `.sav.lua` im Paketordner eines
-   älteren privaten vollständigen Pakets, wenn dieses als Quelle verwendet wird.
+2. Optional eingebettetes `Testspielstand/initial.sav` mit zugehöriger `.sav.lua`
+   im gerade verwendeten privaten Paket. Öffentliche Pakete enthalten kein Paar.
 3. Die Ausgangskopie im letzten vom Launcher aufgezeichneten lokalen Testlauf.
 4. Eine ausdrücklich über **Testspielstand übernehmen …** gewählte `.sav`-Datei
    mit danebenliegender `.sav.lua`.
 
-Beim ersten Wechsel von Alpha5.1 genügt normalerweise der noch vorhandene letzte
-Testlauf. Andernfalls wählt jeder Spieler im alten privaten Paket die Datei
-`Testspielstand\initial.sav`. Die Dateien werden geprüft und als frisches Paar
-atomar im lokalen Speicher veröffentlicht. Vorhandene beschädigte Cacheordner
-werden aufbewahrt. Es gibt keine Suche über beliebige Benutzerordner und keinen
-Download oder Upload der privaten Spielstände.
+**Alpha5.9 verwendet ein neues sauberes Savepaar der bisherigen sehr großen Karte.**
+Die Basis aus alten Paketen und deren bisheriger Cache haben andere Prüfsummen.
+Beide Spieler benötigen deshalb einmal das neu bereitgestellte private Paar:
+`Testspielstand/initial.sav` und `Testspielstand/initial.sav.lua`. Beide Dateien
+unverändert privat weitergeben und nebeneinander entpacken. Anschließend auf
+beiden PCs **Testspielstand übernehmen …** verwenden und diese neue `initial.sav`
+auswählen. Die Modliste enthält bereits Legacy Fahrzeuge und die Strict-Testmod;
+die neu vorbereiteten Messtest-Saves brauchen keine wiederholte Modumstellung.
+
+Der Import prüft beide Hashes und die im Paket genannten Größen und veröffentlicht
+erst dann ein frisches Paar atomar im lokalen Speicher. Nach der einmaligen
+Übernahme wird dieser Cache auch ohne die ursprünglichen Importdateien wiederverwendet,
+solange das neue Programm dieselbe Basis verlangt. Alte oder beschädigte
+Cacheordner werden aufbewahrt. Es gibt keine Suche über beliebige Benutzerordner,
+keine Annahme beliebiger Spielstände und keinen Download oder Upload der privaten
+Spielstände.
 
 Die eigentliche Vorbereitung erzeugt aus dieser lokalen Ausgangskopie weiterhin
 eine eigene Testsave im gewählten Steam-Saveordner. Die zufälligen Dateinamen dürfen
@@ -115,8 +125,13 @@ Der Ablauf für die Veröffentlichung ist:
    diese Version über den festen Download- und Updateweg.
 
 Die Schritt-für-Schritt-Anleitung für beide Spieler steht in
-[ANLEITUNG.md](../ANLEITUNG.md). Der aktuelle Alpha5.3-Bautest bleibt bei 240 Runden
+[ANLEITUNG.md](../ANLEITUNG.md). Der aktuelle Alpha5.9-Bautest bleibt bei 240 Runden
 mit automatisch vorgegebenen Bau-, Fahr- und Pausenbefehlen. Freies Bauen,
 Spielercursor und gemeinsame normale Pause-Tasten sind noch nicht angeschlossen.
-Die Korrektur für fehlende native Felder beim Lesen von Transformationen und
-Callback-Ergebnissen muss im echten Spiel bestätigt werden.
+Ein echter lokaler Alpha5.8-Record bestand 240 Runden. Der anschließende Replay in
+einem zweiten Prozess bestätigte identische Beobachtungen bis Frame 99 und stoppte
+dann an einem vorübergehenden API-Lesefehler. Alpha5.9 hält gelesene Elternobjekte
+während der vollständigen Beobachtung fest; der echte Folgetest steht noch aus.
+Diese lokalen Läufe sind kein Nachweis gemeinsamer Netzwerksynchronität oder
+vollständiger Deterministik der Spielwelt. Einzelheiten stehen im
+[Prüfstand](../VERIFICATION.md).

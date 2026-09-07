@@ -7,10 +7,36 @@ function M.new(json)
   local diagnostic_candidate
   local callback_report
   local function need(v,msg) if v==nil then error(msg,0) end return v end
+  -- Native member userdata can borrow storage from their component/container.
+  -- Holding the child alone need not keep that owner alive. Root every owner
+  -- until this operation has finished converting its observations to plain Lua.
+  -- This does not cache observations, retry getters or change collection order.
+  local owners
+  local MAX_OWNERS=32768
+  local function keep(v)
+    local t=type(v)
+    if owners and(t=='userdata'or t=='table')and not owners.seen[v]then
+      if owners.count>=MAX_OWNERS then error('native owner budget exceeded',0)end
+      owners.seen[v]=true;owners.count=owners.count+1
+    end
+    return v
+  end
+  local unpack_values=table.unpack or unpack
+  local function pack(...)return {n=select('#',...),...}end
+  local function operation(fn,...)
+    -- Planning a vehicle also takes a snapshot. Its owners belong to the same
+    -- outer operation, so a nested call must not release them early.
+    if owners then return fn(...)end
+    owners={seen={},count=0}
+    local result=pack(pcall(fn,...))
+    owners=nil -- Release on success and on exceptions; never retain across ticks.
+    if not result[1]then error(result[2],0)end
+    return unpack_values(result,2,result.n)
+  end
   -- Native usertypes may throw for an absent member. Always return one value:
   -- falling through returns zero values, which breaks type(field(...)) and
   -- tonumber(field(...)) before the supported alternative can be inspected.
-  local function field(v,k) local ok,x=pcall(function()return v[k]end);if ok then return x end;return nil end
+  local function field(v,k) keep(v);local ok,x=pcall(function()return v[k]end);if ok then return keep(x)end;return nil end
   local function safe_error(v)
     if type(v)=='string'then
       local text=v:gsub('0[xX]%x+','[address]')
@@ -73,7 +99,8 @@ function M.new(json)
       return nil
     end
     local function member(value,key,path)
-      return emit(path,function()return value[key]end)
+      keep(value)
+      return keep(emit(path,function()return value[key]end))
     end
     local active={}
     local visit
@@ -149,9 +176,10 @@ function M.new(json)
     error(reason..' at '..(path or 'build value')..' (Lua type='..type(v)..')',0)
   end
   local function read(v,k,path)
+    keep(v)
     local ok,x=pcall(function()return v[k]end)
     if not ok then error('getter threw at '..path..'.'..k..' (container Lua type='..type(v)..'): '..safe_error(x),0)end
-    return x
+    return keep(x)
   end
   local function num(v,path)
     local ok,n=pcall(tonumber,v)
@@ -161,6 +189,7 @@ function M.new(json)
   local function dec(v,path)return string.format('%.17g',num(v,path))end
   local function boolean(v,path)if type(v)~='boolean'then invalid('build boolean unavailable',path,v)end;return v end
   local function arr(v,max,path)
+    keep(v)
     path=path or 'build array'
     if v==nil then invalid('build array unavailable',path,v)end
     local ok,n=pcall(function()return #v end)
@@ -169,12 +198,14 @@ function M.new(json)
     for i=1,n do out[i]=need(read(v,i,path),'build array hole at '..path..'['..i..'] (Lua type=nil)')end;return out
   end
   local function vector(v,n,path)
+    keep(v)
     path=path or 'build vector'
     local out=json.array();local names={'x','y','z','w'}
     for i=1,n do local x=field(v,names[i]);local p=path..'.'..names[i]
       if x==nil then x=field(v,i);p=p..'/['..i..']'end;out[i]=dec(x,p)end;return out
   end
   local function matrix(v,path)
+    keep(v)
     path=path or 'CONSTRUCTION.transf'
     local out=json.array()
     if type(field(v,'col'))=='function' then
@@ -202,6 +233,7 @@ function M.new(json)
     end
     local visit
     visit=function(v,depth,path)
+      keep(v)
       budget.nodes=budget.nodes+1;if budget.nodes>4096 then fail(path,'node budget exceeded')end
       if depth>10 then fail(path,'depth exceeded')end
       local kind=type(v)
@@ -250,7 +282,7 @@ function M.new(json)
     return visit(value,0,'$')
   end
   local function component(id,kind)
-    return need(api.engine.getComponent(id,need(api.type.ComponentType[kind],'component API '..kind)), 'build component absent: '..kind)
+    return keep(need(api.engine.getComponent(id,need(api.type.ComponentType[kind],'component API '..kind)), 'build component absent: '..kind))
   end
   local function existing(id) id=int(id,1,2147483647);if not api.engine.entityExists(id)then error('build entity missing',0)end;return id end
   local function bind(key,kind,id,owner)
@@ -456,9 +488,10 @@ function M.new(json)
   local function street_map()
     -- Official api.engine streetSystem contract: {[nodeEntity]={edgeEntity,...}}.
     -- Read only the six owned endpoints; never locate identity by world position.
-    return need(api.engine.system.streetSystem.getNode2StreetEdgeMap(),'street incidence map unavailable')
+    return keep(need(api.engine.system.streetSystem.getNode2StreetEdgeMap(),'street incidence map unavailable'))
   end
   local function entity_collection(values,max,path,label,duplicate_error)
+    keep(values)
     if type(values)~='table'and type(values)~='userdata'then invalid(label..' container unavailable',path,values)end
     local function length()
       local ok,n=pcall(function()return #values end)
@@ -510,6 +543,8 @@ function M.new(json)
     local specs={{E.scene.depot,assets.depot_snap,3},{E.scene.stops[1],assets.stop_snap,1},{E.scene.stops[2],assets.stop_snap,2}}
     local links,before_nodes,before_edges={}, {}, {}
     local map=street_map();local proposal=api.type.SimpleProposal.new()
+    local street_proposal=read(proposal,'streetProposal','connection.proposal')
+    local edges_to_add=read(street_proposal,'edgesToAdd','connection.streetProposal')
     local street=int(api.res.streetTypeRep.find(assets.street_type),0,nil,'connector.street')
     if resource(api.res.streetTypeRep,street,'connector.street')~=assets.street_type then error('connector street resource mismatch',0)end
     for i,spec in ipairs(specs)do
@@ -535,7 +570,7 @@ function M.new(json)
       e.comp.tangent0=api.type.Vec3f.new(delta[1],delta[2],delta[3]);e.comp.tangent1=api.type.Vec3f.new(delta[1],delta[2],delta[3])
       e.comp.type=0;e.comp.typeIndex=-1;e.type=0
       e.streetEdge=api.type.BaseEdgeStreet.new();e.streetEdge.streetType=street;e.streetEdge.hasBus=false;e.streetEdge.tramTrackType=0
-      proposal.streetProposal.edgesToAdd[i]=e
+      edges_to_add[i]=e
       links[i]={node0=from.node,node1=to.node,tangent=clone(delta)}
     end
     -- SimpleProposal uses negative edge IDs and existing positive node IDs.
@@ -546,11 +581,11 @@ function M.new(json)
       end
     end
     for _,name in ipairs({'nodesToAdd','nodesToRemove','edgesToRemove','edgeObjectsToAdd','edgeObjectsToRemove'})do
-      if #arr(read(proposal.streetProposal,name,'connection.streetProposal'),0,'connection.streetProposal.'..name)~=0 then
+      if #arr(read(street_proposal,name,'connection.streetProposal'),0,'connection.streetProposal.'..name)~=0 then
         error('connection proposal contains unexpected node/removal/object mutation',0)
       end
     end
-    local added=arr(proposal.streetProposal.edgesToAdd,3,'connection.streetProposal.edgesToAdd')
+    local added=arr(read(street_proposal,'edgesToAdd','connection.streetProposal'),3,'connection.streetProposal.edgesToAdd')
     if #added~=3 then error('connector edge vector writeback failed',0)end
     for i,e in ipairs(added)do
       if int(e.entity)~=-i or int(e.comp.node0)~=links[i].node0 or int(e.comp.node1)~=links[i].node1
@@ -624,6 +659,7 @@ function M.new(json)
     return {success=true,result={logical_id=plan.key,links=3}}
   end
   local function vehicle_config(cfg,path)
+    keep(cfg)
     path=path or 'TRANSPORT_VEHICLE.transportVehicleConfig'
     local out={vehicles=json.array(),groups=json.array()}
     for i,v in ipairs(arr(read(cfg,'vehicles',path),1,path..'.vehicles'))do
@@ -867,7 +903,7 @@ function M.new(json)
             out.position=vector(position,3,key..'.game.interface.getEntity.position')
             local mm=json.array();for i=1,3 do mm[i]=int(math.floor(num(out.position[i],key..'.position['..i..']')*1000+.5),nil,nil,key..'.position_mm['..i..']')end;probe.vehicle.position_mm=mm
           end
-          local move=api.engine.getComponent(id,api.type.ComponentType.MOVE_PATH);out.move_path_present=move~=nil
+          local move=keep(api.engine.getComponent(id,api.type.ComponentType.MOVE_PATH));out.move_path_present=move~=nil
           if move then
             local mp=key..'.MOVE_PATH';local dyn=read(move,'dyn',mp);mp=mp..'.dyn'
             local pos=read(dyn,'pathPos',mp);local pp=mp..'.pathPos'
@@ -899,6 +935,10 @@ function M.new(json)
         excluded=json.array({'untracked_world','cargo_contents','rng','path_reservations','terrain_outside_test','station_internals','movement_before_world_placement'})}}
   end
   E.integer=int
+  for _,name in ipairs({'bind_initial','plan','finish','snapshot'})do
+    local fn=E[name]
+    E[name]=function(...)return operation(fn,...)end
+  end
   return E
 end
 return M

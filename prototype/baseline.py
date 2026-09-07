@@ -20,8 +20,8 @@ MAX_JSON_BYTES = 1024 * 1024
 MAX_SAVE_BYTES = 8 * 1024 * 1024 * 1024
 MAX_LUA_BYTES = 16 * 1024 * 1024
 _REPARSE_POINT = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
-_GUIDANCE = ("Bitte im alten Paketordner die Datei Testspielstand/initial.sav auswählen. "
-             "Die zugehörige initial.sav.lua muss daneben liegen. "
+_GUIDANCE = ("Bitte den für diese Version bereitgestellten Testspielstand (.sav) auswählen. "
+             "Die zugehörige .sav.lua muss daneben liegen. "
              "Der private Spielstand wird nicht von GitHub heruntergeladen.")
 
 
