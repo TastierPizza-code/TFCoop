@@ -89,7 +89,7 @@ class App:
         canvas.bind("<Configure>", lambda event: canvas.itemconfigure(embedded, width=event.width))
         self.root.bind("<MouseWheel>", lambda event: canvas.yview_scroll(-int(event.delta / 120), "units"))
         ttk.Label(outer, text="TF2-Koop  /  " + workflow.VERSION, style="Title.TLabel").pack(anchor="w")
-        ttk.Label(outer, text="Straße, Depot, Fahrzeug und Linienfahrt gemeinsam prüfen", font=("Segoe UI", 12)).pack(anchor="w", pady=(3, 6))
+        ttk.Label(outer, text="Gemeinsamen Aufbau, Wartezeiten und 1x-Tempo prüfen", font=("Segoe UI", 12)).pack(anchor="w", pady=(3, 6))
         ttk.Label(outer, text="Auf beiden PCs neu vorbereiten. Vorher TF2 schließen und eine vorhandene Diagnoseinstallation unten wiederherstellen. Für diesen Bautest ist kein neuer Solo-Diagnoselauf nötig.",
                   wraplength=900).pack(anchor="w", pady=(0, 13))
         ttk.Label(outer, textvariable=self.update_status, wraplength=900).pack(anchor="w", pady=(0, 8))
@@ -113,7 +113,7 @@ class App:
         tabs.pack(fill="both", expand=True, pady=(12, 0))
         solo = ttk.Frame(tabs, padding=12)
         build = ttk.Frame(tabs, padding=12)
-        tabs.add(build, text="Bautest (experimentell)")
+        tabs.add(build, text="Aufbau + 1x-Test (experimentell)")
         tabs.add(solo, text="API-Diagnose allein")
         ttk.Label(solo, text="2  ·  Diagnose vorbereiten", font=("Segoe UI", 12, "bold")).pack(anchor="w")
         ttk.Label(solo, text="Die Vorbereitung stellt die native Testinstallation zurück, installiert die Diagnosemod und kopiert den lokalen Ausgangsspielstand. IP, Sitzungscode und Verbindung werden nicht benötigt.", wraplength=850).pack(anchor="w", pady=8)
@@ -121,13 +121,13 @@ class App:
         self.diagnostic_button.pack(anchor="w", pady=(0, 10))
         ttk.Label(solo, text="3  ·  TF2 selbst über Steam starten und diesen Spielstand laden", font=("Segoe UI", 12, "bold")).pack(anchor="w")
         ttk.Entry(solo, textvariable=self.diagnostic_save, state="readonly").pack(fill="x", pady=7)
-        ttk.Label(solo, text="Spiel laden → OPTIONEN AUSWÄHLEN / Mods: 'TF2 API-Diagnose (Alpha5.8)' und Legacy Fahrzeuge aktivieren. Strict Sync und alte Koop-Mods deaktivieren. Nach dem Laden etwa 10 Sekunden warten.", wraplength=850).pack(anchor="w")
+        ttk.Label(solo, text=f"Spiel laden → OPTIONEN AUSWÄHLEN / Mods: 'TF2 API-Diagnose ({workflow.VERSION.split('-')[0]})' und Legacy Fahrzeuge aktivieren. Strict Sync und alte Koop-Mods deaktivieren. Nach dem Laden etwa 10 Sekunden warten.", wraplength=850).pack(anchor="w")
         ttk.Label(solo, text="Die Diagnose baut nichts und ändert keine Pause. Sie liest vorhandene Objekte und getrennt davon neu angelegte Konfigurationsobjekte. Fehlende Fahrzeuge oder Depots bleiben als ungeprüft erkennbar.", wraplength=850).pack(anchor="w", pady=9)
         ttk.Label(solo, textvariable=self.diagnostic_status, style="Status.TLabel", wraplength=850).pack(anchor="w", pady=7)
         self.diagnostic_export_button = ttk.Button(solo, text="Diagnosebericht als ZIP …", command=self.export_diagnostic)
         self.diagnostic_export_button.pack(anchor="w", pady=8)
         ttk.Label(solo, text="Nur diesen eigenen Bericht zur Auswertung schicken. Anschließend TF2 schließen und unten die bisherige Installation wiederherstellen.", wraplength=850).pack(anchor="w")
-        ttk.Label(build, text=f"Automatischer Bautest mit {workflow.ROUNDS} Runden. Der Test baut und fährt auf beiden PCs. Bitte nichts selbst bauen oder pausieren. Bei Abschluss oder Abbruch beide Testberichte exportieren.", wraplength=850).pack(anchor="w", pady=(0, 9))
+        ttk.Label(build, text=f"Zuerst {workflow.ROUNDS} Aufbaurunden, danach zwölf Fahrtabschnitte mit 1x als Ziel und absichtlichen Wartezeiten. Dabei nichts selbst bauen oder pausieren. Fahrzeugbewegung beobachten; danach beide Testberichte exportieren.", wraplength=850).pack(anchor="w", pady=(0, 9))
         form = ttk.LabelFrame(build, text="Auf beiden PCs vorbereiten", padding=12)
         form.pack(fill="x")
         form.columnconfigure(1, weight=1)
@@ -171,14 +171,14 @@ class App:
         ttk.Label(connection, textvariable=self.network).pack(anchor="w", pady=(9, 2))
         ttk.Label(connection, textvariable=self.engine).pack(anchor="w", pady=2)
         ttk.Label(connection, textvariable=self.progress_text).pack(anchor="w", pady=2)
-        self.bar = ttk.Progressbar(connection, maximum=workflow.ROUNDS, mode="determinate")
+        self.bar = ttk.Progressbar(connection, maximum=workflow.PROGRESS_TOTAL, mode="determinate")
         self.bar.pack(fill="x", pady=(5, 7))
         ttk.Label(connection, textvariable=self.status, style="Status.TLabel", wraplength=870).pack(anchor="w")
         savebox = ttk.Frame(build)
         savebox.pack(fill="x", pady=10)
         ttk.Label(savebox, text="Im Spiel ausdrücklich diese Testsave wählen:").pack(anchor="w")
         ttk.Entry(savebox, textvariable=self.save_name, state="readonly").pack(fill="x", pady=3)
-        ttk.Label(savebox, text="Spiel laden → OPTIONEN AUSWÄHLEN / Mods: 'TF2 Strict Sync - automatischer Bautest (Alpha5.8)' und Legacy Fahrzeuge aktivieren; Diagnosemod und alte Koop-Mods deaktivieren.",
+        ttk.Label(savebox, text=f"In dieser frischen Testsave sind Strict Sync ({workflow.VERSION.split('-')[0]}) und Legacy Fahrzeuge bereits ausgewählt. Falls alte Koop-Mods erscheinen, den exakten neuen Savenamen prüfen.",
                   wraplength=900).pack(anchor="w")
         footer = ttk.Frame(outer)
         footer.pack(fill="x", pady=(7, 0))
@@ -476,9 +476,14 @@ class App:
                 contact = bool(native.get("outer_calls")) or peer.get("state") in ("waiting_peer", "running", "completed")
                 self.engine.set("Spielkontakt: Test angehalten" if peer.get("state") == "halted" else
                                 "Spielkontakt: vorhanden" if contact else "Spielkontakt: wartet auf TF2 und Testmod")
-                self.progress_text.set("Bautest: abgeschlossen · begrenzte Prüfung" if status["completed"] else
-                                       f"Messung: Runde {status['round']} / {workflow.ROUNDS}")
-                self.bar["value"] = workflow.ROUNDS if status["completed"] else status["round"]
+                timing = status.get("timing") or {}
+                in_timing = timing.get("started") is True or str(timing.get("stage", "")).startswith("timing")
+                self.progress_text.set("Test abgeschlossen · Tempo und Synchronität getrennt ausgewertet" if status["completed"] else
+                                       f"1x-/Warteversuch: Abschnitt {min(workflow.TIMING_WINDOWS, timing.get('segment_index', 0) + 1)} / {workflow.TIMING_WINDOWS}" if in_timing else
+                                       f"Aufbau: Runde {status['round']} / {workflow.ROUNDS}")
+                self.bar["value"] = (workflow.PROGRESS_TOTAL if status["completed"] else
+                                     workflow.ROUNDS + min(workflow.TIMING_WINDOWS, timing.get("segment_index", 0)) if in_timing else
+                                     min(workflow.ROUNDS, status["round"]))
                 self.game_button.configure(state="normal" if peer.get("state") == "waiting_game" and not status["stopping"] else "disabled")
                 self._buttons()
             except Exception as exc:

@@ -1,5 +1,68 @@
 # Prüfstand
 
+## Alpha5.11: vorbereiteter Warte- und 1x-Versuch, bisher ohne TF2 geprüft
+
+Die neue Version belässt den ursprünglichen Bauabschluss bei zwölf Befehlen
+und 240 Schritten und hängt zwölf gemeinsam vorbereitete Fahrtabschnitte an.
+Jeder Abschnitt gibt 25 native Schritte à 200000 Mikrosekunden frei. Drei dienen
+als Ausgangsmessung, sechs enthalten abwechselnd lokale Zusatzwartezeiten von
+1000, 1500, 250, 750, 3000 und 500 ms, drei vergleichen die Fahrt danach.
+Zusammen entstehen weitere 60 Sekunden Simulationszeit bei ausschließlich 1x
+als Ziel. Diese künstlichen Wartezeiten sind keine Netzwerk-RTT-Messung.
+
+**Die neuen Abschnitte haben noch keinen tatsächlichen TF2-Versuch bestanden.**
+Die vorbereitende Prüfung hat keinen Spielprozess gestartet. Die unten
+beschriebenen echten Alpha5.10-Ergebnisse beziehen sich auf den bisherigen
+Aufbau und dürfen nicht auf die neue Messsteuerung übertragen werden.
+
+Die neue Protokollprüfung bestätigt den vollständigen Zwölf-Abschnitts-Ablauf
+mit beiden Teilnehmern und zusätzlichen Adaptermodellen. Eine vollständige
+TCP-Prüfung verbindet den unveränderten 240-Runden-Aufbau mit der Erweiterung.
+Weitere Tests binden die tatsächlichen Python-Adaptermethoden und produktive
+Lua-/Datei-IPC an ausdrücklich nachgebildete Spiel- und native APIs an.
+Sie prüfen gemeinsame Bereitschaft, unterschiedliche Messwerte bei gleichen
+Weltgrenzen, echte Ausführung der vorgesehenen Zusatzwartezeiten im Testaufbau,
+korrekte 200-ms-Abstände, native Zeitbestätigungen sowie Stoppen und Fehlerfälle.
+Ungültige Pläne, Wiederholungen mit verändertem Inhalt, Zustandsänderungen beim
+Warten, fehlende Messwerte und abweichende Endgrenzen führen zum Abbruch.
+Identische Wiederholungen dürfen keinen Abschnitt erneut ausführen.
+
+Weltbeobachtungen erfolgen an Anfang und Ende jedes Fahrtabschnitts. Die native
+Uhr und Auftragsbestätigung werden nach jedem inneren Schritt geprüft. Das
+reduziert die Lua-Beobachtungen innerhalb des Abschnitts, bedeutet aber auch,
+dass dort keine vollständigen Lua-Zustände nach jedem Einzelschritt verglichen
+werden. Die Zielbewertung verlangt pro Abschnitt 95 bis 105 Prozent von 1x,
+mindestens 24 Abstände pro Freigabe-/Bestätigungsreihe, deren 95. Perzentil
+höchstens 250 ms und deren Maximum höchstens 400 ms beträgt.
+
+Rate und lokale Dauer müssen innerhalb der Rundungsgrenzen konsistent sein;
+Zeitdifferenzen dürfen höchstens einen Mikrosekunden-Rundungsfehler enthalten.
+Gesamte Abschnittsdauer einschließlich Anfangs-/Endbeobachtung, künstliche
+Wartezeit und gesamte lokale Wallzeit einschließlich gemeinsamer Übergänge
+werden getrennt berichtet. Zeitstempel verschiedener PCs werden nicht
+voneinander abgezogen. Native Wartungszähler sind Diagnosewerte, kein Welthash.
+
+`completed` und `paced_windows_1x_met` haben getrennte Bedeutung. Ein passender
+Endzustand kann mit einem verfehlten Tempoziel zusammenfallen; ohne vollständige
+Messdaten bleibt die Tempobewertung offen. Freigabe- und Bestätigungsabstände
+sind keine Renderzeiten. Die als Freigabezeit gespeicherte Messung ist der Beginn
+des Python-Aufrufs vor der Dateiübertragung, nicht die Ankunft in der nativen
+Engine. Bestätigungszeiten geben deren lokale Beobachtung an. Selbst ein erfülltes Ziel bewertet die einzelnen
+Fahrtabschnitte, nicht durchgängiges 1x über die gemeinsamen Haltepunkte.
+Sichtbare Flüssigkeit muss im echten Versuch gesondert beobachtet werden.
+
+Ein bereits gemeinsam freigegebener Abschnitt kann noch bis zu 25 Schritte
+fertigführen, bevor die TCP-Schleife entfernten HALT oder Verbindungsabbruch
+verarbeitet. Das begrenzte Wallzeitbudget und Stopprüfungen zwischen lokalen
+Freigaben ersetzen keine sofortige verteilte Unterbrechung. Es gibt keinen
+Rollback. Normale UI-Pausetasten, freies Bauen, unbeobachtete Weltzustände und
+langfristiger gemeinsamer Spielbetrieb bleiben ungeprüft.
+
+Die saubere Alpha5.9-Basis der bisherigen sehr großen Karte bleibt unverändert.
+Vorhandene passende Savecaches werden weiterverwendet. Aktueller Ablauf und
+Schwellenwerte: [BUILD_TEST.md](BUILD_TEST.md). Anleitung für beide Spieler:
+[ANLEITUNG.md](ANLEITUNG.md).
+
 ## Alpha5.10: zwei vollständige echte Durchläufe
 
 Am 7. September 2026 haben zwei nacheinander frisch gestartete TF2-Prozesse auf

@@ -140,6 +140,9 @@ def self_check(report_path: Path) -> int:
             from prototype.strict_sync import launcher_session
             from prototype import diagnostic_session
             from prototype.strict_sync.build_profile import BUILD_PROFILE, BUILD_ROUNDS, build_inputs
+            from prototype.strict_sync.timing_probe import SEGMENTS, STEP_US, WINDOW_STEPS, TIMING_CAPABILITY
+            from prototype.strict_sync.game_runner import measurement_capabilities
+            from prototype.strict_sync.engine_mailbox import EngineAdapter
             resources, portable = resource_root(), portable_root()
             physical = resources / "prototype/strict_sync"
             required = set(stage_probe.REQUIRED_PYTHON) | {"model.py", "__init__.py"}
@@ -172,6 +175,13 @@ def self_check(report_path: Path) -> int:
             if (launcher_session.PROFILE != BUILD_PROFILE or launcher_session.ROUNDS != BUILD_ROUNDS
                     or BUILD_ROUNDS != 240):
                 raise RuntimeError("packaged launcher build profile mismatch")
+            from types import SimpleNamespace
+            if (launcher_session.TIMING_WINDOWS != len(SEGMENTS) or len(SEGMENTS) != 12
+                    or launcher_session.PROGRESS_TOTAL != BUILD_ROUNDS + len(SEGMENTS)
+                    or STEP_US != 200000 or WINDOW_STEPS != 25
+                    or TIMING_CAPABILITY not in measurement_capabilities(SimpleNamespace(timing_probe=True))
+                    or not callable(EngineAdapter.advance_window) or not callable(EngineAdapter.check_idle_wait)):
+                raise RuntimeError("packaged timing experiment is incomplete")
             scheduled = [command for number in range(BUILD_ROUNDS) for peer in ("a", "b")
                          for command in build_inputs(peer, number)]
             from collections import Counter
@@ -214,6 +224,9 @@ def self_check(report_path: Path) -> int:
             result["build_profile"] = {"profile": BUILD_PROFILE, "rounds": BUILD_ROUNDS,
                                        "scheduled_commands": len(scheduled), "resources_checked": True,
                                        "actual_tf2_construction_verified": False}
+            result["timing_profile"] = {"resources_checked": True, "windows": len(SEGMENTS),
+                                        "simulated_us": len(SEGMENTS) * WINDOW_STEPS * STEP_US,
+                                        "actual_tf2_runtime_verified": False, "visual_smoothness_verified": False}
             result["solo_diagnostic"] = {"resources_checked": True, "actual_tf2_runtime_verified": False,
                                           "world_commands": False, "requires_peer": False}
             result["native"] = _passive_native_check(resources / "prototype/native/out/tf2_step_probe.dll")

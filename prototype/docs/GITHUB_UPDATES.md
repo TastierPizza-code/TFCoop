@@ -74,7 +74,7 @@ nicht stillschweigend als derselbe Ausgangsstand akzeptiert.
    mit danebenliegender `.sav.lua`.
 
 **Seit Alpha5.9 wird ein sauberes Savepaar der bisherigen sehr großen Karte verwendet.**
-Alpha5.10 verwendet dasselbe Paar weiter; ein bereits erfolgter Import genügt.
+Alpha5.11 verwendet dasselbe Paar weiter; ein bereits erfolgter Import genügt.
 Die Basis aus Paketen vor Alpha5.9 und deren Cache haben andere Prüfsummen.
 Beide Spieler benötigen deshalb einmal das seit Alpha5.9 bereitgestellte private Paar:
 `Testspielstand/initial.sav` und `Testspielstand/initial.sav.lua`. Beide Dateien
@@ -126,17 +126,22 @@ Der Ablauf für die Veröffentlichung ist:
    diese Version über den festen Download- und Updateweg.
 
 Die Schritt-für-Schritt-Anleitung für beide Spieler steht in
-[ANLEITUNG.md](../ANLEITUNG.md). Der aktuelle Alpha5.10-Bautest bleibt bei 240 Runden
-mit automatisch vorgegebenen Bau-, Fahr- und Pausenbefehlen. Freies Bauen,
-Spielercursor und gemeinsame normale Pause-Tasten sind noch nicht angeschlossen.
-Alpha5.10 behebt den mit dem Lebensdauerschutz aus Alpha5.9 eingeführten Startfehler:
-TF2 ignoriert die Bereichsgrenzen von `table.unpack`; der Adapter reicht die
-Rückgabewerte deshalb direkt als Lua-Varargs weiter und behält den Schutz bei.
-Ein echter lokaler Record und sein Replay in einem zweiten frischen TF2-Prozess
-haben inzwischen jeweils zwölf Befehle und alle 240 Schritte bestanden.
-Ergebnisse und gemessene Zustände stimmten nach jeder Aktion überein. Beide
-Prozesse wurden regulär beendet und die Installation wiederhergestellt.
-Diese nacheinander ausgeführten Läufe sind kein Nachweis gemeinsamer
-Netzwerksynchronität oder vollständiger Deterministik der Spielwelt. Der entsprechende
-Zweirechnertest steht noch aus. Einzelheiten stehen im
-[Prüfstand](../VERIFICATION.md).
+[ANLEITUNG.md](../ANLEITUNG.md). Der aktuelle **Alpha5.11-1x-Test** führt erst
+240 Aufbaurunden aus und danach zwölf Fahrtabschnitte mit jeweils 25 Schritten
+à 0,2 Sekunden. Drei dienen als Ausgangsmessung, sechs enthalten unterschiedliche
+lokale Zusatzwartezeiten und drei vergleichen die Fahrt danach. Ziel ist
+1x innerhalb der Abschnitte. Gemeinsame Haltepunkte bleiben Teil des Ablaufs.
+
+Der Launcher zeigt Zustandsvergleich und Tempoergebnis getrennt. Die Messung
+bewertet native Freigaben und Bestätigungen, keine gerenderten Bilder. Die
+absichtlichen Wartezeiten sind keine Messung der tatsächlichen Netzwerk-Latenz.
+Freies Bauen, Cursor und normale gemeinsame Pause-Tasten sind nicht angeschlossen.
+
+Alpha5.10 bestand zwei echte nacheinander ausgeführte lokale TF2-Läufe mit
+zwölf Befehlen und 240 Schritten bei gleichen beobachteten Ergebnissen.
+Die neue Alpha5.11-Erweiterung wurde bisher ausschließlich ohne TF2 geprüft;
+der echte gemeinsame Versuch steht aus. Die vorhandene saubere große Basis
+aus Alpha5.9 und ihr lokaler Cache bleiben gültig. Beide aktualisieren,
+stellen die vorherige Installation wieder her und bereiten eine neue gemeinsame
+Sitzung vor. Nach dem Versuch beide normalen Bericht-ZIPs privat weitergeben.
+Einzelheiten und Grenzen stehen im [Prüfstand](../VERIFICATION.md).

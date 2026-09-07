@@ -99,12 +99,18 @@ class LauncherSessionTests(unittest.TestCase):
         self.assertEqual(command[command.index("--delay-ms") + 1], "0")
         self.assertEqual(command[command.index("--rounds") + 1], "240")
         self.assertEqual(command[command.index("--profile") + 1], "build_v2")
+        self.assertIn("--timing-probe", command)
+        host_command = self.spawned[0][0]
+        self.assertIn("--timing-probe", host_command)
+        self.assertEqual(host_command[host_command.index("--timeout") + 1], "30")
+        # No legacy artificial delay is requested for the host; CLI default is zero.
+        self.assertNotIn("--delay-ms", host_command)
         self.assertIn("--worker", command)
         self.assertNotIn(str(self.root / "game/TransportFever2.exe"), command)
         self.assertEqual(options["stdin"], workflow.subprocess.DEVNULL)
         self.assertEqual(options["creationflags"], getattr(workflow.subprocess, "CREATE_NO_WINDOW", 0))
 
-    def test_peer_uses_100ms_delay_and_host_address(self):
+    def test_peer_uses_timing_probe_without_legacy_delay_and_keeps_host_address(self):
         controller = self.controller("b")
         controller.start()
         self.assertEqual(set(controller.children), {"lobby"})
@@ -113,7 +119,15 @@ class LauncherSessionTests(unittest.TestCase):
         command = self.spawned[-1][0]
         self.assertEqual(command[command.index("--host") + 1], "25.1.2.3")
         self.assertEqual(command[command.index("--peer") + 1], "b")
-        self.assertEqual(command[command.index("--delay-ms") + 1], "100")
+        self.assertEqual(command[command.index("--delay-ms") + 1], "0")
+        self.assertIn("--timing-probe", command)
+
+    def test_progress_total_includes_all_build_rounds_and_timing_windows(self):
+        from prototype.strict_sync.build_profile import BUILD_ROUNDS
+        from prototype.strict_sync.timing_probe import SEGMENTS
+        self.assertEqual(workflow.TIMING_WINDOWS, len(SEGMENTS))
+        self.assertEqual(workflow.PROGRESS_TOTAL, BUILD_ROUNDS + len(SEGMENTS))
+        self.assertEqual(workflow.PROGRESS_TOTAL, 252)
 
     def test_invalid_or_other_epoch_host_ready_never_starts_peer(self):
         controller = self.controller()
@@ -204,6 +218,105 @@ class LauncherSessionTests(unittest.TestCase):
         self.assertTrue(result["completed"])
         self.assertTrue(result["coordinated_completed"])
         self.assertIn("Bautest abgeschlossen", workflow.describe_status(result))
+
+    def test_completed_timing_status_separates_one_times_target_from_finished_comparison(self):
+        controller = self.controller()
+        controller.start()
+        self.lobby()
+        self.host_ready()
+        controller.poll()
+        for met, expected in ((True, "1x-Ziel in den Fahrtabschnitten erreicht"),
+                              (False, "1x-Ziel noch nicht erreicht"),
+                              (None, "1x-Auswertung unvollständig")):
+            with self.subTest(paced_windows_1x_met=met):
+                timing = {"completed": True, "segments_completed": 12, "paced_windows_1x_met": met,
+                          "completion_scope": "both_peer_window_boundaries"}
+                workflow.write_json(self.run_dir / "peer-report.json", {
+                    "finished": True, "timing": timing, "complete_world_verified": False})
+                workflow.write_json(self.run_dir / "host-report.json", {
+                    "coordinated_completed": True, "timing": timing})
+                result = controller.poll()
+                self.assertTrue(result["completed"])
+                self.assertTrue(result["coordinated_completed"])
+                self.assertEqual(result["timing_result"], timing)
+                description = workflow.describe_status(result)
+                self.assertIn("Vergleich der Messwerte abgeschlossen", description)
+                self.assertIn("Beide PCs: ", description)
+                self.assertIn(expected, description)
+                self.assertIn("Darstellung separat beurteilen", description)
+
+    def test_host_uses_joint_timing_outcome_even_when_local_pacing_passes(self):
+        controller = self.controller()
+        controller.start()
+        workflow.write_json(self.run_dir / "peer-report.json", {"finished": True,
+            "timing": {"completed": True, "paced_windows_1x_met": True,
+                       "completion_scope": "local_window_boundaries"}})
+        workflow.write_json(self.run_dir / "host-report.json", {"coordinated_completed": True,
+            "timing": {"completed": True, "paced_windows_1x_met": False,
+                       "completion_scope": "both_peer_window_boundaries"}})
+        result = controller.poll()
+        self.assertFalse(result["timing_result"]["paced_windows_1x_met"])
+        self.assertIn("1x-Ziel noch nicht erreicht", workflow.describe_status(result))
+        self.assertIn("Beide PCs: ", workflow.describe_status(result))
+
+    def test_client_can_show_its_local_timing_result_without_a_host_report(self):
+        controller = self.controller("b")
+        controller.start()
+        workflow.write_json(self.run_dir / "peer-report.json", {"finished": True,
+            "timing": {"completed": True, "paced_windows_1x_met": False,
+                       "completion_scope": "local_window_boundaries"}})
+        result = controller.poll()
+        self.assertTrue(result["completed"])
+        self.assertFalse(result["coordinated_completed"])
+        self.assertIn("1x-Ziel noch nicht erreicht", workflow.describe_status(result))
+        self.assertIn("Tempo auf deinem PC: ", workflow.describe_status(result))
+        self.assertNotIn("Beide PCs: ", workflow.describe_status(result))
+
+    def test_build_progress_does_not_present_an_unstarted_timing_schedule_as_active(self):
+        controller = self.controller()
+        controller.start()
+        workflow.write_json(self.run_dir / "peer-progress.json", {
+            "state": "running", "round": 4, "phase_label": "Haltestelle bauen",
+            "timing": {"stage": "inputs", "started": False, "completed": False,
+                       "segment_index": 0, "segment_total": 12, "label": "baseline-1"}})
+        status = controller.poll()
+        description = workflow.describe_status(status)
+        self.assertEqual(status["round"], 4)
+        self.assertIn("Haltestelle bauen", description)
+        self.assertIn("Runde 4 von 240", description)
+        self.assertNotIn("1x-/Warteversuch", description)
+        self.assertNotIn("abgeschlossen", description)
+
+    def test_active_timing_progress_uses_window_index_and_honest_wait_phase(self):
+        controller = self.controller("b")
+        controller.start()
+        workflow.write_json(self.run_dir / "peer-progress.json", {
+            "state": "running", "round": 240,
+            "phase_label": "Warteprobe: Spielzeit bleibt gehalten",
+            "timing": {"stage": "timing_run", "started": True, "completed": False,
+                       "segment_index": 4, "segment_total": 12, "label": "wait-b-1500"}})
+        status = controller.poll()
+        description = workflow.describe_status(status)
+        self.assertIn("1x-/Warteversuch 5/12", description)
+        self.assertIn("Warteprobe und Fahrt", description)
+        self.assertIn("Spielzeit bleibt gehalten", description)
+        self.assertNotIn("abgeschlossen", description)
+
+    def test_final_local_window_stays_in_timing_progress_until_host_completion_arrives(self):
+        controller = self.controller("b")
+        controller.start()
+        workflow.write_json(self.run_dir / "peer-progress.json", {
+            "state": "running", "round": 240,
+            "phase_label": "Gemeinsame Rückmeldung zum Fahrtabschnitt abwarten",
+            "timing": {"stage": "inputs", "started": True, "completed": True,
+                       "segment_index": 12, "segment_total": 12, "label": "recovery-3"}})
+        status = controller.poll()
+        self.assertFalse(status["completed"])
+        description = workflow.describe_status(status)
+        self.assertIn("1x-/Warteversuch 12/12", description)
+        self.assertIn("Gemeinsame Rückmeldung", description)
+        self.assertNotIn("Runde 240 von 240", description)
+        self.assertNotIn("abgeschlossen", description)
 
     def test_actual_peer_fault_and_last_round_survive_follow_on_disconnect(self):
         controller = self.controller()

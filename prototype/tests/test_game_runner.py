@@ -32,6 +32,47 @@ class EntryPointTests(unittest.TestCase):
             self.assertEqual(result, 0)
             self.assertEqual(received["step_us"], 200000)
             self.assertEqual(received["backend"], "tf2_controlled_measurement")
+            self.assertEqual(received["capabilities"], runner.CAPABILITIES)
+            self.assertIsNone(received["coordinator_factory"])
+
+    def test_build_host_selects_timing_coordinator_and_capability_only_when_opted_in(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            key = root / "fixture.key"
+            key.write_bytes(b"x" * 32)
+            for enabled in (False, True):
+                with self.subTest(timing_probe=enabled):
+                    received = {}
+                    async def fake_host(args, secret, **kwargs):
+                        received.update(kwargs, args=args)
+                        return 0
+                    options = ["host", "--session", str(root), "--epoch", "fixture-epoch",
+                        "--key-file", str(key), "--report", str(root / "report.json"),
+                        "--ready", str(root / "ready.json"), "--profile", "build_v2", "--rounds", "240"]
+                    if enabled:
+                        options.append("--timing-probe")
+                    with patch.object(runner, "read_setup", return_value=(root, {
+                            "manifest_digest": "a" * 64, "measurement_profile": "build_v2"})), \
+                         patch.object(runner, "host", side_effect=fake_host):
+                        self.assertEqual(runner.main(options), 0)
+                    self.assertIs(received["coordinator_factory"], runner.TimingCoordinator if enabled else None)
+                    self.assertEqual(runner.TIMING_CAPABILITY in received["capabilities"], enabled)
+                    self.assertEqual(set(received["capabilities"]) - {runner.TIMING_CAPABILITY},
+                                     set(runner.CAPABILITIES))
+                    self.assertEqual(received["args"].delay_ms, 0)
+                    self.assertEqual(received["step_us"], runner.ENGINE_STEP_US)
+
+    def test_timing_profile_rejects_pause_only_recipe_legacy_delays_and_short_phase_timeout(self):
+        valid = dict(profile="build_v2", rounds=240, timing_probe=True, delay_ms=0, timeout=15)
+        self.assertEqual(runner.selected_profile(argparse.Namespace(**valid),
+                                                {"measurement_profile": "build_v2"}), "build_v2")
+        for changes, profile, reason in (
+                ({"profile": "time_v1"}, "time_v1", "requires build_v2"),
+                ({"delay_ms": 100}, "build_v2", "without legacy message delays"),
+                ({"timeout": 14.999}, "build_v2", "at least 15 seconds")):
+            with self.subTest(changes=changes), self.assertRaisesRegex(ValueError, reason):
+                runner.selected_profile(argparse.Namespace(**{**valid, **changes}),
+                                        {"measurement_profile": profile})
 
 
 class StartupTests(unittest.IsolatedAsyncioTestCase):

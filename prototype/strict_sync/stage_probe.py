@@ -34,7 +34,8 @@ REQUIRED_MOD_FILES = {
     API_AUDIT,
 }
 REQUIRED_PYTHON = {"core.py", "replica.py", "transport.py", "runner.py",
-                   "engine_mailbox.py", "game_runner.py", "stage_probe.py", "build_profile.py"}
+                   "engine_mailbox.py", "game_runner.py", "stage_probe.py", "build_profile.py",
+                   "timing_probe.py"}
 PROFILES = {"time_v1", "build_v2"}
 REQUIRED_BUILD_FILES = {"res/scripts/tf2_strict_probe/build_engine.lua",
                         "res/scripts/tf2_strict_probe/build_assets.lua",

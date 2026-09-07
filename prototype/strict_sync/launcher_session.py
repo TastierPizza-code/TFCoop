@@ -30,6 +30,8 @@ from prototype.release_version import DISPLAY_VERSION
 PORT = 34207
 LOBBY_PORT = 34208
 ROUNDS = BUILD_ROUNDS
+TIMING_WINDOWS = 12
+PROGRESS_TOTAL = ROUNDS + TIMING_WINDOWS
 PROFILE = BUILD_PROFILE
 VERSION = DISPLAY_VERSION
 
@@ -258,7 +260,7 @@ class SessionController:
                 "--key-file", directory / "session.key", "--report", directory / (mode + "-report.json"),
                 "--progress", directory / (mode + "-progress.json"), "--stop-file", self.run.stop_path,
                 "--rounds", ROUNDS, "--profile", PROFILE, "--timeout", 30,
-                "--startup-timeout", 600, "--port", PORT]
+                "--startup-timeout", 600, "--port", PORT, "--timing-probe"]
 
     def start(self):
         if self.started or self.run.stop_path.exists():
@@ -326,12 +328,14 @@ class SessionController:
                 self._spawn("peer", "game", self._game_args("peer") +
                         ["--peer", self.run.role, "--host", "127.0.0.1" if self.run.role == "a" else self.run.host,
                          "--inputs", resources() / "prototype/examples" / ("probe-a.json" if self.run.role == "a" else "probe-b.json"),
-                         "--delay-ms", 0 if self.run.role == "a" else 100])
+                         "--delay-ms", 0])
                 self.peer_started = True
             except Exception as exc:
                 self.failure = failure = "Messcontroller konnte nicht starten: " + str(exc)
                 self.stop()
         return {"lobby": lobby, "peer": peer, "host": host, "failure": failure,
+                "timing": peer.get("timing") or host.get("timing") or {},
+                "timing_result": host_report.get("timing") or peer_report.get("timing") or {},
                 "round": measured_round(peer, peer_report, host, host_report),
                 "completed": completed, "coordinated_completed": coordinated,
                 "stopping": self.stopping, "alive": self.alive()}
@@ -341,6 +345,15 @@ def describe_status(status):
     if status["failure"]:
         return "Test angehalten: " + status["failure"]
     if status["completed"]:
+        timing = status.get("timing_result") or {}
+        if timing:
+            met = timing.get("paced_windows_1x_met")
+            result = ("1x-Ziel in den Fahrtabschnitten erreicht" if met is True else
+                      "1x-Ziel noch nicht erreicht" if met is False else "1x-Auswertung unvollständig")
+            scope = ("Beide PCs: " if timing.get("completion_scope") == "both_peer_window_boundaries" else
+                     "Tempo auf deinem PC: ")
+            return ("Vergleich der Messwerte abgeschlossen · " + scope + result +
+                    ". Darstellung separat beurteilen; beide Berichte exportieren und TF2 schließen.")
         return ("Gemeinsamer Bautest abgeschlossen. Beide Ergebnisanzeigen vergleichen; TF2 jetzt schließen."
                 if status["coordinated_completed"] else
                 "Bautest abgeschlossen. Host-Ergebnis mit dem Freund vergleichen; TF2 jetzt schließen.")
@@ -348,6 +361,12 @@ def describe_status(status):
         return "Test wird beendet. Die Spielzeit bleibt gehalten. TF2 selbst schließen."
     peer = status["peer"]
     if peer.get("state") == "running":
+        timing = status.get("timing") or {}
+        if timing.get("started") is True or str(timing.get("stage", "")).startswith("timing"):
+            number = min(TIMING_WINDOWS, max(0, timing.get("segment_index", 0)) + 1)
+            label = ("Fahrt vor den Warteproben" if number <= 3 else
+                     "Warteprobe und Fahrt" if number <= 9 else "Fahrt nach den Warteproben")
+            return f"1x-/Warteversuch {number}/{TIMING_WINDOWS}: {label} · {peer.get('phase_label', '')}"
         phase = peer.get("phase_label") or "Bau- und Fahrzeugwerte vergleichen"
         return f"{phase} · Runde {peer.get('round', '?')} von {ROUNDS}. Bitte nichts bauen oder umschalten."
     if peer.get("state") == "waiting_peer":

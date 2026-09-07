@@ -62,7 +62,7 @@ def write_report(path, data):
 
 async def host(args, secret, *, expected_manifest=None, capabilities=MODEL_CAPABILITIES,
                backend="contract_model_only", startup_timeout=None, progress=None,
-               stop_requested=None, step_us=100000):
+               stop_requested=None, step_us=100000, coordinator_factory=None):
     # A manually loaded game may take minutes. Keep the protocol's ordinary
     # per-phase clock stopped until both initial worlds have joined.
     started = time.monotonic()
@@ -73,8 +73,9 @@ async def host(args, secret, *, expected_manifest=None, capabilities=MODEL_CAPAB
         # Subtract first: (started + now) - origin can round below started
         # when a coarse monotonic clock returns origin again on the next read.
         return started if running_started is None else started + (time.monotonic() - running_started)
-    coordinator = Coordinator(args.epoch, expected_manifest or manifest(), capabilities,
-                              timeout_s=args.timeout, clock=protocol_clock, step_us=step_us)
+    factory = coordinator_factory or Coordinator
+    coordinator = factory(args.epoch, expected_manifest or manifest(), capabilities,
+                          timeout_s=args.timeout, clock=protocol_clock, step_us=step_us)
     connections = {}
     used_peers = set()
     done = asyncio.Event()
@@ -87,6 +88,7 @@ async def host(args, secret, *, expected_manifest=None, capabilities=MODEL_CAPAB
         if progress:
             progress(state, reason=reason, round=coordinator.round, frame=coordinator.frame,
                      peers=sorted(connections), coordinated_completed=(state == "completed"),
+                     timing=coordinator.timing_progress() if hasattr(coordinator, "timing_progress") else None,
                      completion_scope="both_engine_receipts" if state == "completed" else None)
 
     async def dispatch(actions):
@@ -197,6 +199,7 @@ async def host(args, secret, *, expected_manifest=None, capabilities=MODEL_CAPAB
                                    "peer_error": peer_error,
                                    "frame": coordinator.frame, "sim_time_us": coordinator.sim_time_us,
                                    "state_digest": coordinator.state_digest, "actions": log,
+                                   "timing": coordinator.timing_report() if hasattr(coordinator, "timing_report") else None,
                                    "coordinated_completed": not coordinator.halted and done.is_set(),
                                    "completion_scope": "both_engine_receipts" if not coordinator.halted and done.is_set() else None})
     return 0 if not coordinator.halted else 2
