@@ -143,6 +143,8 @@ def self_check(report_path: Path) -> int:
             from prototype.strict_sync.timing_probe import SEGMENTS, STEP_US, WINDOW_STEPS, TIMING_CAPABILITY
             from prototype.strict_sync.game_runner import measurement_capabilities
             from prototype.strict_sync.engine_mailbox import EngineAdapter
+            from prototype.strict_sync.stream_probe import STREAM_CAPABILITY, CHUNK_STEPS, CHECKPOINT_STEPS, TOTAL_STEPS
+            from prototype.strict_sync.stream_engine import StreamEngine
             resources, portable = resource_root(), portable_root()
             physical = resources / "prototype/strict_sync"
             required = set(stage_probe.REQUIRED_PYTHON) | {"model.py", "__init__.py"}
@@ -182,6 +184,13 @@ def self_check(report_path: Path) -> int:
                     or TIMING_CAPABILITY not in measurement_capabilities(SimpleNamespace(timing_probe=True))
                     or not callable(EngineAdapter.advance_window) or not callable(EngineAdapter.check_idle_wait)):
                 raise RuntimeError("packaged timing experiment is incomplete")
+            if (CHUNK_STEPS != 2 or CHECKPOINT_STEPS != 50 or TOTAL_STEPS != 600
+                    or launcher_session.STREAM_STEPS != TOTAL_STEPS
+                    or launcher_session.STREAM_CHECKPOINTS != TOTAL_STEPS // CHECKPOINT_STEPS
+                    or STREAM_CAPABILITY not in measurement_capabilities(SimpleNamespace(stream_probe=True))
+                    or not callable(StreamEngine.advance) or not callable(StreamEngine.checkpoint)
+                    or launcher_session.TIMING_MODE not in launcher_session.TEST_MODES):
+                raise RuntimeError("packaged stream experiment or comparison mode is incomplete")
             scheduled = [command for number in range(BUILD_ROUNDS) for peer in ("a", "b")
                          for command in build_inputs(peer, number)]
             from collections import Counter
@@ -226,6 +235,10 @@ def self_check(report_path: Path) -> int:
                                        "actual_tf2_construction_verified": False}
             result["timing_profile"] = {"resources_checked": True, "windows": len(SEGMENTS),
                                         "simulated_us": len(SEGMENTS) * WINDOW_STEPS * STEP_US,
+                                        "actual_tf2_runtime_verified": False, "visual_smoothness_verified": False}
+            result["stream_profile"] = {"resources_checked": True, "chunk_steps": CHUNK_STEPS,
+                                        "checkpoint_steps": CHECKPOINT_STEPS, "total_steps": TOTAL_STEPS,
+                                        "comparison_mode_available": True,
                                         "actual_tf2_runtime_verified": False, "visual_smoothness_verified": False}
             result["solo_diagnostic"] = {"resources_checked": True, "actual_tf2_runtime_verified": False,
                                           "world_commands": False, "requires_peer": False}

@@ -25,6 +25,7 @@ from .engine_mailbox import _shared_read
 from .probe_install import install_probe, installation_status, restore_probe
 from .stage_probe import stage_probe
 from .build_profile import BUILD_PROFILE, BUILD_ROUNDS
+from .core import digest
 from prototype.release_version import DISPLAY_VERSION
 
 PORT = 34207
@@ -32,6 +33,14 @@ LOBBY_PORT = 34208
 ROUNDS = BUILD_ROUNDS
 TIMING_WINDOWS = 12
 PROGRESS_TOTAL = ROUNDS + TIMING_WINDOWS
+STREAM_MODE = "stream_v1"
+TIMING_MODE = "timing_v1"
+TEST_MODES = {
+    STREAM_MODE: "Neuer 1x-Dauertest",
+    TIMING_MODE: "Vergleichstest aus Alpha5.11",
+}
+STREAM_STEPS = 600
+STREAM_CHECKPOINTS = 12
 PROFILE = BUILD_PROFILE
 VERSION = DISPLAY_VERSION
 
@@ -102,10 +111,10 @@ def save_directories():
     return sorted(found)
 
 
-def read_json(path):
+def read_json(path, *, limit=1024 * 1024):
     try:
-        raw = _shared_read(Path(path), 1024 * 1024)
-        if len(raw) > 1024 * 1024:
+        raw = _shared_read(Path(path), limit)
+        if len(raw) > limit:
             return None
         value = json.loads(raw.decode("utf-8"))
         return value if isinstance(value, dict) else None
@@ -187,6 +196,11 @@ class PreparedRun:
     host: str
     epoch: str
     manifest: str
+    test_mode: str = TIMING_MODE
+
+    def __post_init__(self):
+        if self.test_mode not in TEST_MODES:
+            raise ValueError("Unbekannter Testablauf. Bitte neu vorbereiten.")
 
     @property
     def directory(self):
@@ -197,7 +211,16 @@ class PreparedRun:
         return self.directory / "stop.txt"
 
 
-def prepare(game_dir, save_dir, role, host, code, *, source_root=None, save=None, runs_root=None):
+def lobby_manifest(file_manifest, test_mode):
+    if test_mode not in TEST_MODES:
+        raise ValueError("Bitte einen gültigen Testablauf auswählen.")
+    return digest({"file_manifest": file_manifest, "test_mode": test_mode})
+
+
+def prepare(game_dir, save_dir, role, host, code, *, source_root=None, save=None, runs_root=None,
+            test_mode=STREAM_MODE):
+    if test_mode not in TEST_MODES:
+        raise ValueError("Bitte einen gültigen Testablauf auswählen.")
     if role not in ("a", "b"):
         raise ValueError("Bitte Host oder Mitspieler wählen.")
     host = validate_host(host)
@@ -219,7 +242,7 @@ def prepare(game_dir, save_dir, role, host, code, *, source_root=None, save=None
                                   session_dir=Path(result["session"]))
         prepared = PreparedRun(str(run), str(game), result["session"], result["output"],
                                installed["imported_save"], installed["backup_path"], role,
-                               host, epoch, result["manifest_digest"])
+                               host, epoch, lobby_manifest(result["manifest_digest"], test_mode), test_mode)
         (run / "session.key").write_bytes(secret)
         write_json(run / "run.json", asdict(prepared))
         return prepared
@@ -260,7 +283,8 @@ class SessionController:
                 "--key-file", directory / "session.key", "--report", directory / (mode + "-report.json"),
                 "--progress", directory / (mode + "-progress.json"), "--stop-file", self.run.stop_path,
                 "--rounds", ROUNDS, "--profile", PROFILE, "--timeout", 30,
-                "--startup-timeout", 600, "--port", PORT, "--timing-probe"]
+                "--startup-timeout", 600, "--port", PORT,
+                "--stream-probe" if self.run.test_mode == STREAM_MODE else "--timing-probe"]
 
     def start(self):
         if self.started or self.run.stop_path.exists():
@@ -293,8 +317,10 @@ class SessionController:
         lobby = read_json(directory / "lobby-progress.json") or {}
         peer = read_json(directory / "peer-progress.json") or {}
         host = read_json(directory / "host-progress.json") or {}
-        peer_report = read_json(directory / "peer-report.json") or {}
-        host_report = read_json(directory / "host-report.json") or {}
+        # Two peers' 600 native measurements exceed the compact progress limit.
+        # Keep progress bounded separately while accepting the fixed test report.
+        peer_report = read_json(directory / "peer-report.json", limit=4 * 1024 * 1024) or {}
+        host_report = read_json(directory / "host-report.json", limit=4 * 1024 * 1024) or {}
         completed = bool(peer_report.get("finished"))
         coordinated = bool(host.get("coordinated_completed") or host_report.get("coordinated_completed"))
         failure = failure_reason(self.failure, peer, peer_report, host, host_report)
@@ -334,6 +360,9 @@ class SessionController:
                 self.failure = failure = "Messcontroller konnte nicht starten: " + str(exc)
                 self.stop()
         return {"lobby": lobby, "peer": peer, "host": host, "failure": failure,
+                "test_mode": self.run.test_mode,
+                "stream": peer.get("stream") or host.get("stream") or {},
+                "stream_result": host_report.get("stream") or peer_report.get("stream") or {},
                 "timing": peer.get("timing") or host.get("timing") or {},
                 "timing_result": host_report.get("timing") or peer_report.get("timing") or {},
                 "round": measured_round(peer, peer_report, host, host_report),
@@ -345,6 +374,15 @@ def describe_status(status):
     if status["failure"]:
         return "Test angehalten: " + status["failure"]
     if status["completed"]:
+        stream = status.get("stream_result") or {}
+        if stream:
+            met = stream.get("paced_stream_1x_met")
+            pace = ("1x-Ziel erreicht" if met is True else "1x-Ziel noch nicht erreicht" if met is False else
+                    "Tempoauswertung unvollständig")
+            scope = ("Beide PCs" if str(stream.get("completion_scope", "")).startswith("both_peer") else
+                     "Tempo auf deinem PC")
+            return (f"Gemeinsame Kontrollpunkte und Testpause abgeschlossen · {scope}: {pace}. "
+                    "Darstellung separat beurteilen; beide Berichte exportieren und TF2 schließen.")
         timing = status.get("timing_result") or {}
         if timing:
             met = timing.get("paced_windows_1x_met")
@@ -361,6 +399,13 @@ def describe_status(status):
         return "Test wird beendet. Die Spielzeit bleibt gehalten. TF2 selbst schließen."
     peer = status["peer"]
     if peer.get("state") == "running":
+        stream = status.get("stream") or {}
+        if stream.get("started"):
+            seconds = min(STREAM_STEPS, stream.get("advanced_steps", 0)) // 5
+            checkpoints = stream.get("checkpoint_index", 0)
+            return (f"1x-Dauertest: {seconds} / 120 Sekunden Spielzeit · "
+                    f"Kontrollpunkt {checkpoints} / {STREAM_CHECKPOINTS}. "
+                    "Nach 60 Sekunden kommt die automatische Testpause. Bitte nur zuschauen.")
         timing = status.get("timing") or {}
         if timing.get("started") is True or str(timing.get("stage", "")).startswith("timing"):
             number = min(TIMING_WINDOWS, max(0, timing.get("segment_index", 0)) + 1)
@@ -386,7 +431,8 @@ def export_diagnostics(prepared, destination):
     if destination.exists():
         raise ValueError("Der Bericht existiert schon. Bitte einen neuen Dateinamen wählen.")
     with zipfile.ZipFile(destination, "x", compression=zipfile.ZIP_DEFLATED) as archive:
-        archive.writestr("INFO.txt", VERSION + "; begrenzter Engineversuch, kein vollständiger Synchronitätsnachweis.\n")
+        archive.writestr("INFO.txt", VERSION + "; " + TEST_MODES[prepared.test_mode] +
+                         "; begrenzter Engineversuch, kein vollständiger Synchronitätsnachweis.\n")
         assertion = current_game_assertion(prepared)
         if assertion:
             archive.writestr("game-assertion.txt", assertion + "\n")

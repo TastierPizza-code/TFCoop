@@ -42,6 +42,7 @@ class App:
         self.game = tk.StringVar(value=settings.get("game_dir", ""))
         self.saves = tk.StringVar(value=settings.get("save_dir", ""))
         self.role = tk.StringVar(value="a")
+        self.test_mode = tk.StringVar(value=workflow.STREAM_MODE)
         self.host = tk.StringVar(value="")
         self.code = tk.StringVar(value=workflow.new_code())
         self.status = tk.StringVar(value="Beide: TF2 und den bisherigen Koop-Launcher schließen. Dann Pfade prüfen und Test vorbereiten.")
@@ -89,7 +90,7 @@ class App:
         canvas.bind("<Configure>", lambda event: canvas.itemconfigure(embedded, width=event.width))
         self.root.bind("<MouseWheel>", lambda event: canvas.yview_scroll(-int(event.delta / 120), "units"))
         ttk.Label(outer, text="TF2-Koop  /  " + workflow.VERSION, style="Title.TLabel").pack(anchor="w")
-        ttk.Label(outer, text="Gemeinsamen Aufbau, Wartezeiten und 1x-Tempo prüfen", font=("Segoe UI", 12)).pack(anchor="w", pady=(3, 6))
+        ttk.Label(outer, text="Gemeinsamen Aufbau und fortlaufende Fahrt bei 1x prüfen", font=("Segoe UI", 12)).pack(anchor="w", pady=(3, 6))
         ttk.Label(outer, text="Auf beiden PCs neu vorbereiten. Vorher TF2 schließen und eine vorhandene Diagnoseinstallation unten wiederherstellen. Für diesen Bautest ist kein neuer Solo-Diagnoselauf nötig.",
                   wraplength=900).pack(anchor="w", pady=(0, 13))
         ttk.Label(outer, textvariable=self.update_status, wraplength=900).pack(anchor="w", pady=(0, 8))
@@ -127,7 +128,14 @@ class App:
         self.diagnostic_export_button = ttk.Button(solo, text="Diagnosebericht als ZIP …", command=self.export_diagnostic)
         self.diagnostic_export_button.pack(anchor="w", pady=8)
         ttk.Label(solo, text="Nur diesen eigenen Bericht zur Auswertung schicken. Anschließend TF2 schließen und unten die bisherige Installation wiederherstellen.", wraplength=850).pack(anchor="w")
-        ttk.Label(build, text=f"Zuerst {workflow.ROUNDS} Aufbaurunden, danach zwölf Fahrtabschnitte mit 1x als Ziel und absichtlichen Wartezeiten. Dabei nichts selbst bauen oder pausieren. Fahrzeugbewegung beobachten; danach beide Testberichte exportieren.", wraplength=850).pack(anchor="w", pady=(0, 9))
+        ttk.Label(build, text=f"Zuerst {workflow.ROUNDS} Aufbaurunden. Der neue Dauertest fährt danach 120 Sekunden Spielzeit mit Kontrollpunkten alle zehn Sekunden und einer automatischen Pause in der Mitte. Nur zuschauen; nichts selbst bauen oder umschalten.", wraplength=850).pack(anchor="w", pady=(0, 9))
+        modes = ttk.LabelFrame(build, text="Auf beiden PCs denselben Test wählen", padding=8)
+        modes.pack(fill="x", pady=(0, 8))
+        for value, label in workflow.TEST_MODES.items():
+            button = ttk.Radiobutton(modes, text=label, value=value, variable=self.test_mode)
+            button.pack(anchor="w")
+            self.inputs.append(button)
+        ttk.Label(modes, text="Der Vergleichstest verwendet weiterhin die bisherigen zwölf Abschnitte mit fünf Sekunden. Ein Wechsel braucht eine neue Vorbereitung; vorhandene Spielstände bleiben erhalten.", wraplength=850).pack(anchor="w", pady=(5, 0))
         form = ttk.LabelFrame(build, text="Auf beiden PCs vorbereiten", padding=12)
         form.pack(fill="x")
         form.columnconfigure(1, weight=1)
@@ -348,17 +356,18 @@ class App:
 
     def prepare(self):
         values = (self.game.get(), self.saves.get(), self.role.get(), self.host.get(), self.code.get())
+        test_mode = self.test_mode.get()
         self.status.set("Testdateien werden geprüft, bisherige Dateien gesichert und die Testsave kopiert …")
         def prepare_build():
             if diagnostics.diagnostic_status(values[0]).get("installed"):
                 raise ValueError("Zuerst TF2 schließen und die Diagnoseinstallation wiederherstellen.")
-            return workflow.prepare(*values)
+            return workflow.prepare(*values, test_mode=test_mode)
         self._work(prepare_build, self._prepared)
 
     def _prepared(self, prepared):
         self.prepared = self.last_run = prepared
         self.save_name.set(Path(prepared.imported_save).name)
-        self.status.set("Vorbereitet. Host-IP und Sitzungscode an den Freund geben. Dann auf beiden PCs 'Verbinden & Test bereitstellen'.")
+        self.status.set(f"{workflow.TEST_MODES[prepared.test_mode]} vorbereitet. Beide wählen denselben Ablauf und Sitzungscode. Dann 'Verbinden & Test bereitstellen'.")
         self._save_settings()
         self._buttons()
 
@@ -478,10 +487,14 @@ class App:
                                 "Spielkontakt: vorhanden" if contact else "Spielkontakt: wartet auf TF2 und Testmod")
                 timing = status.get("timing") or {}
                 in_timing = timing.get("started") is True or str(timing.get("stage", "")).startswith("timing")
+                stream = status.get("stream") or {}
+                in_stream = stream.get("started") is True
                 self.progress_text.set("Test abgeschlossen · Tempo und Synchronität getrennt ausgewertet" if status["completed"] else
+                                       f"1x-Dauertest: {min(workflow.STREAM_STEPS, stream.get('advanced_steps', 0)) // 5} / 120 Sekunden Spielzeit" if in_stream else
                                        f"1x-/Warteversuch: Abschnitt {min(workflow.TIMING_WINDOWS, timing.get('segment_index', 0) + 1)} / {workflow.TIMING_WINDOWS}" if in_timing else
                                        f"Aufbau: Runde {status['round']} / {workflow.ROUNDS}")
                 self.bar["value"] = (workflow.PROGRESS_TOTAL if status["completed"] else
+                                     workflow.ROUNDS + workflow.STREAM_CHECKPOINTS * min(workflow.STREAM_STEPS, stream.get("advanced_steps", 0)) / workflow.STREAM_STEPS if in_stream else
                                      workflow.ROUNDS + min(workflow.TIMING_WINDOWS, timing.get("segment_index", 0)) if in_timing else
                                      min(workflow.ROUNDS, status["round"]))
                 self.game_button.configure(state="normal" if peer.get("state") == "waiting_game" and not status["stopping"] else "disabled")

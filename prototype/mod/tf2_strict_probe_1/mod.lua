@@ -1,8 +1,8 @@
 function data()
   return { info = {
-    name = "TF2 Strict Sync - automatischer Bautest (Alpha5.11)",
-    description = "Automatischer gemeinsamer Aufbau für Straße, Depot und Linienfahrt, danach begrenzte Fahrtabschnitte mit 1x als Ziel und Warteproben. Auf beiden PCs frisch vorbereiten; die saubere Basis seit Alpha5.9 bleibt gültig. Freies Bauen ist noch nicht angeschlossen.",
-    minorVersion = 11, severityAdd = "NONE", severityRemove = "WARNING",
+    name = "TF2 Strict Sync - automatischer Bautest (Alpha5.12)",
+    description = "Gemeinsamer Aufbau und danach 120 Sekunden Spielzeit mit 1x als Ziel, Kontrollpunkten und automatischer Testpause. Der Vergleichstest aus Alpha5.11 bleibt auswählbar. Auf beiden PCs denselben Ablauf frisch vorbereiten; die saubere Basis bleibt gültig. Freies Bauen ist noch nicht angeschlossen.",
+    minorVersion = 12, severityAdd = "NONE", severityRemove = "WARNING",
     tags = { "Script Mod" }, authors = { { name = "TF2 Co-op Project", role = "CREATOR" } },
   } }
 end

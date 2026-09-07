@@ -74,13 +74,14 @@ nicht stillschweigend als derselbe Ausgangsstand akzeptiert.
    mit danebenliegender `.sav.lua`.
 
 **Seit Alpha5.9 wird ein sauberes Savepaar der bisherigen sehr großen Karte verwendet.**
-Alpha5.11 verwendet dasselbe Paar weiter; ein bereits erfolgter Import genügt.
+Alpha5.12 verwendet dasselbe Paar weiter; ein bereits erfolgter Import genügt.
 Die Basis aus Paketen vor Alpha5.9 und deren Cache haben andere Prüfsummen.
-Beide Spieler benötigen deshalb einmal das seit Alpha5.9 bereitgestellte private Paar:
+Nur auf einem neu eingerichteten PC ohne diese Basis wird einmal das seit Alpha5.9 bereitgestellte private Paar benötigt:
 `Testspielstand/initial.sav` und `Testspielstand/initial.sav.lua`. Beide Dateien
 unverändert privat weitergeben und nebeneinander entpacken. Anschließend auf
-beiden PCs **Testspielstand übernehmen …** verwenden und diese neue `initial.sav`
-auswählen. Die Modliste enthält bereits Legacy Fahrzeuge und die Strict-Testmod;
+dem betreffenden PC **Testspielstand übernehmen …** verwenden und diese `initial.sav`
+auswählen. Beide bisherigen Teilnehmer haben das Paar bereits übernommen und
+brauchen für Alpha5.12 keinen erneuten Import. Die Modliste enthält bereits Legacy Fahrzeuge und die Strict-Testmod;
 die neu vorbereiteten Messtest-Saves brauchen keine wiederholte Modumstellung.
 
 Der Import prüft beide Hashes und die im Paket genannten Größen und veröffentlicht
@@ -125,23 +126,47 @@ Der Ablauf für die Veröffentlichung ist:
    Paketidentität abschließend kontrollieren. Erst dann beziehen die Launcher
    diese Version über den festen Download- und Updateweg.
 
+## Alpha5.12: aktueller Dauertest und erhaltener Vergleichsmodus
+
 Die Schritt-für-Schritt-Anleitung für beide Spieler steht in
-[ANLEITUNG.md](../ANLEITUNG.md). Der aktuelle **Alpha5.11-1x-Test** führt erst
-240 Aufbaurunden aus und danach zwölf Fahrtabschnitte mit jeweils 25 Schritten
-à 0,2 Sekunden. Drei dienen als Ausgangsmessung, sechs enthalten unterschiedliche
-lokale Zusatzwartezeiten und drei vergleichen die Fahrt danach. Ziel ist
-1x innerhalb der Abschnitte. Gemeinsame Haltepunkte bleiben Teil des Ablaufs.
+[ANLEITUNG.md](../ANLEITUNG.md). **Alpha5.12-Dauertest** verwendet standardmäßig
+**Neuer 1x-Dauertest** (`stream_v1`): 240 Aufbaurunden und anschließend 600 native
+Fortschrittsschritte mit insgesamt 120 Sekunden zusätzlicher Spielzeit.
+Jeweils zwei Schritte werden gemeinsam freigegeben; alle 50 Schritte folgt
+ein frischer Weltvergleich. Nach 60 Sekunden kommt eine automatische Pause
+mit zwei Sekunden gemessener Wartezeit; danach setzt der andere Test-Eingabeweg
+am selben Frame fort. Der gemeinsame Abschluss liegt bei Frame 840.
 
-Der Launcher zeigt Zustandsvergleich und Tempoergebnis getrennt. Die Messung
-bewertet native Freigaben und Bestätigungen, keine gerenderten Bilder. Die
-absichtlichen Wartezeiten sind keine Messung der tatsächlichen Netzwerk-Latenz.
-Freies Bauen, Cursor und normale gemeinsame Pause-Tasten sind nicht angeschlossen.
+**Vergleichstest aus Alpha5.11** (`timing_v1`) bleibt im aktuellen Programm
+verfügbar und verwendet die bisherigen zwölf Fünf-Sekunden-Abschnitte samt
+ungleichen Wartezeiten. Beide müssen vor der Vorbereitung denselben Modus
+wählen. Die Lobbyidentität bindet Modus und Dateien, sodass unterschiedliche
+Abläufe vor dem Spielstart zurückgewiesen werden. Ein Wechsel braucht eine
+neue Vorbereitung und einen neuen gemeinsamen Sitzungscode.
 
-Alpha5.10 bestand zwei echte nacheinander ausgeführte lokale TF2-Läufe mit
-zwölf Befehlen und 240 Schritten bei gleichen beobachteten Ergebnissen.
-Die neue Alpha5.11-Erweiterung wurde bisher ausschließlich ohne TF2 geprüft;
-der echte gemeinsame Versuch steht aus. Die vorhandene saubere große Basis
-aus Alpha5.9 und ihr lokaler Cache bleiben gültig. Beide aktualisieren,
-stellen die vorherige Installation wieder her und bereiten eine neue gemeinsame
-Sitzung vor. Nach dem Versuch beide normalen Bericht-ZIPs privat weitergeben.
-Einzelheiten und Grenzen stehen im [Prüfstand](../VERIFICATION.md).
+Der Moduswechsel ist kein Programm-Downgrade. Der Updater überspringt weder
+Prüfsummen noch Versionsprüfungen und ersetzt keine neuere gespeicherte Version
+durch ein altes Paket. Auch eine direkt gestartete alte EXE führt normalerweise
+ihre Updateprüfung aus; sie ist daher kein zugesicherter Weg zurück zu einem
+alten Programmstand. Der veröffentlichte Quellstand und Release-Tag `v0.5.11`
+bleiben unverändert verfügbar. Eine zusätzliche private Sicherung bewahrt das
+Quellbundle, das damalige Paket, das saubere Savepaar und die beiden damaligen
+Berichte. Private Sicherungen gehören nicht in Git-Commits oder Release-Assets.
+
+**Echte bisherige Evidenz:** Der Alpha5.11-Zwei-PC-Test endete mit 278 identischen
+Journalzeilen und gleichen erfassten Weltgrenzen. Das gesamte 1x-Ziel war noch
+nicht erreicht: Die 60 Sekunden zusätzlicher Spielzeit benötigten 66,155 und
+66,299 Sekunden innerhalb der Fahrtmethoden, noch ohne die gemeinsamen
+Übergänge. Die Alpha5.12-Erweiterung ist bisher ausschließlich ohne Spielstart
+vorgeprüft. Der aktuelle Dauertest soll die früheren Fünf-Sekunden-Übergänge
+vermeiden, kann bei Weltabfragen und Bestätigungen aber weiterhin stocken.
+
+Zustandsvergleich und Tempoergebnis bleiben getrennt. Gemessene native
+Freigaben und Bestätigungen sind keine gerenderten Bilder. Freies Bauen,
+Cursor, normale gemeinsame Pause-Tasten und vollständige Weltsynchronität
+werden nicht als bestanden dargestellt. Einzelheiten: [Prüfstand](../VERIFICATION.md).
+
+Die bisherige saubere große Basis und ihr Cache bleiben gültig. Beide bisherigen
+Teilnehmer brauchen keinen neuen Saveimport. Nach dem Update Testinstallation
+wiederherstellen, denselben Modus wählen und frisch vorbereiten. Nach dem
+Versuch beide normalen Bericht-ZIPs privat zur Auswertung weitergeben.

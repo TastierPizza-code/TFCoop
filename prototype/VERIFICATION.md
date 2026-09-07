@@ -1,67 +1,114 @@
 # Prüfstand
 
-## Alpha5.11: vorbereiteter Warte- und 1x-Versuch, bisher ohne TF2 geprüft
+## Alpha5.12: Dauertest vorbereitet, tatsächliche Fahrt noch ungeprüft
 
-Die neue Version belässt den ursprünglichen Bauabschluss bei zwölf Befehlen
-und 240 Schritten und hängt zwölf gemeinsam vorbereitete Fahrtabschnitte an.
-Jeder Abschnitt gibt 25 native Schritte à 200000 Mikrosekunden frei. Drei dienen
-als Ausgangsmessung, sechs enthalten abwechselnd lokale Zusatzwartezeiten von
-1000, 1500, 250, 750, 3000 und 500 ms, drei vergleichen die Fahrt danach.
-Zusammen entstehen weitere 60 Sekunden Simulationszeit bei ausschließlich 1x
-als Ziel. Diese künstlichen Wartezeiten sind keine Netzwerk-RTT-Messung.
+Der neue Standard `stream_v1` beginnt mit dem vorhandenen Bauprofil:
+zwölf Befehle, 240 Schritte und separat abgeschlossener Bauprüfung. Danach
+legt `paced-stream-v1` 600 weitere native Fortschrittsschritte à 200000
+Mikrosekunden fest, also 120 Sekunden zusätzliche Simulationszeit. Jeweils
+zwei Schritte werden gemeinsam freigegeben; jede native Bestätigung muss zur
+zulässigen Uhr, Schrittweite und Framegrenze gehören. Alle 50 Schritte gibt
+es eine neue Lua-Beobachtung und einen gemeinsamen Weltvergleich.
 
-**Die neuen Abschnitte haben noch keinen tatsächlichen TF2-Versuch bestanden.**
-Die vorbereitende Prüfung hat keinen Spielprozess gestartet. Die unten
-beschriebenen echten Alpha5.10-Ergebnisse beziehen sich auf den bisherigen
-Aufbau und dürfen nicht auf die neue Messsteuerung übertragen werden.
+Nach 300 Fortschrittsschritten, also 60 Sekunden Fahrt und bei Frame 540,
+führt der feste Plan `a:8` für Pause aus. Beide prüfen während zwei Sekunden
+gemessener Wartezeit dieselbe gehaltene Welt; `b:6` setzt am selben Frame fort.
+Erst die beiden letzten frischen Kontrollpunkte bei Frame 840 erlauben den
+Abschluss. Die Wünsche sind automatisch vorbereitet. Sie testen keine normalen
+Pause-Tasten und keine frei eintreffenden Eingaben.
 
-Die neue Protokollprüfung bestätigt den vollständigen Zwölf-Abschnitts-Ablauf
-mit beiden Teilnehmern und zusätzlichen Adaptermodellen. Eine vollständige
-TCP-Prüfung verbindet den unveränderten 240-Runden-Aufbau mit der Erweiterung.
-Weitere Tests binden die tatsächlichen Python-Adaptermethoden und produktive
-Lua-/Datei-IPC an ausdrücklich nachgebildete Spiel- und native APIs an.
-Sie prüfen gemeinsame Bereitschaft, unterschiedliche Messwerte bei gleichen
-Weltgrenzen, echte Ausführung der vorgesehenen Zusatzwartezeiten im Testaufbau,
-korrekte 200-ms-Abstände, native Zeitbestätigungen sowie Stoppen und Fehlerfälle.
-Ungültige Pläne, Wiederholungen mit verändertem Inhalt, Zustandsänderungen beim
-Warten, fehlende Messwerte und abweichende Endgrenzen führen zum Abbruch.
-Identische Wiederholungen dürfen keinen Abschnitt erneut ausführen.
+**Es liegt noch kein echter TF2-Lauf des Alpha5.12-Dauertests vor.** Die
+vorbereitenden Prüfungen starten kein Spiel und bedienen keinen Desktop.
+Die tatsächlichen Alpha5.11-Ergebnisse unten gelten für den erhaltenen
+Vergleichsmodus; sie sind kein Nachweis für die neue Fahrtsteuerung.
 
-Weltbeobachtungen erfolgen an Anfang und Ende jedes Fahrtabschnitts. Die native
-Uhr und Auftragsbestätigung werden nach jedem inneren Schritt geprüft. Das
-reduziert die Lua-Beobachtungen innerhalb des Abschnitts, bedeutet aber auch,
-dass dort keine vollständigen Lua-Zustände nach jedem Einzelschritt verglichen
-werden. Die Zielbewertung verlangt pro Abschnitt 95 bis 105 Prozent von 1x,
-mindestens 24 Abstände pro Freigabe-/Bestätigungsreihe, deren 95. Perzentil
-höchstens 250 ms und deren Maximum höchstens 400 ms beträgt.
+Die Vorabprüfungen behandeln mehrere getrennte Ebenen:
 
-Rate und lokale Dauer müssen innerhalb der Rundungsgrenzen konsistent sein;
-Zeitdifferenzen dürfen höchstens einen Mikrosekunden-Rundungsfehler enthalten.
-Gesamte Abschnittsdauer einschließlich Anfangs-/Endbeobachtung, künstliche
-Wartezeit und gesamte lokale Wallzeit einschließlich gemeinsamer Übergänge
-werden getrennt berichtet. Zeitstempel verschiedener PCs werden nicht
-voneinander abgezogen. Native Wartungszähler sind Diagnosewerte, kein Welthash.
+- Protokoll- und Replica-Tests prüfen den unveränderlichen Plan, native Zeitgrenzen, Kontrollpunkte, doppelte Nachrichten, den Pausenablauf und den gemeinsamen Abschluss.
+- Adaptertests ersetzen native Engine und Uhr ausdrücklich. Sie prüfen zeitlich begrenzte Operationen, fehlende oder falsche Bestätigungen, Stoppen und die Trennung zwischen nativen Fortschrittsmeldungen und historischen Lua-Beobachtungen.
+- `test_stream_driver.py` verbindet den produktiven TCP-Host und beide Spieltreiber mit ausdrücklichen Engine-Modellen. Der vollständige Aufbau mit anschließend 600 Schritten endet bei Frame 840. Ein zurückgehaltener letzter Kontrollpunkt verhindert den globalen Abschluss. Abweichende Kontrollpunkte, fehlende native Messungen und veraltete native Uhrwerte müssen vor einer weiteren Freigabe abbrechen.
+- Die gleichen Integrationstests prüfen Journal, Diagnoseexport und Beobachtungsgrenzen. Reine native Antworten enthalten keinen historischen Welthash. Nur frische Weltbeobachtungen dürfen ins Weltjournal; nach einem Fehler bleibt der letzte bestätigte Beobachtungsframe nachvollziehbar.
+- Die bestehenden Timing-, Lua-/Datei-IPC-, Bau-, Installer-, Launcher- und Updaterprüfungen sichern die bisherigen Pfade ab. Der erhaltene Alpha5.11-Vergleichsmodus bleibt zusätzlich durch `test_timing_driver.py` abgedeckt. Lua- und Dateischnittstellenprüfungen verwenden Ersatz für die tatsächliche Spielwelt und sind kein weiterer TF2-Lauf.
 
-`completed` und `paced_windows_1x_met` haben getrennte Bedeutung. Ein passender
-Endzustand kann mit einem verfehlten Tempoziel zusammenfallen; ohne vollständige
-Messdaten bleibt die Tempobewertung offen. Freigabe- und Bestätigungsabstände
-sind keine Renderzeiten. Die als Freigabezeit gespeicherte Messung ist der Beginn
-des Python-Aufrufs vor der Dateiübertragung, nicht die Ankunft in der nativen
-Engine. Bestätigungszeiten geben deren lokale Beobachtung an. Selbst ein erfülltes Ziel bewertet die einzelnen
-Fahrtabschnitte, nicht durchgängiges 1x über die gemeinsamen Haltepunkte.
-Sichtbare Flüssigkeit muss im echten Versuch gesondert beobachtet werden.
+Diese Prüfungen belegen Programmverhalten in den jeweiligen Testaufbauten.
+Ein eingefrorener Paket-Selbsttest und eine spätere Downloadprüfung sind
+zusätzliche Lieferprüfungen; auch sie ersetzen keine echte Spielmessung.
 
-Ein bereits gemeinsam freigegebener Abschnitt kann noch bis zu 25 Schritte
-fertigführen, bevor die TCP-Schleife entfernten HALT oder Verbindungsabbruch
-verarbeitet. Das begrenzte Wallzeitbudget und Stopprüfungen zwischen lokalen
-Freigaben ersetzen keine sofortige verteilte Unterbrechung. Es gibt keinen
-Rollback. Normale UI-Pausetasten, freies Bauen, unbeobachtete Weltzustände und
-langfristiger gemeinsamer Spielbetrieb bleiben ungeprüft.
+Der Dauertest bewertet zwei Teilstrecken mit je 300 Schritten. Gewöhnliche
+Kontrollpunkte innerhalb der Strecke gehen in die lokalen Freigabe- und
+Bestätigungsabstände ein; die absichtliche Pause in der Mitte wird getrennt
+behandelt. Das Tempoziel verlangt 95 bis 105 Prozent von 1x, ein 95. Perzentil
+der Abstände von höchstens 250 ms und einen Maximalwert von höchstens 400 ms.
+Aufrufzeiten werden vor der Dateiübertragung gemessen, Bestätigungszeiten beim
+lokalen Lesen. Native Ankunftszeiten und gerenderte Bilder sind nicht erfasst.
+Die Zielspanne und gesamte lokale Wallzeit stehen getrennt im Bericht.
 
-Die saubere Alpha5.9-Basis der bisherigen sehr großen Karte bleibt unverändert.
-Vorhandene passende Savecaches werden weiterverwendet. Aktueller Ablauf und
-Schwellenwerte: [BUILD_TEST.md](BUILD_TEST.md). Anleitung für beide Spieler:
-[ANLEITUNG.md](ANLEITUNG.md).
+Die bisherigen Übergangsstopps nach jeweils fünf Sekunden werden im neuen
+Modus nicht mehr angelegt. Weltabfragen und Netzwerkbestätigungen können aber
+weiterhin kurz anhalten. Eine bestandene Tempoauswertung wäre deshalb kein
+Nachweis visueller Flüssigkeit. Vollständiger Welthash, langfristige gemeinsame
+Simulation, UI-Pause, freie Baueingaben und Cursor bleiben ungeprüft.
+
+Im aktuellen Launcher bleibt **Vergleichstest aus Alpha5.11** (`timing_v1`)
+erhalten: zwölf Fünf-Sekunden-Abschnitte mit ungleichen Zusatzwartezeiten.
+Dafür ist kein Downgrade nötig. Der alte Git-Tag `v0.5.11` bleibt bestehen;
+Quellbundle, damaliges Paket, saubere Basis und beide Originalberichte wurden
+zusätzlich privat gesichert. Kopierprüfsummen, ZIP-CRCs und Git-Bundle wurden
+geprüft. Diese privaten Sicherungen gehören nicht in den öffentlichen Export.
+Die Ausgangsbasis bleibt unverändert und benötigt auf den bisherigen beiden
+PCs keinen erneuten Import.
+
+## Alpha5.11: tatsächlicher gemeinsamer Zwei-PC-Test abgeschlossen
+
+Am 7. September 2026 wurden die beiden privaten Originalberichte des gemeinsamen
+TF2-Tests ausgewertet. Beide Archive bestehen die CRC-Prüfung. Gemeinsames
+Manifest und 33 ausgelieferte Payload-Dateien stimmen mit der veröffentlichten
+Version überein. Der Koordinator und beide Teilnehmer melden einen
+abgeschlossenen Versuch ohne nativen Terminalfehler.
+
+Die Journale beider PCs sind bytegleich und enthalten jeweils 278 Zeilen:
+einen Ausgangszustand, zwölf Baubefehle, 240 Schrittbestätigungen, zwölf
+Bereitschaftsbeobachtungen, zwölf Abschnittsabschlüsse und einen Endsatz.
+Die gemeinsame SHA-256 lautet
+`fe4c7aab250e270bddd5a0366334a72649c6281f675e5ab69eef229bb941a674`.
+Bauabschluss und sämtliche erfassten Zustandsprüfsummen wurden aus den
+Berichten erneut berechnet. Alle 29 Pausenschritte im Aufbau halten den
+beobachteten Zustand unverändert; alle zwölf zusätzlichen Fahrtgrenzen
+stimmen überein. Die gemessenen Wartezeiten und nativen Messwerte wurden
+gegen den festen Ablauf erneut validiert.
+
+Der Versuch endet auf beiden PCs bei Frame 540 und Enginezeit 115,6 Sekunden.
+Auf den Aufbau folgen 300 Fortschrittsschritte mit 60 Sekunden zusätzlicher
+Spielzeit. Das Firmenkonto beträgt auf beiden PCs 4.651.939; das Darlehen
+bleibt bei 5.000.000. Teststraße, Depot, Haltestellen, Fahrzeug und Linie
+wurden vom automatischen Ablauf aufgebaut beziehungsweise verwendet.
+
+**Der Zustandsvergleich wurde abgeschlossen; das 1x-Tempoziel wurde nicht
+erreicht.** Die Fahrtmethoden benötigen für 60 Sekunden zusätzliche Spielzeit
+auf PC a insgesamt 66,155 Sekunden und auf PC b 66,299 Sekunden. Diese Werte
+enthalten ihre Anfangs-/Endbeobachtungen, aber noch nicht die gemeinsamen
+Haltepunkte zwischen den Abschnitten. Die gesamte Timingphase beim Host
+dauert 78,078 Sekunden. Ein abgeschlossenes Journal darf deshalb nicht als
+bestandener durchgängiger 1x-Betrieb dargestellt werden.
+
+Die beobachteten Bestätigungsabstände innerhalb der Abschnitte liegen näher
+am Ziel: Das 95. Perzentil beträgt auf beiden PCs 219 ms, das Maximum 235 ms
+beziehungsweise 219 ms. Die höheren Abschnittsdauern führen dennoch zu einem
+negativen `paced_windows_1x_met`. Es wäre falsch, nur die günstigen inneren
+Abstände zu verwenden und den Aufwand der Weltbeobachtungen wegzulassen.
+
+Die Spieler beschreiben normale Fahrzeugbewegung innerhalb der Abschnitte und
+kurze Stopps alle fünf Sekunden. Das ist eine Nutzerbeobachtung; Renderzeiten
+wurden nicht gemessen. Der Versuch liefert echte Netzwerk- und Spielbelege für
+die beobachtete Szene und vorgegebenen Warte-/Pauseabläufe. Er bestätigt weder
+sämtliche internen Spielzustände noch native UI-Pause, freie gleichzeitige
+Bauwerkzeuge oder dauerhaften gemeinsamen Spielbetrieb.
+
+Die vorausgehenden Alpha5.11-Vorabtests hatten ausschließlich Modelle und
+nachgebildete Spiel-/Native-Schnittstellen verwendet. Der jetzt vorliegende
+Zwei-PC-Test ist davon als tatsächliche Spielevidenz getrennt. Einzelheiten
+beider weiterhin verfügbaren Abläufe: [BUILD_TEST.md](BUILD_TEST.md).
+Anleitung: [ANLEITUNG.md](ANLEITUNG.md).
 
 ## Alpha5.10: zwei vollständige echte Durchläufe
 
