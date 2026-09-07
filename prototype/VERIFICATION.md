@@ -1,6 +1,29 @@
 # Prüfstand
 
-## Alpha5.12: Dauertest vorbereitet, tatsächliche Fahrt noch ungeprüft
+## Alpha5.12: akzeptierter tatsächlicher Zwei-PC-Referenzlauf
+
+Am 7. September 2026 wurden beide Originalberichte geprüft. Die Archive sind
+CRC-fehlerfrei, ihr gemeinsames Manifest und 35 Payload-Dateien passen zum
+veröffentlichten Paket. Die Weltjournale mit 270 Einträgen sind bytegleich;
+SHA-256: `91757db405b0d3828a8e455e57cd64ec63414d448873f275e3c56ff09fa18333`.
+Der Bauabschluss, alle 600 weiteren nativen Schrittquittungen, zwölf gemeinsame
+Kontrollpunkte und Pause/Fortsetzen wurden aus den Daten erneut nachgerechnet.
+Beide erreichen Frame 840 bei 175,6 Sekunden Enginezeit, Firmenkonto 4.647.799
+und Darlehen 5.000.000. Es gibt keine Abweichung der erfassten Zustände und keinen
+nativen Terminalfehler.
+
+Die Fahrtspannen benötigen für 120 Sekunden Spielzeit 124,737507 beziehungsweise
+124,733292 Sekunden, einschließlich gewöhnlicher Kontrollpunkte und ohne die
+absichtliche mittlere Testpause. Das entspricht etwa 0,962x. Mitteltempo und
+95. Perzentil bestehen die bisherigen Vorgaben. Nur maximale gelesene
+Bestätigungsabstände von 419,403 beziehungsweise 418,154 ms überschreiten die
+400-ms-Grenze; deshalb bleibt die Originalanzeige des Tempoziels negativ.
+
+Der Nutzer akzeptiert die Fahrt mit fast unsichtbaren kurzen Zucklern und erklärt
+diesen Abschnitt für abgeschlossen. Der Stand ist gesichert; weitere Tempo- und
+Darstellungsoptimierung wird zurückgestellt. Die Akzeptanz gilt für diese
+beobachtete Szene, nicht für noch fehlende freie Eingaben oder die vollständige
+Spielwelt. Paketidentität, Grenzen und Sicherung: [akzeptierte Referenz](docs/ACCEPTED_BASELINE.md).
 
 Der neue Standard `stream_v1` beginnt mit dem vorhandenen Bauprofil:
 zwölf Befehle, 240 Schritte und separat abgeschlossener Bauprüfung. Danach
@@ -17,10 +40,9 @@ Erst die beiden letzten frischen Kontrollpunkte bei Frame 840 erlauben den
 Abschluss. Die Wünsche sind automatisch vorbereitet. Sie testen keine normalen
 Pause-Tasten und keine frei eintreffenden Eingaben.
 
-**Es liegt noch kein echter TF2-Lauf des Alpha5.12-Dauertests vor.** Die
-vorbereitenden Prüfungen starten kein Spiel und bedienen keinen Desktop.
-Die tatsächlichen Alpha5.11-Ergebnisse unten gelten für den erhaltenen
-Vergleichsmodus; sie sind kein Nachweis für die neue Fahrtsteuerung.
+Der oben beschriebene echte Lauf ergänzt die Vorabprüfungen, die kein Spiel
+starteten und keinen Desktop bedienten. Die tatsächlichen Alpha5.11-Ergebnisse
+unten bleiben separat für den erhaltenen Vergleichsmodus dokumentiert.
 
 Die Vorabprüfungen behandeln mehrere getrennte Ebenen:
 
