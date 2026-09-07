@@ -26,6 +26,22 @@ RUNTIME = None
 SOURCE = SCRIPTS / "build_engine.lua"
 
 
+TF2_UNPACK_FIXTURE = r'''
+-- TF2 res/scripts/init.lua accepts only t and discards optional slice bounds.
+-- Lua 5.1 calls the same original primitive through its global unpack name.
+local unpackhelper
+unpackhelper=function(t,i)
+  if t[i]==nil then return end
+  return t[i],unpackhelper(t,i+1)
+end
+local oldunpack=table.unpack or unpack
+table.unpack=function(t)
+  if type(t)=='userdata'then return unpackhelper(t,1)end
+  return oldunpack(t)
+end
+'''
+
+
 BORROWED_FIXTURE = r'''
 -- __gc runs on genuine closed file userdata, never on a table approximation.
 -- Only these test proxies model ownership. Shared fake_engine remains untouched.
@@ -96,7 +112,7 @@ end
 
 
 class LifetimeHarness(_base.Harness):
-    def __init__(self, *, setup="", source=None, offset=0):
+    def __init__(self, *, setup="", source=None, offset=0, bind=True):
         self.lua = RUNTIME(unpack_returned_tuples=True)
         self.j = self.lua.execute((SCRIPTS / "json.lua").read_text(encoding="utf-8"))
         self.assets = self.lua.execute((SCRIPTS / "build_assets.lua").read_text(encoding="utf-8"))
@@ -108,7 +124,14 @@ class LifetimeHarness(_base.Harness):
         self.lua.globals().require = lambda name: self.assets if name == "tf2_strict_probe/build_assets" else None
         self.module = self.lua.execute(Path(source or SOURCE).read_text(encoding="utf-8"))
         self.e = self.module.new(self.j)
-        self.e.bind_initial(self.table([]))
+        if bind:
+            self.e.bind_initial(self.table([]))
+
+    def returns(self, fn, *args):
+        # Count actual Lua results, including zero results and trailing nils,
+        # without using the runtime's overridden table.unpack in the assertion.
+        capture = self.lua.eval("function(fn, ...) local function pack(...) return {n=select('#', ...), ...} end return pack(fn(...)) end")
+        return capture(fn, *args)
 
 
 class BuildLifetimeTests(unittest.TestCase):
@@ -210,6 +233,98 @@ class BuildLifetimeTests(unittest.TestCase):
         # benchmark. The scope must not retain previous calls' native objects.
         self.assertLess(h.lua.globals().lifetime.peak, 2048)
         self.assertEqual(h.lua.globals().lifetime.invalid_reads, 0)
+
+    def test_tf2_unpack_fixture_ignores_slice_bounds_for_tables_and_userdata(self):
+        h = LifetimeHarness(setup=TF2_UNPACK_FIXTURE)
+        self.assertEqual(h.lua.eval("table.unpack({17,29,41},2,2)"), (17, 29, 41))
+        h.lua.execute("fixture_values=borrowed_root({17,29,41})")
+        self.assertEqual(h.lua.eval("table.unpack(fixture_values,2,2)"), (17, 29, 41))
+        h.lua.execute("fixture_values=nil")
+        self.assert_released(h)
+
+    def test_tf2_unpack_override_preserves_full_build_snapshots_and_exact_return_counts(self):
+        ordinary = LifetimeHarness(bind=False)
+        overridden = LifetimeHarness(setup=TF2_UNPACK_FIXTURE, bind=False)
+        for h in (ordinary, overridden):
+            self.assertEqual(h.returns(h.e.bind_initial, h.table([]))["n"], 0)
+            initial = h.returns(h.e.snapshot)
+            self.assertEqual(initial["n"], 1)
+            self.assertIsInstance(json.loads(h.j.encode(initial[1])), dict)
+            self.assert_released(h)
+        self.assertEqual(ordinary.snapshot(), overridden.snapshot())
+        for key, command in _base.COMMANDS:
+            receipts = []
+            for h in (ordinary, overridden):
+                before = h.snapshot()
+                planned = h.returns(h.e.plan, h.table(command), key,
+                                    int(round(h.lua.globals().now * 1_000_000)))
+                self.assertEqual(planned["n"], 1)
+                plan = planned[1]
+                self.assertEqual(plan.key, key)
+                self.assertEqual(json.loads(h.j.encode(plan.command)), command)
+                self.assertEqual(h.snapshot(), before, "planning changed the observed world")
+                result = h.lua.globals().apply_command(plan.native, False)
+                finished = h.returns(h.e.finish, plan, result, True)
+                self.assertEqual(finished["n"], 1)
+                receipt = json.loads(h.j.encode(finished[1]))
+                self.assertIs(receipt["success"], True)
+                receipts.append(receipt)
+                self.assert_readable(h.snapshot())
+                self.assertEqual(h.lua.globals().lifetime.invalid_reads, 0)
+                self.assert_released(h)
+            self.assertEqual(receipts[0], receipts[1])
+            self.assertEqual(ordinary.snapshot(), overridden.snapshot())
+        self.assertEqual(overridden.lua.globals().sent, 9)
+        self.assertTrue(overridden.snapshot()["probe"]["connectivity"]["connected"])
+        for _ in range(2):
+            ordinary.lua.globals().advance()
+            overridden.lua.globals().advance()
+            self.assertEqual(ordinary.snapshot(), overridden.snapshot())
+            self.assert_released(overridden)
+
+    def test_tf2_unpack_override_preserves_rejected_callback_result(self):
+        h = LifetimeHarness(setup=TF2_UNPACK_FIXTURE)
+        before = h.snapshot()
+        plan = h.plan(*_base.COMMANDS[0])
+        finished = h.returns(h.e.finish, plan, h.table({}), False)
+        self.assertEqual(finished["n"], 1)
+        self.assertEqual(json.loads(h.j.encode(finished[1])),
+                         {"success": False, "result": {"error": "engine_rejected", "op": "SET_PAUSED"}})
+        self.assertEqual(h.snapshot(), before)
+        self.assertEqual(h.lua.globals().sent, 0)
+        self.assert_released(h)
+
+    def test_tf2_unpack_override_caught_snapshot_failure_releases_owners_and_recovers(self):
+        h = LifetimeHarness(setup=TF2_UNPACK_FIXTURE)
+        for key, command in _base.COMMANDS[:2]:
+            h.apply(key, command)
+        before = h.snapshot()
+        h.lua.execute("fixture_position=world[junction].BASE_NODE.position;world[junction].BASE_NODE.position=nil")
+        snapshot = h.snapshot()
+        self.assertTrue(any("position" in value for value in snapshot["coverage"]["missing"]))
+        self.assert_released(h)
+        h.lua.execute("world[junction].BASE_NODE.position=fixture_position;fixture_position=nil")
+        self.assertEqual(h.snapshot(), before)
+        self.assertEqual(h.lua.globals().sent, 2)
+        self.assert_released(h)
+
+    def test_tf2_unpack_override_thrown_nested_plan_failure_releases_owners_and_recovers(self):
+        h = LifetimeHarness(setup=TF2_UNPACK_FIXTURE)
+        for key, command in _base.COMMANDS[:6]:
+            h.apply(key, command)
+        # Vehicle planning calls E.snapshot inside the outer owner scope. Fail
+        # after its component traversal, when that snapshot reads the company.
+        h.lua.execute("fixture_get_entity=game.interface.getEntity;game.interface.getEntity=function(id)if id==api.engine.util.getPlayer()then error('fixture nested company read failure',0)end;return fixture_get_entity(id)end")
+        with self.assertRaisesRegex(Exception, "fixture nested company read failure"):
+            h.plan(*_base.COMMANDS[6])
+        self.assertEqual(h.lua.globals().sent, 6)
+        self.assert_released(h)
+        h.lua.execute("game.interface.getEntity=fixture_get_entity;fixture_get_entity=nil")
+        for key, command in _base.COMMANDS[6:]:
+            h.apply(key, command)
+        self.assertTrue(h.snapshot()["probe"]["connectivity"]["connected"])
+        self.assertEqual(h.lua.globals().lifetime.invalid_reads, 0)
+        self.assert_released(h)
 
 
 def main(argv=None):

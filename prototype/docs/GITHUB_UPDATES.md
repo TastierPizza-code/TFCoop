@@ -73,9 +73,10 @@ nicht stillschweigend als derselbe Ausgangsstand akzeptiert.
 4. Eine ausdrücklich über **Testspielstand übernehmen …** gewählte `.sav`-Datei
    mit danebenliegender `.sav.lua`.
 
-**Alpha5.9 verwendet ein neues sauberes Savepaar der bisherigen sehr großen Karte.**
-Die Basis aus alten Paketen und deren bisheriger Cache haben andere Prüfsummen.
-Beide Spieler benötigen deshalb einmal das neu bereitgestellte private Paar:
+**Seit Alpha5.9 wird ein sauberes Savepaar der bisherigen sehr großen Karte verwendet.**
+Alpha5.10 verwendet dasselbe Paar weiter; ein bereits erfolgter Import genügt.
+Die Basis aus Paketen vor Alpha5.9 und deren Cache haben andere Prüfsummen.
+Beide Spieler benötigen deshalb einmal das seit Alpha5.9 bereitgestellte private Paar:
 `Testspielstand/initial.sav` und `Testspielstand/initial.sav.lua`. Beide Dateien
 unverändert privat weitergeben und nebeneinander entpacken. Anschließend auf
 beiden PCs **Testspielstand übernehmen …** verwenden und diese neue `initial.sav`
@@ -125,13 +126,17 @@ Der Ablauf für die Veröffentlichung ist:
    diese Version über den festen Download- und Updateweg.
 
 Die Schritt-für-Schritt-Anleitung für beide Spieler steht in
-[ANLEITUNG.md](../ANLEITUNG.md). Der aktuelle Alpha5.9-Bautest bleibt bei 240 Runden
+[ANLEITUNG.md](../ANLEITUNG.md). Der aktuelle Alpha5.10-Bautest bleibt bei 240 Runden
 mit automatisch vorgegebenen Bau-, Fahr- und Pausenbefehlen. Freies Bauen,
 Spielercursor und gemeinsame normale Pause-Tasten sind noch nicht angeschlossen.
-Ein echter lokaler Alpha5.8-Record bestand 240 Runden. Der anschließende Replay in
-einem zweiten Prozess bestätigte identische Beobachtungen bis Frame 99 und stoppte
-dann an einem vorübergehenden API-Lesefehler. Alpha5.9 hält gelesene Elternobjekte
-während der vollständigen Beobachtung fest; der echte Folgetest steht noch aus.
-Diese lokalen Läufe sind kein Nachweis gemeinsamer Netzwerksynchronität oder
-vollständiger Deterministik der Spielwelt. Einzelheiten stehen im
+Alpha5.10 behebt den mit dem Lebensdauerschutz aus Alpha5.9 eingeführten Startfehler:
+TF2 ignoriert die Bereichsgrenzen von `table.unpack`; der Adapter reicht die
+Rückgabewerte deshalb direkt als Lua-Varargs weiter und behält den Schutz bei.
+Ein echter lokaler Record und sein Replay in einem zweiten frischen TF2-Prozess
+haben inzwischen jeweils zwölf Befehle und alle 240 Schritte bestanden.
+Ergebnisse und gemessene Zustände stimmten nach jeder Aktion überein. Beide
+Prozesse wurden regulär beendet und die Installation wiederhergestellt.
+Diese nacheinander ausgeführten Läufe sind kein Nachweis gemeinsamer
+Netzwerksynchronität oder vollständiger Deterministik der Spielwelt. Der entsprechende
+Zweirechnertest steht noch aus. Einzelheiten stehen im
 [Prüfstand](../VERIFICATION.md).

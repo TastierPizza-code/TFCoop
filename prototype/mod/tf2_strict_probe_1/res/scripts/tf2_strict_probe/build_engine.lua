@@ -21,17 +21,19 @@ function M.new(json)
     end
     return v
   end
-  local unpack_values=table.unpack or unpack
-  local function pack(...)return {n=select('#',...),...}end
+  local function release(ok,...)
+    owners=nil -- Release on success and on exceptions; never retain across ticks.
+    if not ok then error((...),0)end
+    -- TF2 overrides table.unpack(t) and ignores its start/end arguments.
+    -- Forward varargs directly so nils and multiple results remain unchanged.
+    return ...
+  end
   local function operation(fn,...)
     -- Planning a vehicle also takes a snapshot. Its owners belong to the same
     -- outer operation, so a nested call must not release them early.
     if owners then return fn(...)end
     owners={seen={},count=0}
-    local result=pack(pcall(fn,...))
-    owners=nil -- Release on success and on exceptions; never retain across ticks.
-    if not result[1]then error(result[2],0)end
-    return unpack_values(result,2,result.n)
+    return release(pcall(fn,...))
   end
   -- Native usertypes may throw for an absent member. Always return one value:
   -- falling through returns zero values, which breaks type(field(...)) and

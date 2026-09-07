@@ -1,6 +1,75 @@
 # Prüfstand
 
-## Alpha5.9: Lebensdauer nativer Objekte und neue Ausgangssave
+## Alpha5.10: zwei vollständige echte Durchläufe
+
+Am 7. September 2026 haben zwei nacheinander frisch gestartete TF2-Prozesse auf
+demselben PC den vollständigen Bautest bestanden. Der erste Prozess zeichnet
+die wirklich gesendeten Aufträge und zurückgelesenen Zustände auf. Der zweite
+lädt eine frische Kopie desselben Savepaars und liest genau diesen validierten
+Befehlsstrom ein. Beide bestätigen zwölf Aufträge und 240 Zeitschritte; alle
+252 Anfragen, Ergebnisse und beobachteten Zustandsgrenzen stimmen überein.
+Beide Journale enthalten jeweils 507 geprüfte Zeilen mit vollständiger Hashkette.
+
+Die Straße, das Depot, zwei Haltestellen und drei Straßenverbindungen werden
+gebaut; das gekaufte Fahrzeug wird einer Linie zugewiesen, verlässt das Depot
+und bewegt sich. Die maximale beobachtete Entfernung zur ersten Fahrposition
+beträgt 141,81 Meter. 211 Fortschrittsschritte ergeben 42,2 Sekunden Enginezeit
+(13,4 bis 55,6 Sekunden). Alle 29 Pausenschritte halten den erfassten Zustand
+unverändert, einschließlich der 20 Schritte ab Runde 80. Das Konto sinkt von
+5.000.000 auf 4.656.092; der Fahrzeugkauf bucht 23.890 ab. Das Darlehen bleibt
+bei 5.000.000. Die Abschlussnachweise stimmen zwischen Record und Replay überein.
+
+Beide Spielprotokolle bestätigen die jeweils frisch importierte Save und
+ausschließlich Legacy Fahrzeuge und Strict Sync Alpha5.10. Manifest und
+installierter Bauadapter entsprechen der geprüften Quelle. Beide exakt
+zugeordneten Spielprozesse beenden sich regulär; Prozessende und anschließende
+Wiederherstellung sind bestätigt, ohne Fehler bei der Bereinigung.
+
+Dies ist ein echter lokaler Wiederholbarkeitsnachweis für die beobachteten
+Bauvorgänge, Firmenwerte, Fahrzeugzustände und vorgegebenen Pausen. Die Prozesse
+laufen nacheinander auf einem PC. Netzwerkverzögerungen zwischen zwei Spielern,
+unbeobachtete Weltzustände, vollständige deterministische Simulation, freie
+gleichzeitige Eingaben und die normalen Pause-Tasten sind damit nicht geprüft.
+
+### Rückgabewerte unter TF2s Lua-Anpassung
+
+Der erste echte Alpha5.9-Nachtest scheiterte bereits vor Messbeginn:
+`snapshot()` lieferte einen Wahrheitswert statt einer Zustandstabelle. Es wurden
+keine Bauaufträge oder Zeitschritte freigegeben. Die native Startprüfung war
+fehlerfrei; Spielprotokoll und Modliste bestätigten die richtige frische Save
+und die Version Alpha5.9. Der eigene Spielprozess wurde nach einem Timeout des
+normalen Beendens über seinen zuvor verifizierten Prozesshandle geschlossen.
+Prozessende und Wiederherstellung der Installation sind bestätigt.
+
+Ursache ist eine Regression im mit Alpha5.9 eingeführten Lebensdauerschutz.
+TF2 überschreibt in seinem installierten `res/scripts/init.lua` die Funktion
+`table.unpack(t)` und reicht Anfangs- und Endargumente nicht weiter. Die neue
+Operationshülle wollte das erste `pcall`-Ergebnis auslassen, gab dadurch aber
+auch dessen Erfolgsboolean zurück. Alpha5.10 reicht die Rückgaben stattdessen
+direkt als Lua-Varargs weiter. Der Schutz der nativen Elternobjekte bleibt
+unverändert, einschließlich Freigabe auf Erfolg und Fehler. Es werden keine
+fehlenden Zustandswerte ersetzt. Weitere Slice-Aufrufe dieses Helpers wurden
+im aktuellen Projektcode nicht gefunden.
+
+Die gezielte Regression bildet TF2s ignorierte Sliceparameter zusätzlich zur
+erzwungenen Speicherbereinigung nach. Alle 52 Prüfungen bestehen: je 13 unter
+Lua 5.1 bis 5.4, einschließlich Bauablauf, exakter Rückgabeanzahl, verschachtelter
+Aufrufe sowie Freigabe und Erholung nach Fehlern. Unveränderter Alpha5.9-Code
+scheitert dagegen unter jeder Runtime an denselben vier neuen Adapterprüfungen.
+Der direkte Lua-Aufruf zeigt unter allen vier Runtimes zwei Rückgaben mit einem
+Boolean zuerst für Alpha5.9 und eine Zustandstabelle für Alpha5.10. Die 340
+bisherigen Bauadapter-Prüfungen und 85 Python-Prüfungen für Einstieg, Staging,
+Baseline, Veröffentlichung und Launcher-Vorbereitung bestehen ebenfalls. Ebenso
+bestehen die 16 lokalen Record-/Replay-Prüfungen einschließlich vollständigem
+240-Runden-Lua-/Datei-IPC-Vergleich mit nachgebildeten Spiel- und nativen APIs.
+Die echte Alpha5.10-Nachprüfung ist oben separat dokumentiert; die bisherigen
+Alpha5.8-Ergebnisse unten bleiben als historische Befunde erhalten.
+Das neue saubere private Savepaar aus Alpha5.9 bleibt unverändert gültig.
+
+## Alpha5.9: Lebensdauer nativer Objekte und neue Ausgangssave (historischer Stand)
+
+Dieser Abschnitt beschreibt den Stand vor dem Alpha5.10-Nachtest. Neuere
+Ergebnisse und die dabei erkannte Rückgaberegression stehen oben.
 
 Ein echter lokaler Alpha5.8-Durchlauf bestätigt alle zwölf Aufträge und 240
 Zeitschritte: Straße, Depot, zwei Haltestellen, drei Verbindungen, Fahrzeugkauf,
@@ -78,8 +147,9 @@ ein vollständiger Weltvergleich.
 15 Unit-Prüfungen und eine vollständige sequentielle Lua-/Datei-IPC-Integration
 bestehen. Letztere verwendet zwei nacheinander erzeugte Lua-5.3-VMs mit
 nachgebildeten Spiel- und nativen APIs: jeweils 240 Runden, zwölf Aufträge,
-unterschiedliche lokale Objekt-IDs und passende Abschlussnachweise. Dies ist
-ausdrücklich noch kein erfolgreicher Lauf mit zwei echten TF2-Prozessen.
+unterschiedliche lokale Objekt-IDs und passende Abschlussnachweise. Diese
+automatisierten Prüfungen verwenden nachgebildete APIs; reale Nachweise
+werden davon getrennt in den versionsbezogenen Abschnitten dokumentiert.
 
 `tools/local_game_replay.py` bereitet jeweils genau einen echten Spielprozess
 mit dem vorhandenen Installer vor. Es lädt dessen frisch importierte Savekopie
