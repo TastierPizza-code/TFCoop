@@ -2,6 +2,8 @@
 
 **Alpha5.19-Testbegleiter** ergänzt den getrennten Modus `guided_suite_v1` mit fester Host-/Freund-Schrittfolge, frischer gemeinsamer Vorschau, echten Callback-/Beobachtungsbelegen und gemeinsam bestätigtem Fortschritt. [Umfang und Grenzen](docs/GUIDED_TEST.md), [Nachweischeckliste](docs/GAMEPLAY_CHECKLIST.md), [Anleitung](ANLEITUNG.md).
 
+Der tatsächliche Zwei-PC-Lauf vom 8. September bestätigt alle 26 Schritte mit 241 bytegleichen Weltjournalzeilen. Kauf, Linienbearbeitung, Fahrt, Depotankunft und Verkauf sind für die feste Szene belegt. Eine zu frühe Depotprüfung bleibt kostenfrei offen und besteht nach der tatsächlichen Ankunft. Alle 27 Eingaben sind gemeinsam bestätigt. [Alpha5.19-Auswertung](docs/ALPHA519_EVIDENCE.md). Normale Spielwerkzeuge und neue gleichzeitige Fahrzeug-/Linienkonflikte bleiben offen.
+
 ## Vorheriger Depotversuch und erhaltene Grundlagen
 
 **Alpha5.16-Depotversuch** führt `manual_depot_v1` ein: ein eigener kurzer Launcher-Bauversuch auf Basis des akzeptierten Takts. Die vier Standorte liegen relativ zur vorbereiteten Testszene; Drehungen sind auf Vierteldrehungen begrenzt. `BUILD_DEPOT` erhält vor jeder Ausführung einen frischen Vorschlag auf beiden PCs. Beide Vorschläge, echte Callbacks, Kosten und neu beobachtete Objektbindungen müssen passen. Erwartete Belegungs-/Geländeablehnungen werden ohne Mutation bestätigt; unerwartete Anwendungsfehler halten an.

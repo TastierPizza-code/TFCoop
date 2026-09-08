@@ -1,5 +1,20 @@
 # Nächste Etappe: frei ausgelöste Eingaben
 
+## Aktueller Nachweis: geführter Straßenfahrzeugbetrieb abgeschlossen
+
+Der tatsächliche [Alpha5.19-Lauf](ALPHA519_EVIDENCE.md) bestätigt alle 26 festen
+Host-/Freund-Aufträge für Straßenfahrzeug und Linie. 241 bytegleiche Journalzeilen,
+passende Kosten und tatsächliche Fahrt/Depotankunft tragen die neuen Häkchen in
+der [Checkliste](GAMEPLAY_CHECKLIST.md). Die älteren Referenzen bleiben erhalten.
+
+Als nächstes zusammenhängendes, noch offenes Kapitel bietet sich der feste
+Schienenbetrieb an: Gleis und Bahnhof, Depot, Signal, Lok/Wagen, Linie, Abfahrt
+und Rückkehr. Er benötigt eigene tatsächliche Geometrie-, Signal-, Zugbildungs-
+und Fahrtnachweise. Die normale freie Ingame-Bedienung bleibt ein anschließender
+Integrationsschritt. Die Auswertung selbst verändert keinen Laufzeitcode,
+startet keinen weiteren Spieltest und veröffentlicht kein neues Updatepaket.
+Die folgenden Abschnitte bewahren die bisherige Planung und ihre Prioritätswechsel.
+
 ## Neuer Auftrag: geführter gemeinsamer Funktionstest
 
 Der Nutzer möchte vor der normalen Ingame-Erfassung mehrere Befehlsfamilien

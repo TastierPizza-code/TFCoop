@@ -32,23 +32,26 @@ Die letzten Depotpunkte sind durch die beiden getrennten
 [Alpha5.16-Auswertungen](ALPHA516_EVIDENCE.md) belegt. Sie gelten für die begrenzten
 Testplätze und Vierteldrehungen, nicht für beliebige Bauwerke oder native Mausklicks.
 
-## Nächster geführter Durchlauf: noch ohne neuen Zwei-PC-Nachweis
+## Geführter Straßenfahrzeug-/Linienablauf: auf zwei PCs nachgewiesen
 
-Diese Felder bleiben bis zur Auswertung beider tatsächlichen Berichte offen.
-Der Testbegleiter zeigt die konkret implementierten Schritte und ihre Rolle an;
-abgeschlossene Schritte zählen erst nach verglichenen Ergebnissen beider Spiele.
+Der tatsächliche [Alpha5.19-Lauf](ALPHA519_EVIDENCE.md) bestätigt alle 26 festen
+Host-/Freund-Aufträge mit 241 bytegleichen Journalzeilen. Der Umfang bleibt das
+vorgegebene Straßenfahrzeug und die vorbereiteten Halte, bedient über den Launcher.
 
-- [ ] Frei zeitlich ausgelöster Kauf und Verwaltung eines zusätzlichen Testfahrzeugs.
-- [ ] Neue Linie über getrennte Aufträge anlegen und einzelne Halte ergänzen.
-- [ ] Haltereihenfolge ändern, einen Halt entfernen und erneut hinzufügen.
-- [ ] Liniennamen, Linienfarbe und Halte-/Warteregeln bearbeiten.
-- [ ] Fahrzeug zuweisen und seine tatsächliche Abfahrt/Fahrt beobachten.
-- [ ] Fahrzeug anhalten/starten, wenden und Wartungsziel ändern.
-- [ ] Fahrzeug zum Depot schicken, tatsächliche Ankunft erkennen und verkaufen.
-- [ ] Nicht mehr verwendete Testlinie löschen.
-- [ ] Diese Aktionen durch wechselnde Aufträge von Host und Freund auslösen.
-- [ ] Kosten, Bindungen, Betriebszustände und Ergebnisse über den gesamten Ablauf vergleichen.
-- [ ] Erwartete Ablehnungen und veraltete/doppelte Aufträge ohne unbestätigten Fortschritt behandeln.
+- [x] Frei zeitlich ausgelöster Kauf und Verwaltung eines zusätzlichen Testfahrzeugs.
+- [x] Neue Linie über getrennte Aufträge anlegen und einzelne Halte ergänzen.
+- [x] Haltereihenfolge ändern, einen Halt entfernen und erneut hinzufügen.
+- [x] Liniennamen, Linienfarbe und Halte-/Warteregeln bearbeiten.
+- [x] Fahrzeug benennen, zuweisen und seine tatsächliche Abfahrt/Fahrt beobachten.
+- [x] Fahrzeug anhalten/starten, wenden und Wartungsziel ändern.
+- [x] Fahrzeug zum Depot schicken, tatsächliche Ankunft erkennen und verkaufen.
+- [x] Nicht mehr verwendete Testlinie löschen.
+- [x] Diese Aktionen durch wechselnde Aufträge von Host und Freund auslösen.
+- [x] Kosten, Bindungen, Betriebszustände und Ergebnisse über den gesamten Ablauf vergleichen.
+- [x] Eine zu frühe Depotankunftsprüfung ohne Kosten oder Fortschritt zurückstellen;
+  denselben Schritt nach beobachteter Ankunft erfolgreich erneut prüfen.
+- [ ] Veraltete/doppelte oder rollenfalsche neue Aufträge im tatsächlichen Spiel ablehnen.
+- [ ] Gleichzeitige konkurrierende Fahrzeug-/Linienaufträge im tatsächlichen Spiel prüfen.
 
 Ein fehlendes Merkmal wird als offen oder nicht unterstützt ausgewiesen. Ein
 grüner Abschluss eines Teilablaufs ist kein Häkchen für die gesamte Befehlsfamilie.

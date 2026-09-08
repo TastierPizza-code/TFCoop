@@ -78,13 +78,16 @@ werden weiterhin als ausdrücklich vorgegebener Text verglichen.
 Automatisch übersetzte Anzeigetexte gehören damit nicht zur sprachübergreifenden
 Textgleichheit. Ungeplante lokale Namensänderungen werden weiterhin erkannt.
 Das ist keine pauschale Freigabe abweichender Benennungen oder zusätzlicher
-Spielwerkzeuge. Die gesamte Schrittfolge muss weiterhin auf zwei PCs bestehen.
+Spielwerkzeuge. Der anschließende tatsächliche [Alpha5.19-Lauf](ALPHA519_EVIDENCE.md)
+bestätigt nun alle 26 Schritte mit 241 bytegleichen Journalzeilen, einschließlich
+expliziter Umbenennung, Fahrt, Depotankunft und Verkauf. Eine noch nicht mögliche
+Depotankunftsprüfung bleibt ohne Mutation offen und besteht beim erneuten Versuch.
 
-Diese Version bereitet den tatsächlichen Zwei-PC-Versuch vor. Headless-Prüfungen
-testen Protokoll, Integrationsgrenzen und Adapter mit ausdrücklich künstlicher
-Spiel-API. Sie beweisen weder die tatsächliche Annahme jeder neuen Engine-Aktion
-noch langfristige Weltdeterministik. Erst die Berichte beider Teilnehmer ergeben
-neue Häkchen in der Nachweischeckliste.
+Dieser neue Nachweis stammt aus beiden tatsächlichen Spielberichten. Er gilt für
+die festen Aufträge, das konkrete Straßenfahrzeug und die vorbereitete Szene.
+Die ergänzenden Headless-Prüfungen verwenden ausdrücklich künstliche Spiel-API;
+deren zusätzliche Fehlerfälle werden dadurch nicht zu tatsächlichen Spielnachweisen.
+Weder der geführte Lauf noch diese Tests beweisen langfristige Weltdeterministik.
 
 Der feste Kauf vergleicht die tatsächliche Abbuchung und den entstandenen Bestand.
 Er belegt keine allgemeine Preisvorschau oder Konfliktbehandlung bei knappem Geld.

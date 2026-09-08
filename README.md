@@ -11,7 +11,7 @@
 
 [Kurze Anleitung](prototype/ANLEITUNG.md) · [Geführter Testumfang](prototype/docs/GUIDED_TEST.md) · [Nachweischeckliste](prototype/docs/GAMEPLAY_CHECKLIST.md) · [Alle Befehlsfamilien](prototype/docs/COMMAND_COVERAGE_PLAN.md)
 
-Der neue Ablauf umfasst ein zusätzliches Straßenfahrzeug, eine schrittweise bearbeitete Linie, Namen/Farbe, Wartung, Zuweisung, Fahrt, Anhalten/Starten, Wenden, Depotfahrt und Verkauf. Gleise/Signale/Züge, freie Platzierungen, native UI-Pause, Cursor/Blaupausen und Speichern/Wiederbeitritt bleiben offen. Eine erfolgreiche Headless-Prüfung ist kein neuer tatsächlicher Zwei-PC-Nachweis.
+Der tatsächliche [Alpha5.19-Lauf auf zwei PCs](prototype/docs/ALPHA519_EVIDENCE.md) bestätigt alle 26 festen Aufträge mit 241 bytegleichen Journalzeilen: zusätzliches Straßenfahrzeug, schrittweise bearbeitete Linie, Namen/Farbe, Wartung, Zuweisung, Fahrt, Anhalten/Starten, Wenden, Depotfahrt und Verkauf. Gleise/Signale/Züge, freie Platzierungen, native UI-Pause, Cursor/Blaupausen und Speichern/Wiederbeitritt bleiben offen. Die Nachweise gelten für die aufgezeichnete feste Szene und die Launcher-Bedienung.
 
 Die akzeptierten [Alpha5.15-Eingaben und ihr Tempo](prototype/docs/ACCEPTED_INPUT_BASELINE.md), [Alpha5.12-Dauerlauf](prototype/docs/ACCEPTED_BASELINE.md) sowie die [beiden Alpha5.16-Depotläufe](prototype/docs/ALPHA516_EVIDENCE.md) bleiben erhalten. Alle fünf bisherigen Modi sind unter den weiteren Tests auswählbar; ihre Abläufe und die akzeptierte Taktung werden nicht verkürzt oder ersetzt.
 

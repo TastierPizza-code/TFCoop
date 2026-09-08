@@ -1,14 +1,21 @@
 # Prüfstand
 
-## Alpha5.19: geführter Straßenfahrzeug-/Linienversuch vorbereitet
+## Alpha5.19: geführter Straßenfahrzeug-/Linienversuch auf zwei PCs bestätigt
 
 Der getrennte Modus `guided_suite_v1` führt durch 26 feste Host-/Freund-Aufträge.
 Die Testspezifikation, Rolle und aktueller Schritt werden gemeinsam geprüft.
 Fortschritt benötigt verglichene Vorschauen, beobachtete Ergebnisse und beide
 Bestätigungen. Reine Fahrt-/Depotbeobachtungen sind von nativen Callbacks getrennt.
 Der [Testumfang](docs/GUIDED_TEST.md) und die [Nachweischeckliste](docs/GAMEPLAY_CHECKLIST.md)
-benennen offene Mechaniken. Für diesen neuen Ablauf liegt noch kein tatsächlicher
-Zwei-PC-TF2-Bericht vor. Die folgenden älteren realen Nachweise bleiben gültig.
+benennen offene Mechaniken. Der tatsächliche Lauf vom 8. September bestätigt alle
+26 Schritte: 241 bytegleiche Journalzeilen, 24 echte Mutations-Callbacks, zwei reine
+Beobachtungen und eine unveränderte, kostenfreie Rückstellung der noch zu frühen
+Depotankunftsprüfung. Kauf und Verkauf buchen auf beiden PCs 23.890 beziehungsweise
+23.777. Alle 27 Eingaben sind bestätigt; Abschluss bei Frame 304, Zeit 72,4 Sekunden
+und Kontostand 4.651.328. [Auswertung](docs/ALPHA519_EVIDENCE.md).
+Normale Spielwerkzeuge, beliebige Fahrzeugkonfigurationen, neue gleichzeitige
+Linienkonflikte und vollständige Weltdeterministik bleiben offen. Die folgenden
+älteren realen Nachweise bleiben gültig.
 
 ## Alpha5.16: begrenzter manueller Depotversuch im Zwei-PC-Spiel bestätigt
 
