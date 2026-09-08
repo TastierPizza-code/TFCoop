@@ -1,5 +1,22 @@
 # Nächste Etappe: frei ausgelöste Eingaben
 
+## Aktueller Arbeitsplan nach der Befehlsbestandsaufnahme
+
+Die [Befehlsübersicht](COMMAND_COVERAGE_PLAN.md) erfasst Bauen/Abbruch,
+Fahrzeuge und deren Konfiguration, einzelne Linienhalte und Betriebsregeln,
+Firma, Zeit, Sitzung sowie Mod-/Skriptgrenzen. Sie trennt gemeinsame Änderungen
+von individuellen Ansichten und vom separaten Cursor-/Vorschaukanal.
+
+Der Synchronisationskern wird wiederverwendet. Nächster technischer Schritt
+ist ein vollständiger normaler Ingame-Straßenbauweg mit zurückgehaltener lokaler
+Ausführung und echten Rückmeldungen. Danach folgt ein zusammenhängender
+Straßenfahrzeugbetrieb: kaufen, Linie anlegen und Halte bearbeiten, zuweisen,
+stoppen/starten, zurückschicken und verkaufen. Objektversionen, gemeinsame
+Kosten, tatsächliche neue Objektbindungen und abhängige Folgeaufträge gehören
+zum Adaptervertrag. Linienänderungen dürfen keine ältere Gesamtfassung über
+eine neuere fremde Bearbeitung schreiben. Diese Etappen sind geplant, noch
+nicht implementiert; die Bestandsaufnahme veröffentlicht keine neue Version.
+
 ## Aktueller neuer Versuch: Alpha5.16
 
 `manual_depot_v1` ist als eigener Launcher-Depotversuch implementiert: vier

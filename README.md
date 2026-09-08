@@ -17,6 +17,8 @@ Die normale Fahrt erreichte im ersten Lauf etwa 0,947x/0,951x und im zweiten 0,9
 
 Normale Bauwerkzeuge und UI-Pause, Cursor/Blaupausen, freie konkurrierende Umbauten, Speichern/Fortsetzen und Steam-Einladungen sind weitere Arbeit. Die beobachtete Testszene ist kein vollständiger oder dauerhafter Weltnachweis. [Prüfstand](prototype/VERIFICATION.md).
 
+Die [Befehlsübersicht und nächste Umsetzung](prototype/docs/COMMAND_COVERAGE_PLAN.md) erfasst auch Fahrzeugkauf/-verwaltung, einzelne Linienhalte, Lade- und Terminalregeln, Firmenänderungen sowie Sitzungsfunktionen. Der nächste technische Schritt verbindet einen normalen Ingame-Bauweg; danach folgt ein vollständiger von den Spielern bedienter Straßenfahrzeugbetrieb.
+
 Das öffentliche Release enthält keine Spielstände, Berichte, Sitzungsschlüssel oder originalen Spieldateien. Updates prüfen die Paketdateien und verwenden den vorhandenen passenden Savecache. Private Sicherungen bleiben lokal.
 
 ## Entwicklung und Veröffentlichungen
