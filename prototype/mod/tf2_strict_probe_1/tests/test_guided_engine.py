@@ -74,6 +74,51 @@ class Harness:
 
 
 class GuidedLuaTests(unittest.TestCase):
+    def test_native_callable_tables_pass_without_invoking_any_command_maker(self):
+        h = Harness()
+        self.assertTrue(h.lua.eval("type(api.cmd.make.buyVehicle)=='table' and type(getmetatable(api.cmd.make.buyVehicle).__call)=='function'"))
+        self.assertEqual(h.lua.globals().command_factory_calls, 0)
+        self.assertEqual(h.lua.globals().sent, 0)
+        self.assertTrue(h.snapshot()['probe']['guided_suite']['capabilities']['ready'])
+
+    def test_ordinary_lua_functions_remain_supported(self):
+        h = Harness(setup='for name,fn in pairs(command_factory_functions)do api.cmd.make[name]=fn end')
+        self.assertTrue(h.snapshot()['probe']['guided_suite']['capabilities']['ready'])
+        self.assertEqual(h.lua.globals().sent, 0)
+
+    def test_callable_userdata_and_constructor_tables_use_the_same_check(self):
+        h = Harness(setup='''
+          local fn=command_factory_functions.setGameSpeed
+          local value=native_record({})
+          getmetatable(value).__call=function(_,...)return fn(...)end
+          api.cmd.make.setGameSpeed=value
+          for _,owner in ipairs({api.type.VehiclePart,api.type.TransportVehiclePart,
+            api.type.TransportVehicleConfig,api.type.Line,api.type.Vec3f,api.type.Line.Stop})do
+            local new=owner.new
+            owner.new=setmetatable({},{__call=function(_,...)return new(...)end})
+          end
+        ''')
+        self.assertEqual(h.lua.globals().command_factory_calls, 0)
+        self.assertEqual(h.lua.globals().sent, 0)
+        h.prelude()
+        self.assertTrue(h.apply(STEPS[0])['success'])
+
+    def test_every_noncallable_factory_is_rejected_without_invocation(self):
+        malformed = ('{}', '{__call=function()error("must not invoke")end}',
+                     'setmetatable({},{__call=false})',
+                     'setmetatable({},{__index=function()return function()end end})',
+                     'setmetatable({},{__call=function()error("must not invoke")end,__metatable=false})')
+        for maker in ('buyVehicle', 'createLine', 'deleteLine', 'reverseVehicle', 'sellVehicle',
+                      'sendToDepot', 'setColor', 'setGameSpeed', 'setLine', 'setName',
+                      'setUserStopped', 'setVehicleTargetMaintenanceState', 'updateLine'):
+            for value in malformed:
+                with self.subTest(maker=maker, value=value):
+                    h = Harness(setup=f'api.cmd.make.{maker}={value}', initialize=False)
+                    with self.assertRaisesRegex(Exception, f'api.cmd.make.{maker}'):
+                        h.e.bind_initial(h.table([]))
+                    self.assertEqual(h.lua.globals().command_factory_calls, 0)
+                    self.assertEqual(h.lua.globals().sent, 0)
+
     def test_catalogue_matches_literal_lua_actions_and_roles(self):
         h = Harness()
         asset = h.modules['tf2_strict_probe/guided_assets']
@@ -125,6 +170,7 @@ class GuidedLuaTests(unittest.TestCase):
         h = Harness(setup='api.cmd.make.updateLine=nil; api.cmd.make.sellVehicle=nil', initialize=False)
         with self.assertRaisesRegex(Exception, 'api.cmd.make.sellVehicle; api.cmd.make.updateLine'):
             h.e.bind_initial(h.table([]))
+        self.assertEqual(h.lua.globals().command_factory_calls, 0)
         self.assertEqual(h.lua.globals().sent, 0)
 
     def test_positive_speed_with_frozen_actual_position_is_not_movement_proof(self):

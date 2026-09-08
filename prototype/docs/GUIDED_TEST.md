@@ -1,4 +1,4 @@
-# Alpha5.17: gemeinsamer Testbegleiter
+# Alpha5.18: gemeinsamer Testbegleiter
 
 `guided_suite_v1` ist ein eigener Test mit festen Aufträgen über den Launcher.
 Die Spieler entscheiden durch ihre Aktionstasten, wann der aktuelle Auftrag
@@ -20,6 +20,13 @@ für Schienengeometrie, Signalzuordnung, Zugbildung oder Eisenbahnterminals.
 Die [Gesamtcheckliste](GAMEPLAY_CHECKLIST.md) zeigt diese und weitere offenen Bereiche.
 
 ## Was einen Schritt bestätigt
+
+Die erste Anweisung bleibt bis zum vollständigen kurzen Aufbau und der
+gemeinsamen Startbestätigung verborgen. Ein vorhandener Katalog, ein gestarteter
+Controller oder eine einzelne lokale Spielbestätigung schalten sie nicht frei.
+Die Capability-Vorprüfung berücksichtigt neben Lua-Funktionen auch die von TF2
+verwendeten aufrufbaren API-Objekte. Sie führt keinen Befehl zur Erkennung aus;
+fehlende oder nicht aufrufbare Maker halten weiterhin gesammelt an.
 
 1. Nur der aktuelle Auftrag der vorgesehenen Rolle wird zur Ausführung zugelassen.
    Doppelte, veraltete oder vorgezogene Wünsche führen nicht zu einer zweiten Mutation.

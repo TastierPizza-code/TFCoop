@@ -479,6 +479,12 @@ class SessionController:
 
 def live_input_ready(status):
     live = status.get("live") or {}
+    if status.get("test_mode") == GUIDED_MODE:
+        guide = guided_status(status)
+        if (type(live.get("confirmed_paused")) is not bool
+                or type(status.get("round")) is not int
+                or status["round"] < SHORT_BUILD_ROUNDS or guide.get("ready") is not True):
+            return False
     return bool(status.get("test_mode") in LIVE_MODES and status.get("peer_started")
                 and status.get("alive") and not status.get("failure") and not status.get("stopping")
                 and not status.get("completed") and not status.get("finish_requested")
@@ -524,6 +530,10 @@ def guided_input_status(status):
     complete = guide.get("completed_steps", 0)
     if guide.get("phase") == "completed":
         return f"{complete} Schritte bestätigt. Gemeinsamen Abschluss abwarten und beide Berichte exportieren."
+    if (not (status.get("live") or {}).get("started")
+            or type((status.get("live") or {}).get("confirmed_paused")) is not bool
+            or guide.get("phase") == "waiting"):
+        return "Kurzen Aufbau und Startbestätigung beider Spiele abwarten."
     number = guide.get("step")
     if type(number) is not int or not 1 <= number <= len(STEPS):
         return "Gemeinsamen Teststand abwarten."

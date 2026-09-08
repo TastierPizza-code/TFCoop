@@ -12,6 +12,21 @@ api.cmd.make.reverseVehicle=maker('guided_reverse')
 api.cmd.make.sendToDepot=maker('guided_depot')
 api.cmd.make.sellVehicle=maker('guided_sell')
 api.cmd.make.deleteLine=maker('guided_delete_line')
+-- TF2's command makers are callable tables, as recorded by the existing
+-- runtime probe in upstream docs/DEV_STATUS.md. Ordinary function fixtures
+-- hid the guided preflight's false rejection of every real maker. Use that
+-- API shape throughout the literal lifecycle and production file-IPC tests.
+-- Counting factory invocations also detects a preflight that probes by call.
+command_factory_calls=0
+command_factory_functions={}
+for name,fn in pairs(api.cmd.make)do
+  assert(type(fn)=='function','fixture expected unwrapped command factory')
+  command_factory_functions[name]=fn
+  api.cmd.make[name]=setmetatable({},{__call=function(_,...)
+    command_factory_calls=command_factory_calls+1
+    return fn(...)
+  end})
+end
 local original_apply=apply_command
 function apply_command(command,no_result)
   local op=command.op

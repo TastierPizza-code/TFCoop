@@ -34,17 +34,27 @@ function M.new(json,E,H)
   end
   local function capability_report()
     local missing=json.array()
+    local function callable(value)
+      if type(value)=='function'then return true end
+      if type(value)~='table'and type(value)~='userdata'then return false end
+      -- TF2 exposes command makers as tables with a native __call function.
+      -- Inspect that actual metamethod without constructing or sending a
+      -- command. Merely being a table, or exposing an __index fallback named
+      -- __call, is insufficient. An opaque/missing metatable stays unverified.
+      local ok,mt=pcall(getmetatable,value)
+      return ok and type(mt)=='table'and type(rawget(mt,'__call'))=='function'
+    end
     local function check(label,fn)
       local ok,result=pcall(fn)
       if not ok or result~=true then missing[#missing+1]=label end
     end
     for _,name in ipairs(assets.required_makers)do
-      check('api.cmd.make.'..name,function()return type(field(api.cmd.make,name))=='function'end)
+      check('api.cmd.make.'..name,function()return callable(field(api.cmd.make,name))end)
     end
     for _,name in ipairs({'VehiclePart','TransportVehiclePart','TransportVehicleConfig','Line','Vec3f'})do
-      check('api.type.'..name..'.new',function()return type(field(api.type[name],'new'))=='function'end)
+      check('api.type.'..name..'.new',function()return callable(field(api.type[name],'new'))end)
     end
-    check('api.type.Line.Stop.new',function()return type(field(api.type.Line.Stop,'new'))=='function'end)
+    check('api.type.Line.Stop.new',function()return callable(field(api.type.Line.Stop,'new'))end)
     check('Line mutable stops and wait fields',function()
       local line=api.type.Line.new();line.waitingTime=0
       local stop=api.type.Line.Stop.new();stop.stationGroup=1;stop.station=0;stop.terminal=0

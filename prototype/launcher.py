@@ -448,9 +448,10 @@ class App:
         guided = mode == workflow.GUIDED_MODE
         profile_ready = bool(self.host.get().strip() and self.code.get().strip())
         self.connection_summary.set(
-            "Gespeicherte Verbindung wird wiederverwendet. Änderungen unter Einstellungen."
+            "Host-IP (bei beiden gleich): " + (self.host.get().strip() or "noch nicht eingetragen") + "\n" +
+            ("Gespeicherte Verbindung wird wiederverwendet. IP ändern: Weitere Tests / Einstellungen."
             if profile_ready and self.pairing_saved else
-            "Einmalig unter Einstellungen Host-IP und Testschlüssel mit dem Mitspieler abgleichen.")
+            "Einmalig unter Einstellungen Host-IP und Testschlüssel mit dem Mitspieler abgleichen."))
         self.wizard_export_button.configure(state="normal" if not self.busy and (self.prepared or self.last_run) else "disabled")
         self.wizard_stop_button.configure(state="normal" if active else "disabled",
                                           text="Test schließen" if status.get("completed") else "Test abbrechen")
@@ -486,7 +487,7 @@ class App:
         else:
             peer = status.get("peer") or {}
             live = status.get("live") or {}
-            if status.get("failure") or status.get("stopping") or (guided and (live.get("started") or guided_ui.guided_progress(status))):
+            if status.get("failure") or status.get("stopping") or (guided and guided_ui.joint_started(status)):
                 self._update_guided_pending(status)
                 view = guided_ui.card(status, STEPS, role=role,
                     available=active and not self.busy and workflow.live_input_ready(status),
@@ -505,6 +506,16 @@ class App:
                                             "von den tatsächlich nachgewiesenen Funktionen.")
                 show = self.guided_action_button
                 show.configure(text="Berichte von beiden PCs speichern")
+            elif guided:
+                startup = guided_ui.startup_card(status)
+                self.guided_heading.set(startup.title)
+                self.guided_instruction.set(startup.instruction)
+                self.guided_progress_bar.configure(maximum=startup.total_rounds, value=startup.setup_round)
+                self.guided_count.set(startup.progress_text)
+                self.wizard_save.pack(fill="x", pady=(12, 0))
+                show = self.wizard_game_button if startup.start_game else self.guided_action_button
+                show.configure(text=startup.action_label)
+                can_act = startup.start_game and active and not self.busy
             elif peer.get("state") == "waiting_game":
                 self.guided_heading.set("3  ·  TF2 starten und den Testspielstand laden")
                 self.guided_instruction.set("Beide starten TF2 und laden genau den unten genannten Spielstand. "
@@ -533,7 +544,7 @@ class App:
             self.guided_instruction.set(self.guided_instruction.get() +
                 " Für einen neuen Versuch TF2 schließen und anschließend hier neu vorbereiten. "
                 "Der bisherige Bericht bleibt erhalten.")
-        if not guided_ui.guided_progress(status):
+        if not guided_ui.joint_started(status):
             self._render_checklist(tuple((item["id"], item["title"], "untested") for item in STEPS))
         show.grid()
         show.configure(state="normal" if can_act else "disabled")

@@ -242,13 +242,15 @@ class _LiveState:
         pending |= bool(getattr(self, "_sealed", [])) and any(
             item["seq"] > self._acknowledged.get(getattr(self, "peer", ""), 0)
             for item in getattr(self, "_sealed", []))
+        joint_started = self._live_started and type(self._confirmed_paused) is bool
         phase = ("halted" if self.halted else "completed" if self._live_complete else
+                 "waiting" if not joint_started else
                  "pending" if pending or current is None else "ready")
         return {"index": self._guided_completed, "step": current["step"] if current else None,
                 "current_step": current["step"] if current else None,
                 "step_id": current["id"] if current else None,
                 "actor": current["actor"] if current else None,
-                "phase": phase, "ready": phase == "ready" and self._live_started,
+                "phase": phase, "ready": phase == "ready" and joint_started,
                 "completed_step_ids": [step["id"] for step in STEPS[:self._guided_completed]],
                 "completed_steps": self._guided_completed, "total_steps": len(STEPS),
                 "pending": bool(pending), "settled_revision": self._guided_revision,

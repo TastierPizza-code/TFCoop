@@ -103,6 +103,29 @@ class GuidedProbeTests(unittest.TestCase):
         c._pause_clock = lambda: min(engine.stream.clock_us for engine in engines.values()) / 1000000
         return c, replicas, engines, sources
 
+    def test_first_instruction_waits_for_both_start_receipts(self):
+        c, replicas, _, _ = self.pair()
+        for machine in (c, *replicas.values()):
+            self.assertEqual(machine.guide_status()['phase'], 'waiting')
+            self.assertFalse(machine.guide_status()['ready'])
+        actions = c._request_inputs()
+        self.assertTrue(c.live_progress()['started'])
+        self.assertFalse(c.guide_status()['ready'])
+        response_a = replicas['a'].receive(actions[0][1])
+        self.assertFalse(replicas['a'].guide_status()['ready'])
+        self.assertEqual(c.receive('a', response_a), [])
+        self.assertFalse(c.guide_status()['ready'])
+        response_b = replicas['b'].receive(actions[1][1])
+        self.assertFalse(replicas['b'].guide_status()['ready'])
+        following = c.receive('b', response_b)
+        self.assertTrue(c.guide_status()['ready'])
+        # The host's following authenticated operation certifies both receipts
+        # to each replica; a replica's own local startup is insufficient.
+        self.assertFalse(replicas['a'].guide_status()['ready'])
+        replicas['a'].receive(following[0][1])
+        self.assertTrue(replicas['a'].guide_status()['ready'])
+        self.assertFalse(replicas['b'].guide_status()['ready'])
+
     def test_complete_catalogue_uses_actor_requests_and_identical_compared_effects(self):
         c, r, engines, sources = self.pair(fixture_inputs())
         self.until(c, r, c._request_inputs())

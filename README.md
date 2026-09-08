@@ -1,6 +1,6 @@
 # TFCoop für Transport Fever 2
 
-**Alpha5.17-Testbegleiter / v0.5.17** führt Host und Freund durch einen zusammenhängenden festen Fahrzeug- und Linientest. Der vereinfachte Launcher zeigt den aktuellen Auftrag, die zuständige Rolle und genau einen Aktionsknopf. Schritte zählen erst nach verglichenen Ergebnissen beider Spiele. Die normale freie Spieloberfläche folgt später.
+**Alpha5.18-Testbegleiter / v0.5.18** führt Host und Freund durch einen zusammenhängenden festen Fahrzeug- und Linientest. Der vereinfachte Launcher zeigt den aktuellen Auftrag, die zuständige Rolle und genau einen Aktionsknopf. Schritte zählen erst nach verglichenen Ergebnissen beider Spiele. Die normale freie Spieloberfläche folgt später.
 
 ## Download und Start
 

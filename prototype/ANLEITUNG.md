@@ -1,18 +1,23 @@
-# TFCoop · Alpha5.17-Testbegleiter
+# TFCoop · Alpha5.18-Testbegleiter
 
 Ein geführter gemeinsamer Fahrzeug- und Linientest. Der Launcher zeigt immer nur den aktuellen Auftrag für Host oder Freund.
 
 ## Start auf beiden PCs
 
 1. TF2 und den alten Test schließen. Launcher neu öffnen und das Update abwarten.
-2. Die eigene Rolle wählen: **Host** oder **Freund**. Eure gemerkte Verbindung und die bereits übernommene saubere große Ausgangskarte bleiben gültig.
+2. Die eigene Rolle wählen: **Host** oder **Freund**. Bei Hamachi tragen beide dieselbe **Hamachi-IPv4 des Hosts** als Host-Adresse ein, auch der Freund. Die Host-Adresse wird im Hauptfenster angezeigt und lässt sich unter den Einstellungen ändern. Verbindung und saubere große Ausgangskarte bleiben gespeichert.
 3. **Test vorbereiten** drücken. Eine frühere eigene Testinstallation wird geprüft zurückgesetzt. Jeder erhält eine frische Testsave-Kopie.
 4. **Verbinden** drücken. Sobald beide bereit sind, über den angezeigten Knopf TF2 starten.
-5. Im Spiel genau den frischen Spielstand laden, dessen Name im Launcher steht. Die Namen dürfen auf beiden PCs verschieden sein; die zugrunde liegenden Dateien werden verglichen. Strict Sync Alpha5.17 und Legacy Fahrzeuge gehören zur sauberen Basis.
+5. Im Spiel genau den frischen Spielstand laden, dessen Name im Launcher steht. Die Namen dürfen auf beiden PCs verschieden sein; die zugrunde liegenden Dateien werden verglichen. Strict Sync Alpha5.18 und Legacy Fahrzeuge gehören zur sauberen Basis.
 
 ## Der geführte Test
 
-Nach dem kurzen Aufbau erscheint zum Beispiel **Host pausiert gemeinsam**.
+Zuerst warten beide auf die geladenen Spiele. Dann baut der bestehende kurze
+Automatiklauf Straße, Depot und Haltestellen, kauft ein Fahrzeug und weist es
+seiner Linie zu. Der Launcher zeigt die tatsächliche Aufbauphase und den Stand
+der zehn Vorbereitungsrunden. Ihr müsst dabei noch keinen Auftrag auslösen.
+Erst wenn der Aufbau geprüft und der Start von beiden Spielen bestätigt ist,
+erscheint **Host pausiert gemeinsam**.
 Nur der angesprochene Spieler drückt den passenden Aktionsknopf im Launcher.
 Der Auftrag wird in beiden Spielen ausgeführt. Der andere sieht, auf wen gewartet wird.
 Erst nach gemeinsamer Bestätigung erscheint der nächste Auftrag.

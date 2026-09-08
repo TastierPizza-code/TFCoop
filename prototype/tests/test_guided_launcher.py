@@ -6,6 +6,7 @@ from unittest.mock import Mock, patch
 
 from prototype import guided_ui, launcher
 from prototype.tests.test_update_startup import Value
+from prototype.tests import test_guided_probe as protocol_fixtures
 
 
 STEPS = (
@@ -23,14 +24,16 @@ def progress(index=0, **changes):
               "step_id": STEPS[index]["id"] if index < len(STEPS) else None,
               "completed_step_ids": [item["id"] for item in STEPS[:index]],
               "completed_steps": index, "total_steps": len(STEPS), "settled_revision": index,
-              "phase": "ready" if index < len(STEPS) else "completed", "pending": False, "error": ""}
+              "phase": "ready" if index < len(STEPS) else "completed", "pending": False, "error": "",
+              "ready": index < len(STEPS)}
     return result | changes
 
 
 def status(index=0):
     return {"test_mode": "guided_suite_v1", "role": "a", "alive": True, "peer_started": True,
+            "round": 10, "lobby": {"state": "connected"}, "peer": {"state": "running", "round": 10},
             "failure": "", "stopping": False, "completed": False, "finish_requested": False,
-            "live": {"started": True, "guided": progress(index), "acknowledged_seq": {"a": 0, "b": 0}}}
+            "live": {"started": True, "confirmed_paused": False, "guided": progress(index), "acknowledged_seq": {"a": 0, "b": 0}}}
 
 
 class GuidedViewTests(unittest.TestCase):
@@ -108,9 +111,10 @@ class GuidedViewTests(unittest.TestCase):
     def test_installed_catalog_is_presentable_for_both_players(self):
         from prototype.strict_sync.guided_catalog import STEPS as installed_steps
         for index, item in enumerate(installed_steps):
-            source = {"guided": {"index": index, "step": item["step"], "step_id": item["id"],
+            source = {"round": 10, "live": {"started": True, "confirmed_paused": False},
+                      "guided": {"index": index, "step": item["step"], "step_id": item["id"],
                                   "completed_step_ids": [row["id"] for row in installed_steps[:index]],
-                                  "phase": "ready"}}
+                                  "phase": "ready", "ready": True}}
             for role in ("a", "b"):
                 with self.subTest(step=item["id"], role=role):
                     view = guided_ui.card(source, installed_steps, role=role, available=True)
@@ -207,7 +211,9 @@ class GuidedHandlerTests(unittest.TestCase):
 
     def test_final_report_keeps_confirmed_checklist_when_live_progress_is_gone(self):
         app = self.render_app()
-        app.last_live_status = {"completed": True, "live_result": {"guided": progress(2)}}
+        app.last_live_status = {"completed": True, "round": 10,
+                               "live_result": {"guided": progress(2),
+                                   "progress": {"started": True, "confirmed_paused": False}}}
         app._render_wizard()
         self.assertEqual(app.guided_count.get(), "2 von 2 Schritten gemeinsam bestätigt")
         self.assertTrue(all(row[2] == "confirmed" for row in app._render_checklist.call_args.args[0]))
@@ -221,6 +227,106 @@ class GuidedHandlerTests(unittest.TestCase):
         app.controller.alive.return_value = False
         app._render_wizard()
         app.wizard_prepare_button.configure.assert_called_with(state="normal")
+
+    def test_pregame_latent_catalogue_does_not_hide_the_start_button(self):
+        from prototype.tests.test_guided_probe import GuidedCoordinator, GUIDED_CAPABILITY, CAPABILITIES, EPOCH, MANIFEST, STEP_US
+        protocol = GuidedCoordinator(EPOCH, MANIFEST, tuple(sorted((*CAPABILITIES, GUIDED_CAPABILITY))), step_us=STEP_US)
+        app = self.render_app()
+        app.last_live_status.update(round=0, peer={"state": "waiting_game"}, live=protocol.live_progress())
+        app._render_wizard()
+        app.wizard_game_button.configure.assert_called_with(state="normal")
+        self.assertIn("TF2 starten", app.guided_heading.get())
+        self.assertEqual(app.guided_actor.get(), "Beide")
+        self.assertNotIn("Host pausiert", app.guided_heading.get())
+        app.guided_action_button.grid.assert_not_called()
+        self.assertTrue(all(row[2] == "untested" for row in app._render_checklist.call_args.args[0]))
+
+    def test_current_host_address_is_visible_without_exposing_the_pairing_code(self):
+        app = self.render_app()
+        app._render_wizard()
+        self.assertIn("Host-IP (bei beiden gleich): 127.0.0.1", app.connection_summary.get())
+        self.assertNotIn(app.code.get(), app.connection_summary.get())
+
+
+class GuidedStartupTests(unittest.TestCase):
+    def catalog(self):
+        from prototype.strict_sync.guided_catalog import STEPS as current
+        return current
+
+    def initial_protocol(self):
+        from prototype.tests.test_guided_probe import GuidedCoordinator, GUIDED_CAPABILITY, CAPABILITIES, EPOCH, MANIFEST, STEP_US
+        return GuidedCoordinator(EPOCH, MANIFEST, tuple(sorted((*CAPABILITIES, GUIDED_CAPABILITY))), step_us=STEP_US)
+
+    def assert_no_actor(self, source):
+        for role in ("a", "b"):
+            view = guided_ui.card(source, self.catalog(), role=role, available=True)
+            self.assertFalse(view.enabled)
+            self.assertIsNone(view.command)
+            self.assertEqual(view.actor, "Beide")
+            self.assertEqual(view.completed, 0)
+            self.assertNotIn("Host pausiert", view.title)
+            self.assertTrue(all(row[2] == "untested" for row in view.checklist))
+
+    def test_real_initialized_coordinator_metadata_is_never_a_play_instruction(self):
+        protocol = self.initial_protocol()
+        self.assertEqual(protocol.guide_status()["step"], 1)
+        for state in ("waiting_game", "waiting_peer", "running"):
+            source = {"round": 0, "lobby": {"state": "connected"},
+                      "peer": {"state": state, "round": 0}, "live": protocol.live_progress()}
+            self.assert_no_actor(source)
+
+    def test_startup_states_distinguish_connection_load_and_actual_short_setup(self):
+        source = {"round": 0, "live": self.initial_protocol().live_progress()}
+        self.assertEqual(guided_ui.startup_card(source).phase, "connecting")
+        source["lobby"] = {"state": "connected"}
+        self.assertEqual(guided_ui.startup_card(source).phase, "starting_controller")
+        source["peer"] = {"state": "waiting_game"}
+        self.assertTrue(guided_ui.startup_card(source).start_game)
+        source["peer"]["native"] = {"outer_calls": 7}
+        self.assertEqual(guided_ui.startup_card(source).phase, "waiting_world")
+        self.assertFalse(guided_ui.startup_card(source).start_game)
+        source["peer"] = {"state": "waiting_peer"}
+        self.assertEqual(guided_ui.startup_card(source).phase, "waiting_peer")
+        source["peer"] = {"state": "running", "round": 3, "phase_label": "Depot bauen"}
+        view = guided_ui.startup_card(source)
+        self.assertEqual(view.phase, "preparing")
+        self.assertEqual(view.setup_round, 3)
+        self.assertIn("Depot bauen", view.instruction)
+        self.assertIn("4 / 10", view.title)
+        self.assert_no_actor(source)
+
+    def test_one_live_ready_receipt_does_not_release_first_instruction(self):
+        from prototype.tests.test_guided_probe import GuidedProbeTests
+        coordinator, replicas, _, _ = GuidedProbeTests().pair()
+        messages = dict(coordinator._request_inputs())
+        source = {"round": 10, "lobby": {"state": "connected"}, "peer": {"state": "running", "round": 10},
+                  "live": coordinator.live_progress()}
+        self.assert_no_actor(source)
+        reply_a = replicas["a"].receive(messages["a"])
+        self.assertEqual(coordinator.receive("a", reply_a), [])
+        source["live"] = replicas["a"].live_progress()
+        self.assert_no_actor(source)
+        reply_b = replicas["b"].receive(messages["b"])
+        next_messages = dict(coordinator.receive("b", reply_b))
+        source["live"] = coordinator.live_progress()
+        self.assertTrue(guided_ui.joint_started(source))
+        host_card = guided_ui.card(source, self.catalog(), role="a", available=True)
+        self.assertTrue(host_card.enabled)
+        source["live"] = replicas["a"].live_progress()
+        self.assert_no_actor(source)
+        replicas["a"].receive(next_messages["a"])
+        source["live"] = replicas["a"].live_progress()
+        self.assertTrue(guided_ui.joint_started(source))
+        self.assertTrue(guided_ui.card(source, self.catalog(), role="a", available=True).enabled)
+
+    def test_live_flag_alone_or_incomplete_setup_cannot_release_action(self):
+        for change in ({"confirmed_paused": None}, {"confirmed_paused": 0}, {"started": False}):
+            source = status()
+            source["live"].update(change)
+            self.assert_no_actor(source)
+        source = status()
+        source["round"] = 9
+        self.assert_no_actor(source)
 
 
 if __name__ == "__main__":
