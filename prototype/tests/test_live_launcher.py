@@ -162,8 +162,13 @@ class LiveLauncherTests(unittest.TestCase):
             "padding": "x" * (4 * 1024 * 1024), "live": {"required_interactions_met": True}})
         self.assertTrue(controller.poll()["completed"])
 
-    def test_mode_identity_keeps_all_five_paths_distinct(self):
-        self.assertEqual(len({workflow.lobby_manifest("e" * 64, mode) for mode in workflow.TEST_MODES}), 5)
+    def test_mode_identity_preserves_old_paths_and_separates_guided_suite(self):
+        previous = {workflow.STREAM_MODE, workflow.TIMING_MODE, workflow.LIVE_MODE,
+                    workflow.PACED_LIVE_MODE, workflow.MANUAL_DEPOT_MODE}
+        self.assertEqual(set(workflow.TEST_MODES), previous | {workflow.GUIDED_MODE})
+        previous_manifests = {workflow.lobby_manifest("e" * 64, mode) for mode in previous}
+        self.assertEqual(len(previous_manifests), 5)
+        self.assertNotIn(workflow.lobby_manifest("e" * 64, workflow.GUIDED_MODE), previous_manifests)
 
     def test_real_headless_button_handler_sends_request_and_disables_after_end(self):
         from prototype.tests.test_update_startup import headless_app

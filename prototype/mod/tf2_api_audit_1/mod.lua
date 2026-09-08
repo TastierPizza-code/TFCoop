@@ -1,6 +1,6 @@
 function data()
-  return {info={name='TF2 API-Diagnose (Alpha5.15)',
+  return {info={name='TF2 API-Diagnose (Alpha5.17)',
     description='Einmalige, begrenzte API-Rohdatenmessung. Baut nichts und steuert die Simulation nicht.',
-    minorVersion=15,severityAdd='NONE',severityRemove='NONE',tags={'Script Mod'},
+    minorVersion=17,severityAdd='NONE',severityRemove='NONE',tags={'Script Mod'},
     authors={{name='TF2 Co-op Project',role='CREATOR'}}}}
 end

@@ -133,6 +133,9 @@ def build(stamp=None, save=BASELINE, *, skip_self_check=False, include_save=Fals
     _copy_file(ROOT / "prototype/docs/BUILD_SCENE_ASSETS_2026-09-06.md", bundle / "docs/BUILD_SCENE_ASSETS.md")
     for name in ("CONSTRUCTION_PARAMS_FIX.md", "FIELD_LOOKUP_FIX.md", "GITHUB_UPDATES.md"):
         _copy_file(ROOT / "prototype/docs" / name, bundle / "docs" / name)
+    for name in ("GAMEPLAY_CHECKLIST.md", "COMMAND_COVERAGE_PLAN.md", "GUIDED_TEST.md",
+                 "ALPHA516_EVIDENCE.md", "ACCEPTED_BASELINE.md", "ACCEPTED_INPUT_BASELINE.md"):
+        _copy_file(ROOT / "prototype/docs" / name, bundle / "docs" / name)
     _licenses(bundle, include_save=include_save)
     if any(file_hash(path) != expected for path, expected in source_hashes.items()):
         raise ValueError("source changed while copying; finish edits and use a new build")

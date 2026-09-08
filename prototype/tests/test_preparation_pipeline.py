@@ -115,7 +115,7 @@ class PreparationPipelineTests(unittest.TestCase):
         setup["manifest_digest"] = digest(manifest)
         setup_path.write_text(json.dumps(setup), encoding="utf-8")
 
-    def test_all_five_modes_reach_the_actual_driver_and_restore_exactly(self):
+    def test_all_modes_reach_the_actual_driver_and_restore_exactly(self):
         file_manifests, lobby_manifests, imported_names = {}, {}, set()
         for mode in workflow.TEST_MODES:
             for role in ("a", "b"):
@@ -126,16 +126,16 @@ class PreparationPipelineTests(unittest.TestCase):
                     self.assertTrue(install.installation_status(self.game)["installed"])
                     session, setup = driver.read_setup(prepared.session)
                     shared = json.loads((session / "probe_manifest.json").read_text(encoding="utf-8"))
-                    short = mode in (workflow.PACED_LIVE_MODE, workflow.MANUAL_DEPOT_MODE)
+                    short = mode in (workflow.PACED_LIVE_MODE, workflow.MANUAL_DEPOT_MODE, workflow.GUIDED_MODE)
                     expected_semantics = {"enabled": True, "native_gate_required": True, "profile": "build_v2"}
                     if short:
                         expected_semantics["preparation"] = SHORT_BUILD_CONTRACT
-                    if mode == workflow.MANUAL_DEPOT_MODE:
-                        expected_semantics["input_mode"] = "manual_depot_v1"
+                    if mode in (workflow.MANUAL_DEPOT_MODE, workflow.GUIDED_MODE):
+                        expected_semantics["input_mode"] = mode
                     self.assertEqual(shared["config_semantics"], expected_semantics)
                     self.assertEqual(setup["measurement_preparation"], SHORT_BUILD_CONTRACT if short else None)
                     self.assertEqual(setup["measurement_input_mode"],
-                                     "manual_depot_v1" if mode == workflow.MANUAL_DEPOT_MODE else None)
+                                     mode if mode in (workflow.MANUAL_DEPOT_MODE, workflow.GUIDED_MODE) else None)
                     self.assertEqual(setup["manifest_digest"], digest(shared))
                     self.assertEqual(prepared.manifest, workflow.lobby_manifest(digest(shared), mode))
                     self.assertEqual(file_manifests.setdefault(mode, digest(shared)), digest(shared))
@@ -167,7 +167,8 @@ class PreparationPipelineTests(unittest.TestCase):
                             stream_probe="--stream-probe" in command,
                             live_probe="--live-probe" in command,
                             paced_live_probe="--paced-live-probe" in command,
-                            manual_depot_probe="--manual-depot-probe" in command)
+                            manual_depot_probe="--manual-depot-probe" in command,
+                            guided_probe="--guided-probe" in command)
                         self.assertEqual(args.rounds, 10 if short else 240)
                         self.assertEqual(driver.selected_profile(args, setup), "build_v2")
                         self.assertEqual("--live-input-file" in command,
@@ -196,7 +197,32 @@ class PreparationPipelineTests(unittest.TestCase):
         self.assertEqual(len(set(old)), 1)  # Old full recipes retain their shared file identity.
         self.assertNotIn(file_manifests[workflow.PACED_LIVE_MODE], old)
         self.assertNotIn(file_manifests[workflow.MANUAL_DEPOT_MODE], [*old, file_manifests[workflow.PACED_LIVE_MODE]])
-        self.assertEqual(len(set(lobby_manifests.values())), 5)
+        self.assertEqual(len(set(lobby_manifests.values())), len(workflow.TEST_MODES))
+        self.assertNotIn(file_manifests[workflow.GUIDED_MODE],
+                         [value for mode, value in file_manifests.items() if mode != workflow.GUIDED_MODE])
+
+    def test_guided_rerun_restores_owned_old_test_and_imports_fresh_save(self):
+        first = self.prepare(workflow.MANUAL_DEPOT_MODE)
+        first_save = Path(first.imported_save)
+        first_hash = hashlib.sha256(first_save.read_bytes()).hexdigest()
+        second = self.prepare(workflow.GUIDED_MODE)
+        self.assertNotEqual(second.imported_save, first.imported_save)
+        self.assertEqual(hashlib.sha256(first_save.read_bytes()).hexdigest(), first_hash)
+        prior_journal = json.loads((Path(first.backup_path) / "journal.json").read_text("utf-8"))
+        self.assertEqual(prior_journal["state"], "restored")
+        install.restore_probe(self.game)
+        self.assertEqual(self.game_bytes(), self.original_game)
+        self.assert_original_saves()
+
+    def test_guided_rerun_refuses_externally_changed_installed_file(self):
+        self.prepare(workflow.MANUAL_DEPOT_MODE)
+        target = self.game / "alut.dll"
+        target.write_bytes(b"external replacement must not be overwritten")
+        before = _files(self.game)
+        with self.assertRaises(install.ProbeInstallError):
+            self.prepare(workflow.GUIDED_MODE)
+        self.assertEqual(_files(self.game), before)
+        self.assert_original_saves()
 
     def test_unknown_or_incompatible_semantics_fail_before_any_game_or_save_write(self):
         valid = {"enabled": True, "native_gate_required": True,

@@ -238,6 +238,30 @@ def self_check(report_path: Path) -> int:
                 raise RuntimeError("packaged manual depot or private pairing integration is incomplete")
             result["manual_depot_profile"] = {"resources_checked": True, "schedule": depot_schedule(),
                                                "private_pairing": True, "game_runtime_verified": False}
+            from prototype.strict_sync.guided_catalog import STEPS, catalogue
+            from prototype.strict_sync.guided_input import validate_command as guided_command
+            from prototype.strict_sync.guided_probe import (GuidedCoordinator, GuidedReplica,
+                GUIDED_CAPABILITY, schedule as guided_schedule)
+            from prototype.strict_sync.guided_engine import GuidedEngineAdapter, GuidedStreamEngine
+            from prototype.guided_ui import card
+            guided_config = stage_probe.configuration_semantics("build_v2", SHORT_BUILD_CONTRACT, "guided_suite_v1")
+            if (probe_install.validate_configuration_semantics(guided_config) != guided_config
+                    or GUIDED_CAPABILITY not in measurement_capabilities(SimpleNamespace(guided_probe=True))
+                    or launcher_session.preparation_rounds(launcher_session.GUIDED_MODE) != SHORT_BUILD_ROUNDS
+                    or not callable(GuidedCoordinator.live_report) or not callable(GuidedReplica.live_report)
+                    or not callable(GuidedEngineAdapter.apply_guided) or not callable(GuidedStreamEngine.preview_guided)
+                    or guided_schedule()["chunk_steps"] != CHUNK_STEPS
+                    or guided_schedule()["checkpoint_steps"] != CHECKPOINT_STEPS
+                    or guided_schedule()["separate_input_poll"] is not False
+                    or len(STEPS) != 26 or catalogue()["normal_game_tools_connected"] is not False):
+                raise RuntimeError("packaged guided suite is incomplete")
+            for step in STEPS:
+                if guided_command(step["command"]) != step["command"]:
+                    raise RuntimeError("packaged guided catalogue command differs")
+            if card({}, STEPS, role="a").enabled:
+                raise RuntimeError("packaged guided UI enables an unconfirmed action")
+            result["guided_profile"] = {"resources_checked": True, "schedule": guided_schedule(),
+                                        "steps": len(STEPS), "game_runtime_verified": False}
             scheduled = [command for number in range(BUILD_ROUNDS) for peer in ("a", "b")
                          for command in build_inputs(peer, number)]
             from collections import Counter

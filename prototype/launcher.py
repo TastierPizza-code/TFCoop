@@ -15,7 +15,7 @@ from tkinter import filedialog, messagebox, ttk
 from coop.install import discover_game
 from coop.native import NativeError, game_is_running
 from prototype.strict_sync import launcher_session as workflow
-from prototype import diagnostic_session as diagnostics
+from prototype import diagnostic_session as diagnostics, guided_ui
 from prototype.strict_sync import test_pairing
 
 
@@ -23,8 +23,8 @@ class App:
     def __init__(self, root, *, skip_update=False):
         self.root = root
         root.title("TF2-Koop · " + workflow.VERSION)
-        root.geometry("980x810")
-        root.minsize(860, 650)
+        root.geometry("900x720")
+        root.minsize(760, 620)
         self.events = queue.Queue()
         self.busy = False
         self.prepared = None
@@ -44,13 +44,15 @@ class App:
         self.game = tk.StringVar(value=settings.get("game_dir", ""))
         self.saves = tk.StringVar(value=settings.get("save_dir", ""))
         self.role = tk.StringVar(value="a")
-        self.test_mode = tk.StringVar(value=workflow.MANUAL_DEPOT_MODE)
+        self.test_mode = tk.StringVar(value=workflow.GUIDED_MODE)
         self.host = tk.StringVar(value="")
         self.code = tk.StringVar(value=workflow.new_code())
         self.pairing_error = ""
+        self.pairing_saved = False
         try:
             profile = test_pairing.load_profile(workflow.local_root())
             if profile:
+                self.pairing_saved = True
                 self.host.set(profile["host"])
                 self.code.set(profile["code"])
                 self.role.set(profile["role"])
@@ -68,6 +70,15 @@ class App:
         self.baseline_status = tk.StringVar(value="Lokalen Testspielstand prüfen …")
         self.diagnostic_status = tk.StringVar(value="Allein möglich. TF2 und den bisherigen Test zuerst schließen, dann Diagnose vorbereiten.")
         self.diagnostic_save = tk.StringVar(value="Die Vorbereitung legt einen eigenen Diagnosespielstand an.")
+        self.guided_pending_sequence = None
+        self.guided_pending_revision = None
+        self.guided_pending_index = None
+        self.guided_heading = tk.StringVar(value="1  ·  Gemeinsam vorbereiten")
+        self.guided_actor = tk.StringVar(value="Beide")
+        self.guided_instruction = tk.StringVar(value="")
+        self.guided_count = tk.StringVar(value="")
+        self.connection_summary = tk.StringVar(value="")
+        self._checklist_rows = None
         self._build()
         if self.pairing_error:
             self.status.set(self.pairing_error + " Bitte IP, Schlüssel und Rolle bewusst neu eintragen und vorbereiten.")
@@ -90,10 +101,110 @@ class App:
         root.after(250, self.tick)
 
     def _build(self):
+        """Keep the current task visible; the complete older UI stays optional."""
+        style = ttk.Style()
+        style.configure("Title.TLabel", font=("Segoe UI", 20, "bold"))
+        style.configure("Step.TLabel", font=("Segoe UI", 16, "bold"))
+        style.configure("Actor.TLabel", font=("Segoe UI", 11, "bold"), foreground="#18514e")
+        style.configure("Status.TLabel", font=("Segoe UI", 11))
+        style.configure("Action.TButton", font=("Segoe UI", 11, "bold"), padding=(16, 10))
+        shell = ttk.Frame(self.root)
+        shell.pack(fill="both", expand=True)
+        canvas = tk.Canvas(shell, highlightthickness=0)
+        scroll = ttk.Scrollbar(shell, orient="vertical", command=canvas.yview)
+        scroll.pack(side="right", fill="y")
+        canvas.pack(side="left", fill="both", expand=True)
+        canvas.configure(yscrollcommand=scroll.set)
+        outer = ttk.Frame(canvas, padding=22)
+        embedded = canvas.create_window((0, 0), window=outer, anchor="nw")
+        outer.bind("<Configure>", lambda event: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.bind("<Configure>", lambda event: canvas.itemconfigure(embedded, width=event.width))
+        self.root.bind("<MouseWheel>", lambda event: canvas.yview_scroll(-int(event.delta / 120), "units"))
+        ttk.Label(outer, text="TF2-Koop · " + workflow.VERSION, style="Title.TLabel").pack(anchor="w")
+        ttk.Label(outer, text="Gemeinsam Schritt für Schritt testen", font=("Segoe UI", 12)).pack(anchor="w", pady=(3, 5))
+        ttk.Label(outer, text="Aktionen im Launcher auslösen · feste Testplätze · Kamera im Spiel frei", wraplength=790).pack(anchor="w", pady=(0, 5))
+        ttk.Label(outer, textvariable=self.update_status, wraplength=790).pack(anchor="w")
+        roles = ttk.Frame(outer)
+        roles.pack(fill="x", pady=(15, 4))
+        ttk.Label(roles, text="Auf diesem PC:").pack(side="left", padx=(0, 12))
+        self.wizard_inputs = []
+        for label, value in (("Host", "a"), ("Freund", "b")):
+            button = ttk.Radiobutton(roles, text=label, value=value, variable=self.role,
+                                     command=self._buttons)
+            button.pack(side="left", padx=(0, 18))
+            self.wizard_inputs.append(button)
+        ttk.Label(outer, textvariable=self.connection_summary, wraplength=790).pack(anchor="w", pady=(0, 12))
+        step = ttk.LabelFrame(outer, text="Euer aktueller Schritt", padding=18)
+        step.pack(fill="x")
+        ttk.Label(step, textvariable=self.guided_actor, style="Actor.TLabel").pack(anchor="w")
+        ttk.Label(step, textvariable=self.guided_heading, style="Step.TLabel", wraplength=740).pack(anchor="w", pady=(4, 9))
+        ttk.Label(step, textvariable=self.guided_instruction, wraplength=740,
+                  font=("Segoe UI", 11)).pack(anchor="w")
+        self.wizard_save = ttk.Frame(step)
+        ttk.Label(self.wizard_save, text="Genau diesen frischen Spielstand laden:").pack(anchor="w")
+        ttk.Entry(self.wizard_save, textvariable=self.save_name, state="readonly",
+                  font=("Consolas", 10)).pack(fill="x", pady=(4, 0))
+        actions = ttk.Frame(step)
+        actions.pack(fill="x", pady=(15, 0))
+        self.wizard_prepare_button = ttk.Button(actions, text="Test vorbereiten", command=self.prepare, style="Action.TButton")
+        self.wizard_connect_button = ttk.Button(actions, text="Mit dem Mitspieler verbinden", command=self.connect, style="Action.TButton")
+        self.wizard_game_button = ttk.Button(actions, text="TF2 über Steam starten", command=self.start_game, style="Action.TButton")
+        self.guided_action_button = ttk.Button(actions, text="Gemeinsamen Aufbau abwarten", command=self.submit_guided, style="Action.TButton")
+        self.wizard_buttons = (self.wizard_prepare_button, self.wizard_connect_button,
+                               self.wizard_game_button, self.guided_action_button)
+        for button in self.wizard_buttons:
+            button.grid(row=0, column=0, sticky="w")
+        self.wizard_save.pack(fill="x", pady=(12, 0))
+        ttk.Label(outer, textvariable=self.status, wraplength=790).pack(anchor="w", pady=(10, 6))
+        self.guided_progress_bar = ttk.Progressbar(outer, maximum=1, mode="determinate")
+        self.guided_progress_bar.pack(fill="x")
+        ttk.Label(outer, textvariable=self.guided_count, wraplength=790).pack(anchor="w", pady=(3, 4))
+        self.checklist_frame = ttk.Frame(outer)
+        self.checklist_toggle = ttk.Button(outer, text="Prüfliste anzeigen ▸", command=self.toggle_checklist)
+        self.checklist_toggle.pack(anchor="w", pady=(3, 6))
+        self.checklist = ttk.Treeview(self.checklist_frame, columns=("result",), show="tree headings", height=8)
+        self.checklist.heading("#0", text="Prüfschritt")
+        self.checklist.heading("result", text="Gemeinsames Ergebnis")
+        self.checklist.column("#0", width=480, stretch=True)
+        self.checklist.column("result", width=175, stretch=False)
+        self.checklist.pack(fill="x")
+        self.checklist.tag_configure("confirmed", foreground="#246345")
+        self.checklist.tag_configure("current", foreground="#155c98")
+        footer = ttk.Frame(outer)
+        footer.pack(fill="x", pady=(10, 10))
+        self.wizard_export_button = ttk.Button(footer, text="Testbericht speichern …", command=self.export)
+        self.wizard_export_button.pack(side="left")
+        self.wizard_stop_button = ttk.Button(footer, text="Test abbrechen", command=self.stop)
+        self.wizard_stop_button.pack(side="left", padx=8)
+        ttk.Button(footer, text="Anleitung", command=self.guide).pack(side="right")
+        self.advanced_toggle = ttk.Button(outer, text="Weitere Tests / Einstellungen ▸", command=self.toggle_advanced)
+        self.advanced_toggle.pack(anchor="w")
+        self.advanced_frame = ttk.Frame(outer, height=720)
+        self.advanced_frame.pack_propagate(False)
+        self._build_advanced(self.advanced_frame)
+        self.test_mode.trace_add("write", lambda *_: self._buttons())
+
+    def toggle_advanced(self):
+        if self.advanced_frame.winfo_manager():
+            self.advanced_frame.pack_forget()
+            self.advanced_toggle.configure(text="Weitere Tests / Einstellungen ▸")
+        else:
+            self.advanced_frame.pack(fill="x", pady=(8, 0))
+            self.advanced_toggle.configure(text="Weitere Tests / Einstellungen ▾")
+
+    def toggle_checklist(self):
+        if self.checklist_frame.winfo_manager():
+            self.checklist_frame.pack_forget()
+            self.checklist_toggle.configure(text="Prüfliste anzeigen ▸")
+        else:
+            self.checklist_frame.pack(fill="x", after=self.checklist_toggle, pady=(0, 4))
+            self.checklist_toggle.configure(text="Prüfliste verbergen ▾")
+
+    def _build_advanced(self, parent):
         style = ttk.Style()
         style.configure("Title.TLabel", font=("Segoe UI", 21, "bold"))
         style.configure("Status.TLabel", font=("Segoe UI", 11))
-        shell = ttk.Frame(self.root)
+        shell = ttk.Frame(parent)
         shell.pack(fill="both", expand=True)
         canvas = tk.Canvas(shell, highlightthickness=0)
         scroll = ttk.Scrollbar(shell, orient="vertical", command=canvas.yview)
@@ -104,12 +215,7 @@ class App:
         embedded = canvas.create_window((0, 0), window=outer, anchor="nw")
         outer.bind("<Configure>", lambda event: canvas.configure(scrollregion=canvas.bbox("all")))
         canvas.bind("<Configure>", lambda event: canvas.itemconfigure(embedded, width=event.width))
-        self.root.bind("<MouseWheel>", lambda event: canvas.yview_scroll(-int(event.delta / 120), "units"))
-        ttk.Label(outer, text="TF2-Koop  /  " + workflow.VERSION, style="Title.TLabel").pack(anchor="w")
-        ttk.Label(outer, text="Depotaufträge und Pause gemeinsam auslösen", font=("Segoe UI", 12)).pack(anchor="w", pady=(3, 6))
-        ttk.Label(outer, text="Auf beiden PCs neu vorbereiten. Vorher TF2 schließen und eine vorhandene Diagnoseinstallation unten wiederherstellen. Für diesen Bautest ist kein neuer Solo-Diagnoselauf nötig.",
-                  wraplength=900).pack(anchor="w", pady=(0, 13))
-        ttk.Label(outer, textvariable=self.update_status, wraplength=900).pack(anchor="w", pady=(0, 8))
+        ttk.Label(outer, text="Gespeicherte Verbindung, Ordner und frühere Tests", font=("Segoe UI", 12, "bold")).pack(anchor="w", pady=(0, 8))
         paths = ttk.LabelFrame(outer, text="1  ·  Ordner prüfen", padding=12)
         paths.pack(fill="x")
         paths.columnconfigure(1, weight=1)
@@ -130,7 +236,7 @@ class App:
         tabs.pack(fill="both", expand=True, pady=(12, 0))
         solo = ttk.Frame(tabs, padding=12)
         build = ttk.Frame(tabs, padding=12)
-        tabs.add(build, text="Gemeinsamer Eingabetest (experimentell)")
+        tabs.add(build, text="Testauswahl und Verbindung")
         tabs.add(solo, text="API-Diagnose allein")
         ttk.Label(solo, text="2  ·  Diagnose vorbereiten", font=("Segoe UI", 12, "bold")).pack(anchor="w")
         ttk.Label(solo, text="Die Vorbereitung stellt die native Testinstallation zurück, installiert die Diagnosemod und kopiert den lokalen Ausgangsspielstand. IP, Sitzungscode und Verbindung werden nicht benötigt.", wraplength=850).pack(anchor="w", pady=8)
@@ -144,7 +250,7 @@ class App:
         self.diagnostic_export_button = ttk.Button(solo, text="Diagnosebericht als ZIP …", command=self.export_diagnostic)
         self.diagnostic_export_button.pack(anchor="w", pady=8)
         ttk.Label(solo, text="Nur diesen eigenen Bericht zur Auswertung schicken. Anschließend TF2 schließen und unten die bisherige Installation wiederherstellen.", wraplength=850).pack(anchor="w")
-        ttk.Label(build, text=f"Der neue Test bereitet die Szene in {workflow.SHORT_BUILD_ROUNDS} Aufbaurunden vor. Danach könnt ihr die Fahrt beobachten und Pause/Fortsetzen mit den gemeinsamen Tasten unten steuern. Im Spiel noch nichts selbst bauen oder umschalten. Die Kamera dürft ihr bewegen.", wraplength=850).pack(anchor="w", pady=(0, 9))
+        ttk.Label(build, text="Für den geführten Test die Schrittkarte oben verwenden. Frühere Tests bleiben hier als Vergleich verfügbar. Im Spiel dürft ihr die Kamera bewegen; die gemeinsamen Aktionen werden im Launcher ausgelöst.", wraplength=720).pack(anchor="w", pady=(0, 9))
         modes = ttk.LabelFrame(build, text="Auf beiden PCs denselben Test wählen", padding=8)
         modes.pack(fill="x", pady=(0, 8))
         for value, label in workflow.TEST_MODES.items():
@@ -305,17 +411,21 @@ class App:
         threading.Thread(target=run, daemon=True).start()
 
     def _buttons(self):
-        locked = self.busy or self.prepared is not None or self.diagnostic is not None
-        for widget in self.inputs:
+        active = bool(self.controller and self.controller.alive())
+        guided_idle = bool(self.prepared and getattr(self.prepared, "test_mode", None) == getattr(workflow, "GUIDED_MODE", "guided_suite_v1")
+                           and self.controller and not active
+                           and any(self.last_live_status.get(key) for key in ("completed", "failure", "stopping")))
+        locked = self.busy or (self.prepared is not None and not guided_idle) or self.diagnostic is not None
+        for widget in self.inputs + getattr(self, "wizard_inputs", []):
             widget.configure(state="disabled" if locked else "normal")
         self.prepare_button.configure(state="disabled" if locked or not self.baseline_ready else "normal")
-        active = bool(self.controller and self.controller.alive())
         self.diagnostic_button.configure(state="disabled" if locked or active or not self.baseline_ready else "normal")
         self.diagnostic_export_button.configure(state="normal" if self.last_diagnostic and not self.busy else "disabled")
         self.connect_button.configure(state="normal" if self.prepared and not self.controller and not self.busy else "disabled")
         self.restore_button.configure(state="disabled" if self.busy or active else "normal")
         self.stop_button.configure(state="normal" if active else "disabled")
-        live_enabled = active and not self.busy and workflow.live_input_ready(self.last_live_status)
+        guided_mode = self.last_live_status.get("test_mode") == getattr(workflow, "GUIDED_MODE", "guided_suite_v1")
+        live_enabled = active and not self.busy and workflow.live_input_ready(self.last_live_status) and not guided_mode
         for widget in self.live_buttons:
             widget.configure(state="normal" if live_enabled else "disabled")
         depot_enabled = live_enabled and self.last_live_status.get("test_mode") == workflow.MANUAL_DEPOT_MODE
@@ -323,6 +433,159 @@ class App:
             widget.configure(state="readonly" if depot_enabled else "disabled")
         if hasattr(self, "depot_button"):
             self.depot_button.configure(state="normal" if depot_enabled else "disabled")
+        self._render_wizard()
+
+    def _render_wizard(self):
+        # Headless lifecycle tests intentionally construct only the old handler
+        # fields; neither they nor importing this module need a Tcl interpreter.
+        if not hasattr(self, "guided_heading"):
+            return
+        from prototype.strict_sync.guided_catalog import STEPS
+        status = self.last_live_status
+        active = bool(self.controller and self.controller.alive())
+        role = self.prepared.role if self.prepared else self.role.get()
+        mode = self.prepared.test_mode if self.prepared else self.test_mode.get()
+        guided = mode == workflow.GUIDED_MODE
+        profile_ready = bool(self.host.get().strip() and self.code.get().strip())
+        self.connection_summary.set(
+            "Gespeicherte Verbindung wird wiederverwendet. Änderungen unter Einstellungen."
+            if profile_ready and self.pairing_saved else
+            "Einmalig unter Einstellungen Host-IP und Testschlüssel mit dem Mitspieler abgleichen.")
+        self.wizard_export_button.configure(state="normal" if not self.busy and (self.prepared or self.last_run) else "disabled")
+        self.wizard_stop_button.configure(state="normal" if active else "disabled",
+                                          text="Test schließen" if status.get("completed") else "Test abbrechen")
+        for button in self.wizard_buttons:
+            button.grid_remove()
+            button.configure(state="disabled")
+        self.wizard_save.pack_forget()
+        show = self.wizard_prepare_button
+        self.wizard_prepare_button.configure(text="Test vorbereiten")
+        can_act = False
+        self.guided_actor.set("Beide")
+        self.guided_count.set("Die Prüfliste wird erst nach gemeinsamer Bestätigung abgehakt.")
+        self.guided_progress_bar.configure(maximum=len(STEPS), value=0)
+        if self.diagnostic is not None:
+            self.guided_heading.set("Solo-Diagnose vorbereitet")
+            self.guided_instruction.set("Die Diagnose und ihr Spielstand stehen unter Weitere Tests / Einstellungen. "
+                                        "Vor dem gemeinsamen Test bei geschlossenem TF2 die bisherige Installation wiederherstellen.")
+        elif not self.prepared:
+            self.guided_heading.set("1  ·  Gemeinsam vorbereiten")
+            self.guided_instruction.set(
+                "Beide schließen TF2 und wählen ihre Rolle. Danach auf beiden PCs Test vorbereiten drücken. "
+                "Der Test verwendet eine eigene frische Spielstandkopie."
+                if self.baseline_ready else
+                "Den gemeinsamen Ausgangsspielstand einmal unter Einstellungen → Testspielstand übernehmen auswählen. "
+                "Danach können beide den Test vorbereiten.")
+            can_act = not self.busy and self.baseline_ready
+        elif not self.controller:
+            self.guided_heading.set("2  ·  Mit dem Mitspieler verbinden")
+            self.guided_instruction.set("Beide drücken Verbinden. Der Launcher prüft Testdateien und Ausgangsspielstand gemeinsam. "
+                                        "IP und Testschlüssel bleiben für weitere Versuche gespeichert.")
+            show = self.wizard_connect_button
+            can_act = not self.busy
+        else:
+            peer = status.get("peer") or {}
+            live = status.get("live") or {}
+            if status.get("failure") or status.get("stopping") or (guided and (live.get("started") or guided_ui.guided_progress(status))):
+                self._update_guided_pending(status)
+                view = guided_ui.card(status, STEPS, role=role,
+                    available=active and not self.busy and workflow.live_input_ready(status),
+                    locally_pending=self.guided_pending_sequence is not None)
+                self.guided_heading.set(view.title)
+                self.guided_actor.set(view.actor + " ist dran" if view.actor in ("Host", "Freund") else view.actor)
+                self.guided_instruction.set(view.instruction)
+                self.guided_action_button.configure(text=view.action_label)
+                self.guided_progress_bar.configure(maximum=view.total, value=view.completed)
+                self.guided_count.set(f"{view.completed} von {view.total} Schritten gemeinsam bestätigt")
+                self._render_checklist(view.checklist)
+                show, can_act = self.guided_action_button, view.enabled
+            elif status.get("completed"):
+                self.guided_heading.set("Test abgeschlossen")
+                self.guided_instruction.set("Auf beiden PCs Testbericht speichern. Die Auswertung trennt den abgeschlossenen Ablauf "
+                                            "von den tatsächlich nachgewiesenen Funktionen.")
+                show = self.guided_action_button
+                show.configure(text="Berichte von beiden PCs speichern")
+            elif peer.get("state") == "waiting_game":
+                self.guided_heading.set("3  ·  TF2 starten und den Testspielstand laden")
+                self.guided_instruction.set("Beide starten TF2 und laden genau den unten genannten Spielstand. "
+                                            "Die passenden Testmods sind darin bereits ausgewählt. "
+                                            "Nach dem Laden startet die kurze Vorbereitung automatisch.")
+                self.wizard_save.pack(fill="x", pady=(12, 0))
+                show, can_act = self.wizard_game_button, not self.busy and not status.get("stopping")
+            elif live.get("started") and not guided:
+                self.guided_heading.set(workflow.TEST_MODES[mode])
+                self.guided_instruction.set("Dieser frühere Test bleibt unverändert. Seine Bedienung und Ergebnisse stehen "
+                                            "unter Weitere Tests / Einstellungen. Für die Schrittführung beim nächsten Vorbereiten "
+                                            "den geführten Gesamttest wählen.")
+                show = self.guided_action_button
+                show.configure(text="Früherer Test läuft")
+            else:
+                self.guided_heading.set("Gemeinsame Vorbereitung läuft")
+                self.guided_instruction.set("Auf Verbindung und beide geladenen Spielstände warten. "
+                                            "Sobald die kurze Vorbereitung auf beiden PCs bestätigt ist, erscheint der erste Auftrag.")
+                self.wizard_save.pack(fill="x", pady=(12, 0))
+                show = self.guided_action_button
+                show.configure(text="Auf beide Spiele warten")
+        if guided and self.controller and not active and (status.get("completed") or status.get("failure") or status.get("stopping")):
+            show = self.wizard_prepare_button
+            show.configure(text="Neuen Durchlauf vorbereiten")
+            can_act = not self.busy and self.baseline_ready
+            self.guided_instruction.set(self.guided_instruction.get() +
+                " Für einen neuen Versuch TF2 schließen und anschließend hier neu vorbereiten. "
+                "Der bisherige Bericht bleibt erhalten.")
+        if not guided_ui.guided_progress(status):
+            self._render_checklist(tuple((item["id"], item["title"], "untested") for item in STEPS))
+        show.grid()
+        show.configure(state="normal" if can_act else "disabled")
+
+    def _render_checklist(self, rows):
+        if rows == self._checklist_rows:
+            return
+        self._checklist_rows = rows
+        self.checklist.delete(*self.checklist.get_children())
+        labels = {"confirmed": "✓  gemeinsam bestätigt", "current": "→  aktueller Schritt", "untested": "○  noch ungeprüft"}
+        for key, title, state in rows:
+            self.checklist.insert("", "end", iid=key, text=title, values=(labels[state],), tags=(state,))
+
+    def _update_guided_pending(self, status):
+        if self.guided_pending_sequence is None:
+            return
+        progress = guided_ui.guided_progress(status)
+        acknowledged = ((status.get("live") or {}).get("acknowledged_seq") or {}).get(status.get("role"), 0)
+        if ((type(acknowledged) is int and acknowledged >= self.guided_pending_sequence)
+                or (type(progress.get("index")) is int and progress["index"] > self.guided_pending_index)
+                or (type(progress.get("settled_revision")) is int
+                    and type(self.guided_pending_revision) is int
+                    and progress["settled_revision"] > self.guided_pending_revision)):
+            self.guided_pending_sequence = None
+            self.guided_pending_revision = None
+            self.guided_pending_index = None
+
+    def submit_guided(self):
+        """Submit the displayed role's catalog command, never a local Next step."""
+        try:
+            from prototype.strict_sync.guided_catalog import STEPS
+            if not self.controller or not self.prepared or self.prepared.test_mode != workflow.GUIDED_MODE:
+                return
+            status = self.controller.poll()
+            self.last_live_status = status
+            self._update_guided_pending(status)
+            view = guided_ui.card(status, STEPS, role=self.prepared.role,
+                available=not self.busy and workflow.live_input_ready(status),
+                locally_pending=self.guided_pending_sequence is not None)
+            if not view.enabled or view.command is None:
+                self._buttons()
+                return
+            progress = guided_ui.guided_progress(status)
+            sequence = self.controller.submit_live(view.command)
+            self.guided_pending_sequence = sequence
+            self.guided_pending_revision = progress.get("settled_revision", 0)
+            self.guided_pending_index = progress.get("index")
+            self.status.set("Auftrag gesendet. Der Schritt wird nach Bestätigung auf beiden PCs automatisch abgehakt.")
+            self._buttons()
+        except Exception as exc:
+            self.status.set("Auftrag konnte nicht übergeben werden: " + str(exc))
+            self._buttons()
 
     def choose_directory(self, variable):
         directory = filedialog.askdirectory(parent=self.root, initialdir=variable.get() or None)
@@ -415,19 +678,29 @@ class App:
                 messagebox.showerror("Diagnosebericht", str(exc), parent=self.root)
 
     def prepare(self):
+        if self.busy or (self.controller and self.controller.alive()):
+            return
         values = (self.game.get(), self.saves.get(), self.role.get(), self.host.get(), self.code.get())
         test_mode = self.test_mode.get()
         self.status.set("Testdateien werden geprüft, bisherige Dateien gesichert und die Testsave kopiert …")
         def prepare_build():
             if diagnostics.diagnostic_status(values[0]).get("installed"):
-                raise ValueError("Zuerst TF2 schließen und die Diagnoseinstallation wiederherstellen.")
+                if test_mode == getattr(workflow, "GUIDED_MODE", "guided_suite_v1"):
+                    diagnostics.restore_diagnostic(values[0])
+                else:
+                    raise ValueError("Zuerst TF2 schließen und die Diagnoseinstallation wiederherstellen.")
             test_pairing.save_profile(workflow.local_root(), host=values[3], code=values[4], role=values[2])
             return workflow.prepare(*values, test_mode=test_mode)
         self._work(prepare_build, self._prepared)
 
     def _prepared(self, prepared):
         self.pairing_error = ""
+        self.pairing_saved = True
         self.prepared = self.last_run = prepared
+        self.controller = None
+        self.last_live_status = {}
+        self.diagnostic = None
+        self.guided_pending_sequence = self.guided_pending_revision = self.guided_pending_index = None
         self.save_name.set(Path(prepared.imported_save).name)
         self.status.set(f"{workflow.TEST_MODES[prepared.test_mode]} vorbereitet. Verbindung gespeichert. Beide wählen denselben Ablauf und Testschlüssel. Dann 'Verbinden & Test bereitstellen'.")
         self._save_settings()
@@ -505,6 +778,7 @@ class App:
     def _restored(self, result):
         self.prepared = self.controller = None
         self.last_live_status = {}
+        self.guided_pending_sequence = self.guided_pending_revision = self.guided_pending_index = None
         self.live_status.set("Die Tasten werden nach dem gemeinsamen automatischen Aufbau freigegeben.")
         self.diagnostic = None
         self.status.set("Bisherige Installation wiederhergestellt. Testsave-Kopien, Berichte und eure gemerkte Verbindung bleiben erhalten. Für den nächsten Versuch frisch vorbereiten.")

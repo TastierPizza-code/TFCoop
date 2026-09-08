@@ -1,5 +1,16 @@
 # Nächste Etappe: frei ausgelöste Eingaben
 
+## Neuer Auftrag: geführter gemeinsamer Funktionstest
+
+Der Nutzer möchte vor der normalen Ingame-Erfassung mehrere Befehlsfamilien
+in einem zusammenhängenden festen Test prüfen. Ein vereinfachter Testbegleiter
+zeigt jeweils nur den aktuellen Host-/Freund-Auftrag. Fortschritt entsteht aus
+beidseitig verglichenen Ergebnissen, nicht aus einem manuellen Weiter-Häkchen.
+Die [Nachweischeckliste](GAMEPLAY_CHECKLIST.md) trennt bestehende Laufnachweise,
+vorbereitete neue Schritte und offene Befehlsfamilien. Dieser Auftrag ersetzt
+die unmittelbare Priorität der normalen Straßenbau-Erfassung im folgenden Plan.
+Die akzeptierten Referenzen und ihre auswählbaren alten Abläufe bleiben erhalten.
+
 ## Aktueller Arbeitsplan nach der Befehlsbestandsaufnahme
 
 Die [Befehlsübersicht](COMMAND_COVERAGE_PLAN.md) erfasst Bauen/Abbruch,
@@ -17,7 +28,7 @@ zum Adaptervertrag. Linienänderungen dürfen keine ältere Gesamtfassung über
 eine neuere fremde Bearbeitung schreiben. Diese Etappen sind geplant, noch
 nicht implementiert; die Bestandsaufnahme veröffentlicht keine neue Version.
 
-## Aktueller neuer Versuch: Alpha5.16
+## Erhaltener Depotversuch: Alpha5.16
 
 `manual_depot_v1` ist als eigener Launcher-Depotversuch implementiert: vier
 Testplätze, Vierteldrehungen, zehnrundiger Aufbau und ein frischer gemeinsamer

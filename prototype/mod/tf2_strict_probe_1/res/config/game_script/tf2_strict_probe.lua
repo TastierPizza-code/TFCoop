@@ -231,6 +231,12 @@ function data()
     if p.plan.command.op=='SET_PAUSED' and last_snapshot.paused~=p.plan.command.value then
       error('pause callback did not produce requested pause flag',0)
     end
+    if p.plan.requested_paused~=nil then
+      if config.input_mode~='guided_suite_v1' or type(p.plan.requested_paused)~='boolean'
+        or last_snapshot.paused~=p.plan.requested_paused then
+        error('guided pause callback did not produce requested pause flag',0)
+      end
+    end
     awaiting_completion=nil; in_flight=false
     if not publish('applied',true,{receipt=retained_receipt}) then
       error('applied status write failed; command cannot be retried',0)
@@ -280,7 +286,8 @@ function data()
       snapshot(c.expected_sim_time_us)
       if not publish('ready',true) then error('snapshot status write failed',0) end
     elseif c.action=='preview' then
-      if config.input_mode~='manual_depot_v1' or type(E.preview)~='function' then error('manual preview capability not enabled',0)end
+      if (config.input_mode~='manual_depot_v1' and config.input_mode~='guided_suite_v1')
+        or type(E.preview)~='function' then error('manual preview capability not enabled',0)end
       if pending then error('preview cannot replace an unapplied plan',0)end
       local peer,seq=c.command_key:match('^([ab]):([1-9]%d*)$');seq=E.integer(seq,1)
       if seq<=seen_sequence[peer] then error('preview command key was already consumed',0)end
@@ -295,6 +302,10 @@ function data()
       if seq<=seen_sequence[peer] then error('command key was already planned; no command replay',0) end
       local before=snapshot(c.expected_sim_time_us)
       local plan=E.plan(c.command,c.command_key,c.expected_sim_time_us)
+      if plan.read_only~=nil and (plan.read_only~=true or config.input_mode~='guided_suite_v1'
+        or c.command.op~='GUIDED_ACTION' or plan.native~=nil or type(E.finish_read_only)~='function') then
+        error('invalid guided observation plan',0)
+      end
       seen_sequence[peer]=seq
       pending={plan=plan,key=c.command_key,boundary=c.boundary,time=c.expected_sim_time_us,command=json.encode(c.command),before=before}
       if not publish('planned',true,plan.preview and {preview=checked_plain(plan.preview,32768)}or nil) then error('plan acknowledgement write failed',0) end
@@ -307,6 +318,20 @@ function data()
       -- Persist in-flight before handing ownership to the engine, including
       -- when sendCommand invokes its real callback synchronously in engine Lua.
       if not publish('in_flight',false) then error('in-flight write failed; command not sent',0) end
+      if p.plan.read_only==true then
+        -- A held-world observation is acknowledged explicitly; no native
+        -- command or synthetic engine callback is used for an observation.
+        local r=E.finish_read_only(p.plan)
+        r.command_key=p.key; r.boundary=p.boundary; r.bindings=E.local_bindings()
+        retained_receipt=checked_receipt(r)
+        if retained_receipt.success~=true or type(retained_receipt.result.effect)~='table'
+          or retained_receipt.result.effect.kind~='observation' then
+          error('guided observation did not produce an explicit observation receipt',0)
+        end
+        awaiting_completion={plan=p}
+        finish_completion()
+        return
+      end
       local callback_called=false
       api.cmd.sendCommand(p.plan.native,function(result,success)
         if callback_called then halt('engine callback invoked more than once'); return end

@@ -1,10 +1,15 @@
 # Gemeinsame Spielbefehle: Inventar und nächste Etappen
 
-Stand: 8. September 2026, ausgeliefert ist weiterhin Alpha5.16. Diese Bestandsaufnahme
+Bestandsaufnahme vom 8. September 2026, Ausgangsstand Alpha5.16. Diese Bestandsaufnahme
 verbindet das offizielle TF2-Handbuch, die API-Referenz, gelesene lokale Stock-Skripte,
 die vorhandene native Analyse und den tatsächlich ausgelieferten Code. Sie ist
 ein Arbeitsplan; aufgeführte API-Funktionen sind keine freigegebenen Multiplayerfunktionen.
 Für Modbefehle und unbekannte native Bedienwege bleibt eine ausdrückliche Restkategorie.
+
+Die [Nachweischeckliste](GAMEPLAY_CHECKLIST.md) hakt nur bereits ausgewertete
+Zwei-PC-Ergebnisse ab. Auf anschließenden Nutzerwunsch wird zuerst ein umfassenderer
+geführter Launcher-Durchlauf mit festen Aufträgen vorbereitet. Die unten beschriebene
+normale Ingame-Erfassung folgt nach diesem Zwischenschritt.
 
 ## Gemeinsamer Kern und aktueller Nachweis
 
@@ -214,5 +219,6 @@ Diese Regeln sind der weitere Entwurf, nicht bereits allgemein implementiert:
 Neue Nutzertests behalten den kurzen Vorlauf und prüfen einen zusammenhängenden
 neuen Ablauf. Die akzeptierten Tempo- und Eingabereferenzen aus Alpha5.12/5.15
 sowie die beiden Alpha5.16-Depotläufe bleiben erhalten. Diese Bestandsaufnahme
-ändert keine Laufzeitdatei, Spielinstallation oder Releaseversion und startet
-keinen Test auf dem Benutzer-PC.
+änderte ursprünglich keine Laufzeitdatei, Spielinstallation oder Releaseversion
+und startete keinen Test auf dem Benutzer-PC. Der anschließend beauftragte
+[geführte Testbegleiter](GUIDED_TEST.md) wird getrennt davon umgesetzt und geprüft.

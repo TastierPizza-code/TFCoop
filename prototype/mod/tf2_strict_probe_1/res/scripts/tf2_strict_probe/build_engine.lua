@@ -5,6 +5,8 @@ local M = {}
 function M.new(json,config)
   local E = {bindings={},reverse={},scene={stops={}},groups={},stations={}}
   local manual = config and config.input_mode=='manual_depot_v1'
+  local guided_mode = config and config.input_mode=='guided_suite_v1'
+  local guided
   local manual_assets = manual and require 'tf2_strict_probe/manual_depot_assets' or nil
   local placements = {}
   local diagnostic_candidate
@@ -535,6 +537,7 @@ function M.new(json,config)
       before_balance=int(read(account,'balance','manual.company')),before_loan=int(read(account,'loan','manual.company'),0)}
   end
   function E.preview(c,key)
+    if guided and c.op=='GUIDED_ACTION'then return guided.preview(c,key)end
     preflight_report=nil
     local description,_,reason=manual_preview(c,key)
     if reason then description.reason=reason end
@@ -783,6 +786,7 @@ function M.new(json,config)
   function E.bind_initial(values)
     if #arr(values,0)~=0 then error('build test requires empty initial bindings',0)end
     site=choose_site()
+    if guided then guided.initialize()end
   end
   function E.local_bindings()local out={};for k,b in pairs(E.bindings)do out[k]=b.entity end;return out end
   function E.diagnostic_bindings()
@@ -797,6 +801,7 @@ function M.new(json,config)
   function E.callback_diagnostics()return callback_report end
   function E.preflight_diagnostics()return preflight_report end
   function E.plan(c,key,time_us)
+    if guided and c.op=='GUIDED_ACTION'then return guided.plan(c,key,time_us)end
     if c.op=='BUILD_DEPOT'then
       local description,plan,reason=manual_preview(c,key)
       if not plan or not description.allowed then error('manual depot changed after approved preview: '..(reason or 'unavailable'),0)end
@@ -851,6 +856,7 @@ function M.new(json,config)
     return {native=need(command,'build maker returned nil'),key=key,kind=kind,index=index,command=c,connections=connections}
   end
   function E.finish(plan,result,success)
+    if plan.guided then return guided.finish(plan,result,success)end
     diagnostic_candidate=nil
     callback_report=nil
     -- This side channel must never replace the original callback result or an
@@ -1007,16 +1013,17 @@ function M.new(json,config)
         return {cargo=boolean(read(s,'cargo',p),p..'.cargo'),terminals=#arr(read(s,'terminals',p),16,p..'.terminals')}
       elseif b.kind=='line'then
         local l=component(id,'LINE');local p=key..'.LINE';local stops,vehicles,details=json.array(),json.array(),json.array()
-        for i,s in ipairs(arr(read(l,'stops',p),2,p..'.stops'))do
+        for i,s in ipairs(arr(read(l,'stops',p),guided_mode and 8 or 2,p..'.stops'))do
           local sp=p..'.stops['..i..']'
           local group=int(read(s,'stationGroup',sp),1,nil,sp..'.stationGroup')
           stops[i]=need(E.groups[group],'unknown line station group at '..sp..'.stationGroup')
           details[i]={stop=stops[i],station=int(read(s,'station',sp),nil,nil,sp..'.station'),terminal=int(read(s,'terminal',sp),nil,nil,sp..'.terminal'),
             load_mode=int(read(s,'loadMode',sp),nil,nil,sp..'.loadMode'),min_wait=dec(read(s,'minWaitingTime',sp),sp..'.minWaitingTime'),max_wait=dec(read(s,'maxWaitingTime',sp),sp..'.maxWaitingTime')}
         end
-        for i,v in ipairs(entity_collection(api.engine.system.transportVehicleSystem.getLineVehicles(id),1,p..'.getLineVehicles','line vehicle membership'))do vehicles[#vehicles+1]=reference(v,p..'.getLineVehicles['..i..']')end;table.sort(vehicles)
-        probe.line={logical_id=key,stops=stops,vehicles=vehicles}
-        return {stops=details,vehicles=vehicles,name=component(id,'NAME').name,color=vector(read(component(id,'COLOR'),'color',key..'.COLOR'),3,key..'.COLOR.color')}
+        for i,v in ipairs(entity_collection(api.engine.system.transportVehicleSystem.getLineVehicles(id),guided_mode and 4 or 1,p..'.getLineVehicles','line vehicle membership'))do vehicles[#vehicles+1]=reference(v,p..'.getLineVehicles['..i..']')end;table.sort(vehicles)
+        if not guided_mode or key==E.scene.line then probe.line={logical_id=key,stops=stops,vehicles=vehicles}end
+        local out={stops=details,vehicles=vehicles,name=component(id,'NAME').name,color=vector(read(component(id,'COLOR'),'color',key..'.COLOR'),3,key..'.COLOR.color')}
+        return out
       elseif b.kind=='vehicle'then
         local v=component(id,'TRANSPORT_VEHICLE');local p=key..'.TRANSPORT_VEHICLE'
         local state_value=int(read(v,'state',p),nil,nil,p..'.state')
@@ -1026,15 +1033,20 @@ function M.new(json,config)
           depot=reference(read(v,'depot',p),p..'.depot'),state=state_value,
           user_stopped=boolean(read(v,'userStopped',p),p..'.userStopped'),no_path=boolean(read(v,'noPath',p),p..'.noPath'),
           stop_index=optional_numeric(v,'stopIndex',p,true,line_ref~=''),carrier=int(read(v,'carrier',p),nil,nil,p..'.carrier')}
-        probe.vehicle={logical_id=key,line=out.line,in_depot=parked,state=out.state,no_path=out.no_path}
+        if guided_mode then
+          out.name=need(read(component(id,'NAME'),'name',key..'.NAME'),'guided vehicle NAME.name absent')
+          if type(out.name)~='string'then error('guided vehicle NAME.name is not text',0)end
+        end
+        local vehicle_probe={logical_id=key,line=out.line,in_depot=parked,state=out.state,no_path=out.no_path}
+        if not guided_mode or key==E.scene.vehicle then probe.vehicle=vehicle_probe end
         if parked then out.position='in_depot' else
           -- Assignment can change state before first world placement. Record
           -- observed absence; final proof still requires real changed positions.
           local data=game.interface.getEntity(id);local position=data and field(data,'position')
-          out.world_position_present=position~=nil;probe.vehicle.world_position_present=position~=nil
+          out.world_position_present=position~=nil;vehicle_probe.world_position_present=position~=nil
           if position then
             out.position=vector(position,3,key..'.game.interface.getEntity.position')
-            local mm=json.array();for i=1,3 do mm[i]=int(math.floor(num(out.position[i],key..'.position['..i..']')*1000+.5),nil,nil,key..'.position_mm['..i..']')end;probe.vehicle.position_mm=mm
+            local mm=json.array();for i=1,3 do mm[i]=int(math.floor(num(out.position[i],key..'.position['..i..']')*1000+.5),nil,nil,key..'.position_mm['..i..']')end;vehicle_probe.position_mm=mm
           end
           local move=keep(api.engine.getComponent(id,api.type.ComponentType.MOVE_PATH));out.move_path_present=move~=nil
           if move then
@@ -1062,16 +1074,30 @@ function M.new(json,config)
     local account=need(game.interface.getEntity(api.engine.util.getPlayer()),'company unavailable')
     table.sort(observed_unavailable)
     local time=read(game.interface.getGameTime(),'time','game.interface.getGameTime')
-    return {sim_time_us=int(math.floor(num(time,'game.interface.getGameTime.time')*1000000+.5),0,nil,'sim_time_us'),paused=num(game.interface.getGameSpeed(),'game.interface.getGameSpeed')==0,
+    local snapshot={sim_time_us=int(math.floor(num(time,'game.interface.getGameTime.time')*1000000+.5),0,nil,'sim_time_us'),paused=num(game.interface.getGameSpeed(),'game.interface.getGameSpeed')==0,
       company={balance=int(read(account,'balance','company'),nil,nil,'company.balance'),loan=int(read(account,'loan','company'),0,nil,'company.loan')},objects=objects,probe=probe,
       coverage={complete_world=false,tracked_objects=true,missing=missing,observed_unavailable=observed_unavailable,
         excluded=json.array({'untracked_world','cargo_contents','rng','path_reservations','terrain_outside_test','station_internals','movement_before_world_placement'})}}
+    if guided then guided.observe(snapshot)end
+    return snapshot
+  end
+  if guided_mode then
+    guided=require('tf2_strict_probe/guided_engine').new(json,E,{
+      need=need,field=field,read=read,num=num,int=int,dec=dec,boolean=boolean,arr=arr,
+      vector=vector,clone=clone,component=component,existing=existing,bind=bind,
+      localid=localid,reference=reference,vehicle_config=vehicle_config,
+      vehicle_model=function()return site.vehicle_model end,
+      entity_collection=entity_collection,capture_callback=capture_callback,
+      remember_callback=function(report)callback_report=report end,
+    })
+    function E.finish_read_only(plan)return guided.finish_read_only(plan)end
   end
   E.integer=int
   for _,name in ipairs({'bind_initial','plan','finish','snapshot','preview'})do
     local fn=E[name]
     E[name]=function(...)return operation(fn,...)end
   end
+  if E.finish_read_only then local fn=E.finish_read_only;E.finish_read_only=function(...)return operation(fn,...)end end
   return E
 end
 return M

@@ -1,25 +1,21 @@
 # TFCoop für Transport Fever 2
 
-**Alpha5.16-Depotversuch / v0.5.16** ergänzt manuell ausgelöste Depotaufträge über den Launcher. Vier begrenzte Testplätze und vier Drehungen stehen zur Wahl. Vor jedem Bau vergleichen beide Spieler einen frischen Bauvorschlag; erfolgreiche Platzierung, tatsächliche Kosten und Objektbindungen müssen gemeinsam bestätigt sein. Ein nach dem vorherigen Bau belegter Platz wird erneut geprüft und ohne Baukosten abgelehnt. Das ist noch keine Platzierung mit normalen Spielwerkzeugen.
+**Alpha5.17-Testbegleiter / v0.5.17** führt Host und Freund durch einen zusammenhängenden festen Fahrzeug- und Linientest. Der vereinfachte Launcher zeigt den aktuellen Auftrag, die zuständige Rolle und genau einen Aktionsknopf. Schritte zählen erst nach verglichenen Ergebnissen beider Spiele. Die normale freie Spieloberfläche folgt später.
 
-Host-IP, privater Testschlüssel und Rolle werden nach einmaliger Einrichtung lokal gemerkt. Jeder Versuch erhält über die authentisierte Verbindung weiterhin eine neue interne Sitzung. Private Verbindungsdaten gehören nicht ins öffentliche Paket.
+## Download und Start
 
-## Download und gemeinsamer Versuch
+1. TF2 und den alten Test schließen. Den vorhandenen Launcher neu öffnen und aktualisieren lassen. Erstmalig: [TFCoop-Windows.zip](https://github.com/TastierPizza-code/TFCoop/releases/latest/download/TFCoop-Windows.zip) vollständig entpacken und `TF2-Coop.exe` starten.
+2. Host/Freund wählen, **Test vorbereiten**, anschließend **Verbinden**. Die private gemerkte Verbindung und passende saubere große Ausgangskarte werden weiterverwendet.
+3. TF2 über Steam starten und den jeweils genau angezeigten frischen Spielstand laden. Die kurze Vorbereitung abwarten; danach den einzelnen Host-/Freund-Aufträgen im Launcher folgen.
+4. Am Ende beide Berichte speichern. Bei Fehlern bleiben die bisherigen bestätigten Schritte im Bericht erhalten.
 
-1. TF2, Test und Launcher schließen; den vorhandenen Launcher neu öffnen und das Update auf **Alpha5.16-Depotversuch** abwarten. Erstmalig: [TFCoop-Windows.zip herunterladen](https://github.com/TastierPizza-code/TFCoop/releases/latest/download/TFCoop-Windows.zip), vollständig entpacken, `TF2-Coop.exe` starten.
-2. Vorherige Installation wiederherstellen. **Depot selbst beauftragen · kurzer Aufbau** wählen. IP und Testschlüssel einmal auf beiden PCs gleich eintragen, jeweilige Rolle wählen und vorbereiten.
-3. Beide verbinden, Startfreigabe abwarten und die jeweilige frische Testsave laden. Strict Sync Alpha5.16 und Legacy Fahrzeuge sind bereits gewählt. Die bestehende große Ausgangskarte bleibt gültig; kein neuer Saveimport für die bisherigen Teilnehmer.
-4. Nach zehn Aufbaurunden baut der Host Platz 1 während Fahrt, der Freund Platz 2 während gemeinsamer Pause. Anschließend beide denselben frischen Platz 3 versuchen. Ergebnisse abwarten, gemeinsam abschließen und beide Berichte exportieren.
+[Kurze Anleitung](prototype/ANLEITUNG.md) · [Geführter Testumfang](prototype/docs/GUIDED_TEST.md) · [Nachweischeckliste](prototype/docs/GAMEPLAY_CHECKLIST.md) · [Alle Befehlsfamilien](prototype/docs/COMMAND_COVERAGE_PLAN.md)
 
-Die vollständige [Anleitung](prototype/ANLEITUNG.md) erklärt Plätze, Drehung, Rückmeldungen und Fehlerfälle. **Der erste tatsächliche Zwei-PC-Lauf vom 8. September hat vier Depots mit gleichen beobachteten Zuständen und Kosten gebaut, während Fahrt und Pause. Der zweite Lauf bestätigt zusätzlich gleichzeitige Wünsche in derselben Sammelrunde:** Zwei unterschiedliche Plätze wurden beide gebaut; beim gemeinsamen Platz wurde genau ein Depot gebaut und der zweite Wunsch ohne Kosten abgelehnt. [Auswertung und Grenzen](prototype/docs/ALPHA516_EVIDENCE.md).
+Der neue Ablauf umfasst ein zusätzliches Straßenfahrzeug, eine schrittweise bearbeitete Linie, Namen/Farbe, Wartung, Zuweisung, Fahrt, Anhalten/Starten, Wenden, Depotfahrt und Verkauf. Gleise/Signale/Züge, freie Platzierungen, native UI-Pause, Cursor/Blaupausen und Speichern/Wiederbeitritt bleiben offen. Eine erfolgreiche Headless-Prüfung ist kein neuer tatsächlicher Zwei-PC-Nachweis.
 
-Die normale Fahrt erreichte im ersten Lauf etwa 0,947x/0,951x und im zweiten 0,948x auf beiden PCs. Einschließlich der zusätzlichen Bauprüfungen lag der aktive Durchschnitt bei ungefähr 0,904x beziehungsweise 0,889x. Das sind native Simulationsmessungen, keine FPS-Werte. Die akzeptierte [Alpha5.15-Referenz](prototype/docs/ACCEPTED_INPUT_BASELINE.md) mit rund 0,94x bleibt separat auswählbar. Die längere [Alpha5.12-Referenz](prototype/docs/ACCEPTED_BASELINE.md) bleibt ebenso erhalten. Die alten Tags und Pakete werden nicht ersetzt.
+Die akzeptierten [Alpha5.15-Eingaben und ihr Tempo](prototype/docs/ACCEPTED_INPUT_BASELINE.md), [Alpha5.12-Dauerlauf](prototype/docs/ACCEPTED_BASELINE.md) sowie die [beiden Alpha5.16-Depotläufe](prototype/docs/ALPHA516_EVIDENCE.md) bleiben erhalten. Alle fünf bisherigen Modi sind unter den weiteren Tests auswählbar; ihre Abläufe und die akzeptierte Taktung werden nicht verkürzt oder ersetzt.
 
-Normale Bauwerkzeuge und UI-Pause, Cursor/Blaupausen, freie konkurrierende Umbauten, Speichern/Fortsetzen und Steam-Einladungen sind weitere Arbeit. Die beobachtete Testszene ist kein vollständiger oder dauerhafter Weltnachweis. [Prüfstand](prototype/VERIFICATION.md).
-
-Die [Befehlsübersicht und nächste Umsetzung](prototype/docs/COMMAND_COVERAGE_PLAN.md) erfasst auch Fahrzeugkauf/-verwaltung, einzelne Linienhalte, Lade- und Terminalregeln, Firmenänderungen sowie Sitzungsfunktionen. Der nächste technische Schritt verbindet einen normalen Ingame-Bauweg; danach folgt ein vollständiger von den Spielern bedienter Straßenfahrzeugbetrieb.
-
-Das öffentliche Release enthält keine Spielstände, Berichte, Sitzungsschlüssel oder originalen Spieldateien. Updates prüfen die Paketdateien und verwenden den vorhandenen passenden Savecache. Private Sicherungen bleiben lokal.
+Das öffentliche Release enthält keine Spielstände, Berichte, Sitzungsschlüssel oder originalen Spieldateien. Updates prüfen Paketdateien; Verbindungsdaten, Saves und Sicherungen bleiben lokal.
 
 ## Entwicklung und Veröffentlichungen
 

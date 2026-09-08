@@ -1,4 +1,8 @@
-# TF2: Prototyp für strikte Synchronisation
+# TFCoop-Prototyp
+
+**Alpha5.17-Testbegleiter** ergänzt den getrennten Modus `guided_suite_v1` mit fester Host-/Freund-Schrittfolge, frischer gemeinsamer Vorschau, echten Callback-/Beobachtungsbelegen und gemeinsam bestätigtem Fortschritt. [Umfang und Grenzen](docs/GUIDED_TEST.md), [Nachweischeckliste](docs/GAMEPLAY_CHECKLIST.md), [Anleitung](ANLEITUNG.md).
+
+## Vorheriger Depotversuch und erhaltene Grundlagen
 
 **Alpha5.16-Depotversuch** führt `manual_depot_v1` ein: ein eigener kurzer Launcher-Bauversuch auf Basis des akzeptierten Takts. Die vier Standorte liegen relativ zur vorbereiteten Testszene; Drehungen sind auf Vierteldrehungen begrenzt. `BUILD_DEPOT` erhält vor jeder Ausführung einen frischen Vorschlag auf beiden PCs. Beide Vorschläge, echte Callbacks, Kosten und neu beobachtete Objektbindungen müssen passen. Erwartete Belegungs-/Geländeablehnungen werden ohne Mutation bestätigt; unerwartete Anwendungsfehler halten an.
 

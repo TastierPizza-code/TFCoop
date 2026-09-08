@@ -38,11 +38,14 @@ REQUIRED_PYTHON = {"core.py", "replica.py", "transport.py", "runner.py",
                    "timing_probe.py", "stream_probe.py", "stream_engine.py", "live_probe.py", "live_input.py",
                    "short_build_profile.py", "paced_live_probe.py", "coalesced_progress.py",
                    "manual_depot_probe.py", "manual_depot_input.py", "manual_depot_engine.py", "test_pairing.py",
+                   "guided_probe.py", "guided_input.py", "guided_catalog.py", "guided_engine.py",
                    "session_guard.py"}
 PROFILES = {"time_v1", "build_v2"}
 REQUIRED_BUILD_FILES = {"res/scripts/tf2_strict_probe/build_engine.lua",
                         "res/scripts/tf2_strict_probe/build_assets.lua",
                         "res/scripts/tf2_strict_probe/manual_depot_assets.lua",
+                        "res/scripts/tf2_strict_probe/guided_engine.lua",
+                        "res/scripts/tf2_strict_probe/guided_assets.lua",
                         "res/construction/tf2_strict_probe/road_test.con"}
 KEY = re.compile(r"[A-Za-z0-9_:.-]{1,96}\Z")
 KINDS = {"depot", "vehicle", "line", "station_group", "road"}
@@ -66,7 +69,7 @@ def configuration_semantics(profile=None, preparation=None, input_mode=None):
             raise StageError("Unknown or incompatible preparation contract.")
         semantics["preparation"] = preparation
     if input_mode is not None:
-        if (type(input_mode) is not str or input_mode != "manual_depot_v1"
+        if (type(input_mode) is not str or input_mode not in ("manual_depot_v1", "guided_suite_v1")
                 or profile != "build_v2" or preparation != "short_scene_v1"):
             raise StageError("Unknown or incompatible manual input contract.")
         semantics["input_mode"] = input_mode

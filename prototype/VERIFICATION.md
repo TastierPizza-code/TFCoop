@@ -1,5 +1,15 @@
 # Prüfstand
 
+## Alpha5.17: geführter Straßenfahrzeug-/Linienversuch vorbereitet
+
+Der getrennte Modus `guided_suite_v1` führt durch 26 feste Host-/Freund-Aufträge.
+Die Testspezifikation, Rolle und aktueller Schritt werden gemeinsam geprüft.
+Fortschritt benötigt verglichene Vorschauen, beobachtete Ergebnisse und beide
+Bestätigungen. Reine Fahrt-/Depotbeobachtungen sind von nativen Callbacks getrennt.
+Der [Testumfang](docs/GUIDED_TEST.md) und die [Nachweischeckliste](docs/GAMEPLAY_CHECKLIST.md)
+benennen offene Mechaniken. Für diesen neuen Ablauf liegt noch kein tatsächlicher
+Zwei-PC-TF2-Bericht vor. Die folgenden älteren realen Nachweise bleiben gültig.
+
 ## Alpha5.16: begrenzter manueller Depotversuch im Zwei-PC-Spiel bestätigt
 
 Ein zweiter tatsächlicher Lauf vom 8. September bestätigt jetzt beide
