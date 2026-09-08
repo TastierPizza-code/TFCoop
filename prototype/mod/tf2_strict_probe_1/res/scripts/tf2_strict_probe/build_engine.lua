@@ -2,10 +2,14 @@
 -- coordinator applies them; callback identities are never guessed by location.
 local assets = require 'tf2_strict_probe/build_assets'
 local M = {}
-function M.new(json)
+function M.new(json,config)
   local E = {bindings={},reverse={},scene={stops={}},groups={},stations={}}
+  local manual = config and config.input_mode=='manual_depot_v1'
+  local manual_assets = manual and require 'tf2_strict_probe/manual_depot_assets' or nil
+  local placements = {}
   local diagnostic_candidate
   local callback_report
+  local preflight_report
   local function need(v,msg) if v==nil then error(msg,0) end return v end
   -- Native member userdata can borrow storage from their component/container.
   -- Holding the child alone need not keep that owner alive. Root every owner
@@ -161,6 +165,7 @@ function M.new(json)
     -- The ErrorState field schema is not documented. Enumerate only observed
     -- members and never invoke methods found in the callback result.
     local proposal=observed.resultProposalData
+    member(proposal,'costs','result.resultProposalData.costs')
     local error_state=member(proposal,'errorState','result.resultProposalData.errorState')
     visit(error_state,'result.resultProposalData.errorState',0)
     for _,name in ipairs({'resultEntities','resultVehicleEntity','resultEntity','resultProposalData'})do
@@ -439,6 +444,102 @@ function M.new(json)
     proposal.constructionsToAdd[1]=c
     return api.cmd.make.buildProposal(proposal,context(),false)
   end
+  local function manual_command(c,key)
+    if not manual then error('manual depot capability not enabled',0)end
+    if type(c)~='table'or c.op~='BUILD_DEPOT'then error('manual depot command required',0)end
+    for k in pairs(c)do if k~='op'and k~='site'and k~='rotation'then error('unexpected manual depot field',0)end end
+    if type(c.site)~='number'or c.site%1~=0 or c.site<1 or c.site>#manual_assets.sites
+      or type(c.rotation)~='number'or manual_assets.rotations[c.rotation]==nil then error('invalid manual depot site/rotation',0)end
+    if type(key)~='string'or not key:match('^[ab]:[1-9]%d*$')or #key>96 or E.bindings[key]then error('invalid manual depot identity',0)end
+    local peer,seq=key:match('^([ab]):([1-9]%d*)$');seq=int(seq,1,10000)
+    return peer,seq
+  end
+  local function manual_preview(c,key)
+    local peer,seq=manual_command(c,key)
+    need(site,'manual depot requires the initialized shared site')
+    local offset=manual_assets.sites[c.site];local half=manual_assets.half_extent
+    local x,y=site.x+offset[1],site.y+offset[2]
+    local description={contract=manual_assets.contract,site=c.site,rotation=c.rotation,
+      allowed=false,reason='',cost=json.null,position_mm=json.null,
+      proposal={file=assets.depot_file,site=c.site,rotation=c.rotation}}
+    local function reject(reason)return description,nil,reason end
+    -- A previous successful command owns a slot for the entire bounded test.
+    -- The actual construction/child stays in every snapshot and is checked
+    -- below through its binding; this is not an optimistic occupancy guess.
+    for _,placed in pairs(placements)do
+      if placed.site==c.site then existing(localid(placed.logical_id));return reject('site_occupied')end
+    end
+    local heights=json.array();local low,high=math.huge,-math.huge
+    local water=terrain_water()
+    for ix=-4,4 do for iy=-4,4 do
+      local point=api.type.Vec2f.new(x+ix*half/4,y+iy*half/4)
+      if not boolean(api.engine.terrain.isValidCoordinate(point),'manual.terrain.valid')then return reject('outside_map')end
+      local height=num(api.engine.terrain.getHeightAt(point),'manual.terrain.height')
+      if height<=water+2 then return reject('water')end
+      low=math.min(low,height);high=math.max(high,height);heights[#heights+1]=dec(height)
+    end end
+    if high-low>manual_assets.max_height_span then return reject('too_uneven')end
+    local z=math.floor((low+high)*500+.5)/1000
+    description.position_mm=json.array({int(x*1000),int(y*1000),int(math.floor(z*1000+.5))})
+    local occupied,count=false,0
+    local box=api.type.Box3.new(api.type.Vec3f.new(x-half,y-half,low-100),api.type.Vec3f.new(x+half,y+half,high+100))
+    api.engine.system.octreeSystem.findIntersectingEntities(box,function(id)
+      count=count+1;if count>10000 then error('manual collision observation budget exceeded',0)end
+      for _,kind in ipairs({'CONSTRUCTION','BASE_EDGE','TOWN_BUILDING','SIM_BUILDING'})do
+        if api.engine.getComponent(id,need(api.type.ComponentType[kind],'manual component API '..kind))then occupied=true end
+      end
+    end)
+    if occupied then return reject('site_occupied')end
+    local params=clone(assets.depot_params);params.seed=200000+(peer=='b'and 10000 or 0)+seq
+    local rotation=manual_assets.rotations[c.rotation]
+    local transf=transform({offset[1],offset[2],z-site.z},rotation)
+    local proposal=api.type.SimpleProposal.new();local entity=api.type.SimpleProposal.ConstructionEntity.new()
+    entity.fileName=assets.depot_file;entity.params=params;entity.transf=transf
+    entity.name='TF2 Coop Depot '..key;entity.playerEntity=api.engine.util.getPlayer()
+    proposal.constructionsToAdd[1]=entity
+    local options=context()
+    -- Official proposal processing performs the engine's collision, terrain
+    -- and price checks without sendCommand. Require the typed field contract
+    -- used by the existing upstream integration; unreadable runtime fields are a terminal API
+    -- failure rather than a fabricated successful preflight.
+    local processed=keep(need(api.engine.util.proposal.makeProposalData(proposal,options),'manual proposal data absent'))
+    -- Retain the observed userdata schema if a later required getter is
+    -- absent. This is a read-only preflight observation, never a callback or
+    -- permission to construct. Diagnostics cannot replace a validation error.
+    local previous_callback=callback_report
+    local captured,diagnostic=pcall(capture_callback,{key=key,command=c},{resultProposalData=processed},true)
+    callback_report=previous_callback
+    if captured then
+      preflight_report=diagnostic;preflight_report.context='read_only_proposal_preflight'
+      preflight_report.success={type='not_applicable'}
+    else preflight_report={format=1,valid_snapshot=false,context='read_only_proposal_preflight',capture_failed=true}end
+    local errors=read(processed,'errorState','manual.ProposalData')
+    local critical=boolean(read(errors,'critical','manual.ErrorState'),'manual.ErrorState.critical')
+    if critical then return reject('engine_rejected')end
+    -- Only emptiness matters. Enumerate the observed native container contract
+    -- instead of assuming #value and one-based indexing describe its entries.
+    local messages=canonical(read(errors,'messages','manual.ErrorState'))
+    if #messages~=0 then return reject('engine_rejected')end
+    local cost=int(read(processed,'costs','manual.ProposalData'),0,nil,'manual.ProposalData.costs')
+    description.cost=cost
+    description.proposal={file=assets.depot_file,params=canonical(params),transform=matrix(transf),
+      name=entity.name,site=c.site,rotation=c.rotation,terrain_samples=heights,cost=cost,
+      clearance_half_extent_mm=half*1000}
+    if cost<=0 then error('manual depot preflight did not expose a positive build cost',0)end
+    local account=need(game.interface.getEntity(api.engine.util.getPlayer()),'manual company unavailable')
+    if int(read(account,'balance','manual.company'))<cost then return reject('insufficient_funds')end
+    description.allowed=true
+    return description,{native=need(api.cmd.make.buildProposal(proposal,options,false),'manual build maker returned nil'),
+      key=key,kind='manual_depot',command=clone(c),preview=description,
+      expected_transform=matrix(transf),expected_params=canonical(params),
+      before_balance=int(read(account,'balance','manual.company')),before_loan=int(read(account,'loan','manual.company'),0)}
+  end
+  function E.preview(c,key)
+    preflight_report=nil
+    local description,_,reason=manual_preview(c,key)
+    if reason then description.reason=reason end
+    return description
+  end
   local function edge_values(id,path)
     id=existing(id)
     local e=component(id,'BASE_EDGE');local s=component(id,'BASE_EDGE_STREET')
@@ -694,7 +795,13 @@ function M.new(json)
     return out
   end
   function E.callback_diagnostics()return callback_report end
+  function E.preflight_diagnostics()return preflight_report end
   function E.plan(c,key,time_us)
+    if c.op=='BUILD_DEPOT'then
+      local description,plan,reason=manual_preview(c,key)
+      if not plan or not description.allowed then error('manual depot changed after approved preview: '..(reason or 'unavailable'),0)end
+      return plan
+    end
     if type(key)~='string'or not key:match('^[ab]:[1-9]%d*$')or E.bindings[key]or E.scene.connectors==key then error('invalid build key',0)end
     local op=need(c.op,'build op absent');local allowed={op=true};if op=='SET_PAUSED'then allowed.value=true elseif op=='PROBE_STOP'then allowed.index=true end
     for k in pairs(c)do if not allowed[k]then error('unexpected build command field',0)end end
@@ -771,8 +878,28 @@ function M.new(json)
         if int(v.carrier)~=0 or v.depot~=localid(E.scene.depot..':depot')or vehicle_config(v.transportVehicleConfig).vehicles[1].model~=site.vehicle_model then error('bought vehicle differs from requested recipe',0)end
       elseif plan.kind=='line'then component(id,'LINE')
       else
-        local expected=plan.kind=='road'and assets.road_file or plan.kind=='depot'and assets.depot_file or assets.stop_file
+        local expected=plan.kind=='road'and assets.road_file or(plan.kind=='depot'or plan.kind=='manual_depot')and assets.depot_file or assets.stop_file
         if component(id,'CONSTRUCTION').fileName~=expected then error('callback construction differs from requested recipe',0)end
+      end
+      if plan.kind=='manual_depot'then
+        local actual=component(id,'CONSTRUCTION')
+        if json.encode(matrix(read(actual,'transf','manual.CONSTRUCTION')))~=json.encode(plan.expected_transform)
+          or json.encode(canonical(read(actual,'params','manual.CONSTRUCTION')))~=json.encode(plan.expected_params)
+          or read(component(id,'NAME'),'name','manual.NAME')~='TF2 Coop Depot '..plan.key then
+          error('manual depot callback pose/params/name differs from approved proposal',0)
+        end
+        local children=arr(read(actual,'depots','manual.CONSTRUCTION'),1,'manual.CONSTRUCTION.depots')
+        if #children~=1 or int(read(component(children[1],'VEHICLE_DEPOT'),'carrier','manual.VEHICLE_DEPOT'))~=0 then error('manual depot lacks its exact road depot child',0)end
+        local account=need(game.interface.getEntity(api.engine.util.getPlayer()),'manual company unavailable')
+        local balance=int(read(account,'balance','manual.company'));local loan=int(read(account,'loan','manual.company'),0)
+        if balance~=plan.before_balance-plan.preview.cost or loan~=plan.before_loan then error('manual depot actual debit differs from approved cost',0)end
+        bind(plan.key,'manual_depot',id)
+        bind(plan.key..':depot','manual_depot_child',children[1],children[1]==id and plan.key or nil)
+        local outcome={op='BUILD_DEPOT',site=plan.command.site,rotation=plan.command.rotation,
+          logical_id=plan.key,cost=plan.preview.cost,balance_before=plan.before_balance,balance_after=balance,
+          loan_before=plan.before_loan,loan_after=loan,position_mm=plan.preview.position_mm}
+        placements[plan.key]=clone(outcome)
+        return {success=true,result=outcome,result_entity=id}
       end
       bind(plan.key,plan.kind,id)
       if plan.kind=='depot'then
@@ -816,7 +943,7 @@ function M.new(json)
       end;return edges
     end
     for _,key in ipairs(keys)do local b=E.bindings[key]
-      if b.kind=='road'or b.kind=='depot'or b.kind=='stop'then
+      if b.kind=='road'or b.kind=='depot'or b.kind=='stop'or b.kind=='manual_depot'then
         local ok,err=pcall(edges_for,key,b.entity);if not ok then missing[#missing+1]=key..':'..safe_error(err)end
       end
     end
@@ -843,6 +970,10 @@ function M.new(json)
       return e
     end
     local probe={profile='build_v2',site=clone(site.description),scene={stops=json.array()}}
+    if manual then
+      local placed=json.array();for _,key in ipairs(keys)do if placements[key]then placed[#placed+1]=clone(placements[key])end end
+      probe.manual_depot={contract=manual_assets.contract,placements=placed,site_offsets=clone(manual_assets.sites)}
+    end
     -- Observe the real terrain again after construction alignment. The frozen
     -- site description keeps the original samples; these current values enter
     -- every shared digest and can expose a differing terrain result.
@@ -857,14 +988,14 @@ function M.new(json)
     for i=1,2 do probe.scene.stops[i]=E.scene.stops[i]end
     local function state(key,b)
       local id=existing(b.entity)
-      if b.kind=='road'or b.kind=='depot'or b.kind=='stop'then
+      if b.kind=='road'or b.kind=='depot'or b.kind=='stop'or b.kind=='manual_depot'then
         local p=key..'.CONSTRUCTION';local c=component(id,'CONSTRUCTION');local edges=json.array()
         for i,edge in ipairs(arr(read(c,'frozenEdges',p),128,p..'.frozenEdges'))do edges[#edges+1]=road_edge(int(edge,1,nil,p..'.frozenEdges['..i..']'),key..'.roads['..i..']')end
         table.sort(edges,function(a,z)return json.encode(a)<json.encode(z)end)
         return {file=c.fileName,params=canonical(c.params),transform=matrix(read(c,'transf',p),p..'.transf'),time_build=optional_numeric(c,'timeBuild',p,false,false),
           name=component(id,'NAME').name,roads=edges}
       elseif b.kind=='connector'then return road_edge(id,key)
-      elseif b.kind=='depot_child'then
+      elseif b.kind=='depot_child'or b.kind=='manual_depot_child'then
         local d=component(id,'VEHICLE_DEPOT');local p=key..'.VEHICLE_DEPOT'
         return{carrier=int(read(d,'carrier',p),nil,nil,p..'.carrier'),state=int(read(d,'state',p),nil,nil,p..'.state'),
           doors=int(read(d,'doors',p),nil,nil,p..'.doors'),state_time=dec(read(d,'stateTime',p),p..'.stateTime')}
@@ -937,7 +1068,7 @@ function M.new(json)
         excluded=json.array({'untracked_world','cargo_contents','rng','path_reservations','terrain_outside_test','station_internals','movement_before_world_placement'})}}
   end
   E.integer=int
-  for _,name in ipairs({'bind_initial','plan','finish','snapshot'})do
+  for _,name in ipairs({'bind_initial','plan','finish','snapshot','preview'})do
     local fn=E[name]
     E[name]=function(...)return operation(fn,...)end
   end

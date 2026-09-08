@@ -16,6 +16,7 @@ from coop.install import discover_game
 from coop.native import NativeError, game_is_running
 from prototype.strict_sync import launcher_session as workflow
 from prototype import diagnostic_session as diagnostics
+from prototype.strict_sync import test_pairing
 
 
 class App:
@@ -43,9 +44,20 @@ class App:
         self.game = tk.StringVar(value=settings.get("game_dir", ""))
         self.saves = tk.StringVar(value=settings.get("save_dir", ""))
         self.role = tk.StringVar(value="a")
-        self.test_mode = tk.StringVar(value=workflow.PACED_LIVE_MODE)
+        self.test_mode = tk.StringVar(value=workflow.MANUAL_DEPOT_MODE)
         self.host = tk.StringVar(value="")
         self.code = tk.StringVar(value=workflow.new_code())
+        self.pairing_error = ""
+        try:
+            profile = test_pairing.load_profile(workflow.local_root())
+            if profile:
+                self.host.set(profile["host"])
+                self.code.set(profile["code"])
+                self.role.set(profile["role"])
+        except (OSError, ValueError) as exc:
+            self.pairing_error = "Gespeicherte Testverbindung konnte nicht gelesen werden: " + str(exc)
+        self.depot_site = tk.StringVar(value="1")
+        self.depot_rotation = tk.StringVar(value="0")
         self.status = tk.StringVar(value="Beide: TF2 und den bisherigen Koop-Launcher schließen. Dann Pfade prüfen und Test vorbereiten.")
         self.save_name = tk.StringVar(value="Wird bei der Vorbereitung als eigene Kopie angelegt.")
         self.network = tk.StringVar(value="Mitspieler: noch nicht verbunden")
@@ -57,6 +69,8 @@ class App:
         self.diagnostic_status = tk.StringVar(value="Allein möglich. TF2 und den bisherigen Test zuerst schließen, dann Diagnose vorbereiten.")
         self.diagnostic_save = tk.StringVar(value="Die Vorbereitung legt einen eigenen Diagnosespielstand an.")
         self._build()
+        if self.pairing_error:
+            self.status.set(self.pairing_error + " Bitte IP, Schlüssel und Rolle bewusst neu eintragen und vorbereiten.")
         if settings.get("last_run"):
             record = workflow.read_json(Path(settings["last_run"]) / "run.json")
             try:
@@ -92,7 +106,7 @@ class App:
         canvas.bind("<Configure>", lambda event: canvas.itemconfigure(embedded, width=event.width))
         self.root.bind("<MouseWheel>", lambda event: canvas.yview_scroll(-int(event.delta / 120), "units"))
         ttk.Label(outer, text="TF2-Koop  /  " + workflow.VERSION, style="Title.TLabel").pack(anchor="w")
-        ttk.Label(outer, text="Gemeinsame Pause und Fortsetzen selbst steuern", font=("Segoe UI", 12)).pack(anchor="w", pady=(3, 6))
+        ttk.Label(outer, text="Depotaufträge und Pause gemeinsam auslösen", font=("Segoe UI", 12)).pack(anchor="w", pady=(3, 6))
         ttk.Label(outer, text="Auf beiden PCs neu vorbereiten. Vorher TF2 schließen und eine vorhandene Diagnoseinstallation unten wiederherstellen. Für diesen Bautest ist kein neuer Solo-Diagnoselauf nötig.",
                   wraplength=900).pack(anchor="w", pady=(0, 13))
         ttk.Label(outer, textvariable=self.update_status, wraplength=900).pack(anchor="w", pady=(0, 8))
@@ -152,7 +166,7 @@ class App:
         self.addresses.grid(row=3, column=1, sticky="ew", pady=4)
         self.inputs.append(self.addresses)
         ttk.Label(form, text="Auf beiden PCs dieselbe Host-IP.").grid(row=3, column=2, padx=(8, 0), sticky="w")
-        ttk.Label(form, text="Gemeinsamer Sitzungscode").grid(row=4, column=0, sticky="w", padx=(0, 12), pady=4)
+        ttk.Label(form, text="Gemeinsamer Testschlüssel").grid(row=4, column=0, sticky="w", padx=(0, 12), pady=4)
         entry = ttk.Entry(form, textvariable=self.code, font=("Consolas", 10))
         entry.grid(row=4, column=1, sticky="ew", pady=4)
         self.inputs.append(entry)
@@ -162,7 +176,7 @@ class App:
         new = ttk.Button(code_buttons, text="Neu", command=lambda: self.code.set(workflow.new_code()))
         new.pack(side="left", padx=(4, 0))
         self.inputs.append(new)
-        ttk.Label(form, text="Host kopiert seinen Code zum Freund. Der Freund ersetzt damit seinen angezeigten Code.",
+        ttk.Label(form, text="Einmalig: Host teilt IP und Testschlüssel mit dem Freund. Beide Launcher merken sich diese Verbindung für weitere Versuche und Updates.",
                   wraplength=860).grid(row=5, column=0, columnspan=3, sticky="w", pady=(3, 7))
         self.prepare_button = ttk.Button(form, text="Test vorbereiten und installieren", command=self.prepare)
         self.prepare_button.grid(row=6, column=0, columnspan=2, sticky="w", pady=5)
@@ -196,7 +210,22 @@ class App:
             button.pack(side="left", padx=(0, 8))
             self.live_buttons.append(button)
         ttk.Label(manual, textvariable=self.live_status, wraplength=850).pack(anchor="w", pady=(8, 3))
-        ttk.Label(manual, text="Jeder soll selbst pausieren und fortsetzen. Eine Pause mindestens 45 Sekunden halten. 'Test beenden' oben bricht ab; für einen regulären Abschluss die gemeinsame Taste hier verwenden.", wraplength=850).pack(anchor="w")
+        depot = ttk.LabelFrame(manual, text="Depotauftrag · nur im neuen Depotversuch", padding=8)
+        depot.pack(fill="x", pady=(7, 5))
+        choices = ttk.Frame(depot)
+        choices.pack(anchor="w")
+        ttk.Label(choices, text="Testplatz").pack(side="left")
+        site = ttk.Combobox(choices, textvariable=self.depot_site, values=("1", "2", "3", "4"), width=5, state="disabled")
+        site.pack(side="left", padx=(6, 14))
+        ttk.Label(choices, text="Drehung (Grad)").pack(side="left")
+        rotation = ttk.Combobox(choices, textvariable=self.depot_rotation, values=("0", "90", "180", "270"), width=6, state="disabled")
+        rotation.pack(side="left", padx=(6, 14))
+        build_depot = ttk.Button(choices, text="Depot gemeinsam bauen", command=self.submit_depot, state="disabled")
+        build_depot.pack(side="left")
+        self.depot_choices = (site, rotation)
+        self.depot_button = build_depot
+        ttk.Label(depot, text="Vier feste Plätze nahe der Testszene; noch keine freie Platzierung mit der Maus. Gelände oder Belegung können einen Auftrag ablehnen. Die Rückmeldung erscheint oben erst nach gemeinsamer Bestätigung.", wraplength=820).pack(anchor="w", pady=(5, 0))
+        ttk.Label(manual, text="Ablauf: Jeder baut einen anderen Testplatz, dann während gemeinsamer Pause bauen. Anschließend denselben Platz gleichzeitig versuchen. Alte Pause-Referenz: eine Pause mindestens 45 Sekunden halten. 'Test beenden' bricht ab; regulär mit 'Messung gemeinsam abschließen' beenden.", wraplength=850).pack(anchor="w")
         savebox = ttk.Frame(build)
         savebox.pack(fill="x", pady=10)
         ttk.Label(savebox, text="Im Spiel ausdrücklich diese Testsave wählen:").pack(anchor="w")
@@ -253,7 +282,7 @@ class App:
         if not self.saves.get() and len(saves) == 1:
             self.saves.set(saves[0])
         self.addresses.configure(values=addresses)
-        if addresses:
+        if addresses and not self.host.get().strip():
             self.host.set(addresses[0])
         if self.last_diagnostic and Path(self.last_diagnostic.game_dir) == Path(self.game.get()):
             try:
@@ -289,6 +318,11 @@ class App:
         live_enabled = active and not self.busy and workflow.live_input_ready(self.last_live_status)
         for widget in self.live_buttons:
             widget.configure(state="normal" if live_enabled else "disabled")
+        depot_enabled = live_enabled and self.last_live_status.get("test_mode") == workflow.MANUAL_DEPOT_MODE
+        for widget in getattr(self, "depot_choices", ()):
+            widget.configure(state="readonly" if depot_enabled else "disabled")
+        if hasattr(self, "depot_button"):
+            self.depot_button.configure(state="normal" if depot_enabled else "disabled")
 
     def choose_directory(self, variable):
         directory = filedialog.askdirectory(parent=self.root, initialdir=variable.get() or None)
@@ -317,6 +351,14 @@ class App:
         workflow.write_json(self.settings_path, {"game_dir": self.game.get(), "save_dir": self.saves.get(),
                                                 "last_run": self.last_run.run_dir if self.last_run else None,
                                                 "last_diagnostic": self.last_diagnostic.run_dir if self.last_diagnostic else None})
+        # An incomplete form or damaged stored profile is not silently replaced
+        # merely because the launcher closes. Prepare explicitly validates/saves.
+        if not getattr(self, "pairing_error", "") and self.host.get().strip():
+            try:
+                test_pairing.save_profile(workflow.local_root(), host=self.host.get(),
+                                          code=self.code.get(), role=self.role.get())
+            except (OSError, ValueError) as exc:
+                self.status.set("Testverbindung wurde nicht gespeichert: " + str(exc))
 
     def prepare_diagnostic(self):
         if self.busy or self.prepared or self.diagnostic or (self.controller and self.controller.alive()):
@@ -379,13 +421,15 @@ class App:
         def prepare_build():
             if diagnostics.diagnostic_status(values[0]).get("installed"):
                 raise ValueError("Zuerst TF2 schließen und die Diagnoseinstallation wiederherstellen.")
+            test_pairing.save_profile(workflow.local_root(), host=values[3], code=values[4], role=values[2])
             return workflow.prepare(*values, test_mode=test_mode)
         self._work(prepare_build, self._prepared)
 
     def _prepared(self, prepared):
+        self.pairing_error = ""
         self.prepared = self.last_run = prepared
         self.save_name.set(Path(prepared.imported_save).name)
-        self.status.set(f"{workflow.TEST_MODES[prepared.test_mode]} vorbereitet. Beide wählen denselben Ablauf und Sitzungscode. Dann 'Verbinden & Test bereitstellen'.")
+        self.status.set(f"{workflow.TEST_MODES[prepared.test_mode]} vorbereitet. Verbindung gespeichert. Beide wählen denselben Ablauf und Testschlüssel. Dann 'Verbinden & Test bereitstellen'.")
         self._save_settings()
         self._buttons()
 
@@ -438,6 +482,15 @@ class App:
         except Exception as exc:
             messagebox.showerror("Gemeinsame Eingabe", str(exc), parent=self.root)
 
+    def submit_depot(self):
+        try:
+            from prototype.strict_sync.manual_depot_input import validate_command
+            command = validate_command({"op": "BUILD_DEPOT", "site": int(self.depot_site.get()),
+                                        "rotation": int(self.depot_rotation.get())})
+            self.submit_live(command)
+        except (TypeError, ValueError) as exc:
+            messagebox.showerror("Depotauftrag", str(exc), parent=self.root)
+
     def restore(self):
         game = self.game.get()
         if self.last_run and not self.controller:
@@ -454,9 +507,7 @@ class App:
         self.last_live_status = {}
         self.live_status.set("Die Tasten werden nach dem gemeinsamen automatischen Aufbau freigegeben.")
         self.diagnostic = None
-        if self.role.get() == "a":
-            self.code.set(workflow.new_code())
-        self.status.set("Bisherige Installation wiederhergestellt. Testsave-Kopien und Berichte bleiben erhalten. Für einen neuen Test neuen Code teilen.")
+        self.status.set("Bisherige Installation wiederhergestellt. Testsave-Kopien, Berichte und eure gemerkte Verbindung bleiben erhalten. Für den nächsten Versuch frisch vorbereiten.")
         self.diagnostic_status.set("Bisherige Installation wiederhergestellt. Diagnosespielstand und Bericht bleiben erhalten.")
         self.network.set("Mitspieler: nicht verbunden")
         self.engine.set("Spielkontakt: beendet")

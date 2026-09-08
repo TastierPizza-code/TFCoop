@@ -6,12 +6,9 @@ Steam action. This module never sends UI input or launches the game executable.
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
-import hashlib
-import ipaddress
 import json
 import os
 from pathlib import Path
-import secrets
 import socket
 import subprocess
 import sys
@@ -27,6 +24,8 @@ from .stage_probe import stage_probe
 from .build_profile import BUILD_PROFILE, BUILD_ROUNDS
 from .short_build_profile import SHORT_BUILD_ROUNDS, SHORT_BUILD_CONTRACT
 from .core import digest
+from .test_pairing import (connection_identity, game_secret, new_code, redact_addresses,
+                           validate_connection, validate_host, validate_token)
 from prototype.release_version import DISPLAY_VERSION
 
 PORT = 34207
@@ -38,9 +37,11 @@ STREAM_MODE = "stream_v1"
 TIMING_MODE = "timing_v1"
 LIVE_MODE = "live_input_v1"
 PACED_LIVE_MODE = "paced_live_v1"
-LIVE_MODES = (LIVE_MODE, PACED_LIVE_MODE)
+MANUAL_DEPOT_MODE = "manual_depot_v1"
+LIVE_MODES = (LIVE_MODE, PACED_LIVE_MODE, MANUAL_DEPOT_MODE)
 TEST_MODES = {
-    PACED_LIVE_MODE: "Fahrt und Eingaben · kurzer Aufbau",
+    MANUAL_DEPOT_MODE: "Depot selbst beauftragen · kurzer Aufbau",
+    PACED_LIVE_MODE: "Fahrt und Eingaben aus Alpha5.15 · kurzer Aufbau",
     LIVE_MODE: "Eingabetest aus Alpha5.13 · vollständiger Aufbau",
     STREAM_MODE: "Referenztest aus Alpha5.12",
     TIMING_MODE: "Vergleichstest aus Alpha5.11",
@@ -54,7 +55,14 @@ VERSION = DISPLAY_VERSION
 def preparation_rounds(test_mode):
     if test_mode not in TEST_MODES:
         raise ValueError("Unbekannter Testablauf.")
-    return SHORT_BUILD_ROUNDS if test_mode == PACED_LIVE_MODE else ROUNDS
+    return SHORT_BUILD_ROUNDS if test_mode in (PACED_LIVE_MODE, MANUAL_DEPOT_MODE) else ROUNDS
+
+
+def input_queue_options(test_mode):
+    if test_mode == MANUAL_DEPOT_MODE:
+        from .manual_depot_input import validate_command
+        return {"command_validator": validate_command}
+    return {}
 
 
 def resources():
@@ -77,29 +85,6 @@ def local_root():
     if not os.environ.get("LOCALAPPDATA"):
         raise ValueError("Dieses Testpaket benötigt Windows mit LOCALAPPDATA.")
     return Path(os.environ["LOCALAPPDATA"]) / "TF2StrictProbe"
-
-
-def new_code():
-    raw = secrets.token_hex(16).upper()
-    return "-".join(raw[index:index + 4] for index in range(0, 32, 4))
-
-
-def connection_identity(code):
-    raw = str(code).replace("-", "").replace(" ", "").strip().lower()
-    if len(raw) != 32 or any(c not in "0123456789abcdef" for c in raw):
-        raise ValueError("Bitte den vollständigen Sitzungscode des Hosts einfügen (8 Gruppen).")
-    return (hashlib.sha256(("tf2-probe-epoch:" + raw).encode()).hexdigest()[:32],
-            hashlib.sha256(("tf2-probe-key:" + raw).encode()).hexdigest().encode("ascii"))
-
-
-def validate_host(value):
-    try:
-        address = ipaddress.IPv4Address(str(value).strip())
-        if address.is_unspecified or address.is_multicast or str(address) == "255.255.255.255":
-            raise ValueError()
-    except ValueError as exc:
-        raise ValueError("Bitte die IPv4-Adresse des Hosts aus Hamachi oder dem gemeinsamen LAN eingeben.") from exc
-    return str(address)
 
 
 def suggested_addresses():
@@ -209,10 +194,17 @@ class PreparedRun:
     epoch: str
     manifest: str
     test_mode: str = TIMING_MODE
+    pairing_epoch: str = ""
+    local_run: str = ""
 
     def __post_init__(self):
         if self.test_mode not in TEST_MODES:
             raise ValueError("Unbekannter Testablauf. Bitte neu vorbereiten.")
+        if self.pairing_epoch or self.local_run:
+            validate_token(self.pairing_epoch)
+            validate_token(self.local_run)
+            if self.epoch:
+                validate_token(self.epoch)
 
     @property
     def directory(self):
@@ -240,7 +232,7 @@ def prepare(game_dir, save_dir, role, host, code, *, source_root=None, save=None
     if role not in ("a", "b"):
         raise ValueError("Bitte Host oder Mitspieler wählen.")
     host = validate_host(host)
-    epoch, secret = connection_identity(code)
+    pairing_epoch, secret = connection_identity(code)
     if game_is_running():
         raise ValueError("Bitte TF2 vollständig schließen, bevor du den Test vorbereitest.")
     game = Path(game_dir).resolve()
@@ -252,7 +244,9 @@ def prepare(game_dir, save_dir, role, host, code, *, source_root=None, save=None
     run = (Path(runs_root) if runs_root else local_root() / "runs") / uuid.uuid4().hex
     run.mkdir(parents=True, exist_ok=False)
     try:
-        options = {"preparation": SHORT_BUILD_CONTRACT} if test_mode == PACED_LIVE_MODE else {}
+        options = {"preparation": SHORT_BUILD_CONTRACT} if test_mode in (PACED_LIVE_MODE, MANUAL_DEPOT_MODE) else {}
+        if test_mode == MANUAL_DEPOT_MODE:
+            options["input_mode"] = MANUAL_DEPOT_MODE
         result = stage_probe(game_dir=game, save=save or baseline_save(), session=run / "session",
                              output=run / "payload", repository_root=source_root or resources(), profile=PROFILE,
                              **options)
@@ -260,11 +254,9 @@ def prepare(game_dir, save_dir, role, host, code, *, source_root=None, save=None
                                   session_dir=Path(result["session"]))
         prepared = PreparedRun(str(run), str(game), result["session"], result["output"],
                                installed["imported_save"], installed["backup_path"], role,
-                               host, epoch, lobby_manifest(result["manifest_digest"], test_mode), test_mode)
-        (run / "session.key").write_bytes(secret)
-        if test_mode in LIVE_MODES:
-            from .live_input import create
-            create(prepared.live_input_path, epoch, role)
+                               host, "", lobby_manifest(result["manifest_digest"], test_mode), test_mode,
+                               pairing_epoch, uuid.uuid4().hex)
+        (run / "pairing.key").write_bytes(secret)
         write_json(run / "run.json", asdict(prepared))
         return prepared
     except Exception as exc:
@@ -302,8 +294,10 @@ class SessionController:
         self.children[label] = child
 
     def _game_args(self, mode):
+        if self.run.pairing_epoch and not self.run.epoch:
+            raise ValueError("Die frische gemeinsame Sitzung ist noch nicht bestätigt.")
         directory = self.run.directory
-        flag = {PACED_LIVE_MODE: "--paced-live-probe", LIVE_MODE: "--live-probe", STREAM_MODE: "--stream-probe",
+        flag = {MANUAL_DEPOT_MODE: "--manual-depot-probe", PACED_LIVE_MODE: "--paced-live-probe", LIVE_MODE: "--live-probe", STREAM_MODE: "--stream-probe",
                 TIMING_MODE: "--timing-probe"}[self.run.test_mode]
         args = [mode, "--session", self.run.session, "--epoch", self.run.epoch,
                 "--key-file", directory / "session.key", "--report", directory / (mode + "-report.json"),
@@ -319,22 +313,48 @@ class SessionController:
             raise ValueError("Für einen weiteren Versuch bitte eine neue Testsitzung vorbereiten.")
         if game_is_running():
             raise ValueError("Bitte TF2 schließen. Erst verbinden und auf die Startmeldung warten.")
-        if self.run.test_mode in LIVE_MODES:
+        if self.run.pairing_epoch:
+            if self.run.epoch:
+                raise ValueError("Diese Testsitzung wurde schon verbunden. Bitte neu vorbereiten.")
+            # A fresh launcher process must not restart an already consumed
+            # preparation, even before a game worker has started.
+            with (self.run.directory / "launcher-started.json").open("x", encoding="ascii") as claim:
+                json.dump({"local_run": self.run.local_run}, claim)
+        elif self.run.test_mode in LIVE_MODES:
             from .live_input import InputWriter
-            self._input_writer = InputWriter(self.run.live_input_path, self.run.epoch, self.run.role)
+            self._input_writer = InputWriter(self.run.live_input_path, self.run.epoch, self.run.role,
+                                             **input_queue_options(self.run.test_mode))
         self.started, self.started_at = True, self.clock()
         try:
-            if self.run.role == "a":
+            if self.run.role == "a" and not self.run.pairing_epoch:
                 self._spawn("host", "game", self._game_args("host") +
                             ["--bind", "0.0.0.0", "--ready", self.run.directory / "host-ready.json"])
+            pairing = bool(self.run.pairing_epoch)
             self._spawn("lobby", "lobby", ["--role", self.run.role, "--host", self.run.host,
-                "--bind", "0.0.0.0", "--port", LOBBY_PORT, "--epoch", self.run.epoch,
-                "--manifest", self.run.manifest, "--key-file", self.run.directory / "session.key",
+                "--bind", "0.0.0.0", "--port", LOBBY_PORT, "--epoch", self.run.pairing_epoch if pairing else self.run.epoch,
+                "--manifest", self.run.manifest, "--key-file", self.run.directory / ("pairing.key" if pairing else "session.key"),
                 "--progress", self.run.directory / "lobby-progress.json", "--stop-file", self.run.stop_path,
-                "--timeout", 600])
+                "--timeout", 600] + (["--local-run", self.run.local_run] if pairing else []))
         except Exception:
             self.stop()
             raise
+
+    def _activate_connection(self, lobby):
+        """One-shot key/queue initialization after the authenticated run commit."""
+        if not self.run.pairing_epoch or self.run.epoch:
+            raise ValueError("Die gemeinsame Sitzung darf nur einmal bestätigt werden.")
+        secret = (self.run.directory / "pairing.key").read_bytes().strip()
+        epoch = validate_connection(secret, lobby, role=self.run.role,
+                                     local_run=self.run.local_run, manifest=self.run.manifest)
+        with (self.run.directory / "session.key").open("xb") as output:
+            output.write(game_secret(secret, epoch, self.run.manifest))
+        if self.run.test_mode in LIVE_MODES:
+            from .live_input import create, InputWriter
+            create(self.run.live_input_path, epoch, self.run.role)
+            self._input_writer = InputWriter(self.run.live_input_path, epoch, self.run.role,
+                                             **input_queue_options(self.run.test_mode))
+        self.run.epoch = epoch
+        write_json(self.run.directory / "run.json", asdict(self.run))
 
     def stop(self):
         self.stopping = True
@@ -366,9 +386,19 @@ class SessionController:
         completed = bool(peer_report.get("finished"))
         coordinated = bool(host.get("coordinated_completed") or host_report.get("coordinated_completed"))
         failure = failure_reason(self.failure, peer, peer_report, host, host_report)
-        if lobby.get("state") == "connected" and (lobby.get("epoch") != self.run.epoch
-                or lobby.get("manifest") != self.run.manifest or lobby.get("protocol") != 1):
-            failure = "Die Verbindungsbestätigung gehört nicht zu dieser Testsitzung."
+        if lobby.get("state") == "connected":
+            if self.run.pairing_epoch:
+                try:
+                    epoch = validate_connection((directory / "pairing.key").read_bytes().strip(), lobby,
+                                                role=self.run.role, local_run=self.run.local_run,
+                                                manifest=self.run.manifest)
+                    if self.run.epoch and epoch != self.run.epoch:
+                        raise ValueError("coordinated run changed")
+                except (OSError, ValueError) as exc:
+                    failure = "Die Verbindungsbestätigung gehört nicht zu dieser Testsitzung."
+            elif (lobby.get("epoch") != self.run.epoch or lobby.get("manifest") != self.run.manifest
+                    or lobby.get("protocol") != 1):
+                failure = "Die Verbindungsbestätigung gehört nicht zu dieser Testsitzung."
         ready = read_json(directory / "host-ready.json")
         ready_valid = bool(ready and ready.get("epoch") == self.run.epoch and ready.get("port") == PORT
                            and ready.get("backend") == "tf2_controlled_measurement")
@@ -389,6 +419,16 @@ class SessionController:
         if failure:
             self.failure = failure
             if not self.stopping:
+                self.stop()
+        if (self.started and not self.stopping and self.run.pairing_epoch and not self.run.epoch
+                and lobby.get("state") == "connected"):
+            try:
+                self._activate_connection(lobby)
+                if self.run.role == "a":
+                    self._spawn("host", "game", self._game_args("host") +
+                                ["--bind", "0.0.0.0", "--ready", directory / "host-ready.json"])
+            except Exception as exc:
+                self.failure = failure = "Die gemeinsame Sitzung konnte nicht starten: " + str(exc)
                 self.stop()
         if (self.started and not self.stopping and not self.peer_started and lobby.get("state") == "connected"
                 and (self.run.role == "b" or ready_valid)):
@@ -438,11 +478,35 @@ def live_input_status(status):
     measured = live.get("paused_duration_ms", 0)
     pause = (" Lange Pause erfasst." if live.get("long_pause_met") is True else
              f" Aktuelle gemessene Pause: {int(measured) // 1000} / 35 Sekunden." if confirmed is True else "")
+    if status.get("test_mode") == MANUAL_DEPOT_MODE:
+        pause = depot_input_status(status)
     return (f"Gemeinsamer Zustand: {state} · Eigene Wünsche beidseitig bestätigt: {acknowledged}. "
             + (f"Ohne gemeinsame Bestätigung beendet: {pending} Wünsche." if pending and terminal else
                f"Noch {pending} zur Bestätigung offen." if pending else "Kein eigener Wunsch offen.")
             + pause
             + (" Gemeinsamer Abschluss angefordert." if status.get("finish_requested") or live.get("ending") else ""))
+
+
+def depot_input_status(status):
+    """Show only settled outcomes; local execution is not joint approval."""
+    outcomes = (status.get("live") or {}).get("acknowledgements") or []
+    own = [item for item in outcomes if item.get("peer") == status.get("role")
+           and (item.get("command") or {}).get("op") == "BUILD_DEPOT"]
+    if not own:
+        return " Noch kein eigener Depotauftrag gemeinsam abgeschlossen."
+    last = own[-1]
+    place = last["command"]["site"]
+    if last.get("status") == "applied":
+        cost = f"{last['cost']:,}".replace(",", ".")
+        return f" Eigener Depotauftrag {last['seq']}: Platz {place} beidseitig gebaut, Kosten {cost}."
+    reasons = {"site_occupied": "Platz bereits belegt", "outside_map": "außerhalb der Karte",
+               "water": "Platz im Wasser", "too_uneven": "Gelände zu uneben",
+               "engine_rejected": "Spiel lehnt diesen Bauvorschlag ab",
+               "insufficient_funds": "Geld reicht nicht aus"}
+    if last.get("status") == "rejected":
+        return (f" Eigener Depotauftrag {last['seq']}: Platz {place} beidseitig abgelehnt – "
+                + reasons.get(last.get("reason"), "Ablehnungsgrund im Bericht") + ". Keine Baukosten.")
+    return " Depotauftrag noch ohne bestätigtes Ergebnis."
 
 
 def describe_status(status):
@@ -452,7 +516,9 @@ def describe_status(status):
         if status.get("test_mode") in LIVE_MODES:
             live = status.get("live_result") or {}
             met = live.get("required_interactions_met")
-            coverage = ("Die vorgesehenen Pause-/Fortsetzen-Proben sind erfasst" if met is True else
+            coverage = (("Bau durch beide Spieler, Bau während Fahrt/Pause und Belegungsablehnung sind erfasst"
+                         if status.get("test_mode") == MANUAL_DEPOT_MODE else
+                         "Die vorgesehenen Pause-/Fortsetzen-Proben sind erfasst") if met is True else
                         "Nicht alle vorgesehenen Bedienproben wurden erfasst" if met is False else
                         "Bedienproben anhand beider Berichte auswerten")
             return ("Eingabetest mit gemeinsamem Abschluss beendet. " + coverage +
@@ -484,6 +550,10 @@ def describe_status(status):
     if peer.get("state") == "running":
         live = status.get("live") or {}
         if live.get("started"):
+            if status.get("test_mode") == MANUAL_DEPOT_MODE:
+                return ("Depotaufträge sind bereit: zuerst unterschiedliche Plätze, dann denselben Platz versuchen. "
+                        "Während Fahrt und gemeinsamer Pause testen; jede Bestätigung abwarten. "
+                        "Normale Spielwerkzeuge noch nicht verwenden. Danach 'Messung gemeinsam abschließen'.")
             return ("Jetzt die gemeinsamen Tasten unten nach Anleitung verwenden. "
                     "Jeder pausiert und setzt selbst fort; eine Pause mindestens 45 Sekunden halten. "
                     "Danach 'Messung gemeinsam abschließen'. Im Spiel nichts bauen oder umschalten.")
@@ -523,7 +593,7 @@ def export_diagnostics(prepared, destination):
                          "; begrenzter Engineversuch, kein vollständiger Synchronitätsnachweis.\n")
         assertion = current_game_assertion(prepared)
         if assertion:
-            archive.writestr("game-assertion.txt", assertion + "\n")
+            archive.writestr("game-assertion.txt", redact_addresses(assertion) + "\n")
         for directory, names, prefix in (
             (prepared.directory, ("host.log", "peer.log", "lobby.log", "host-report.json", "peer-report.json",
                                   "host-progress.json", "peer-progress.json", "lobby-progress.json", "preparation-error.json",
@@ -539,5 +609,7 @@ def export_diagnostics(prepared, destination):
                     except (FileNotFoundError, PermissionError):
                         continue  # An in-progress publication is not a complete diagnostic.
                     if len(raw) <= limit:
-                        archive.writestr(prefix + name, raw)
+                        # Reports deliberately omit the private profile/key/run
+                        # files. Socket exception text can still contain IPs.
+                        archive.writestr(prefix + name, redact_addresses(raw.decode("utf-8", errors="replace")))
     return destination

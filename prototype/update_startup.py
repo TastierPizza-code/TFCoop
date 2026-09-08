@@ -7,6 +7,7 @@ from pathlib import Path
 import subprocess
 
 from coop.native import game_is_running
+from prototype.strict_sync.session_guard import lobby_active
 
 
 def session_active() -> bool:
@@ -25,7 +26,7 @@ def session_active() -> bool:
         return True
     error = ctypes.get_last_error()
     if error == 2:
-        return False
+        return lobby_active()
     # Access denied also means an existing controller may own the name.
     return True
 

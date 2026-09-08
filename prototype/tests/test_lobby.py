@@ -1,6 +1,7 @@
 """Real loopback presence connections, independent of simulation and UI."""
 
 import asyncio
+from contextlib import nullcontext
 import json
 from pathlib import Path
 import tempfile
@@ -39,7 +40,8 @@ class LobbyTests(unittest.IsolatedAsyncioTestCase):
                                stop_file=self.directory / f"{role}.stop", timeout=2, **changes)
 
     def start(self, args):
-        task = asyncio.create_task(lobby.run(args))
+        # Two PCs share one test process; production CLI always owns its guard.
+        task = asyncio.create_task(lobby.run(args, guard_factory=nullcontext))
         self.tasks.append(task)
         return task
 
@@ -164,7 +166,7 @@ class LobbyTests(unittest.IsolatedAsyncioTestCase):
         a.stop_file.touch()
         self.assertEqual(await asyncio.wait_for(host_task, 2), 0)
         with self.assertRaises(FileExistsError):
-            await lobby.run(a)
+            await lobby.run(a, guard_factory=nullcontext)
 
 
 if __name__ == "__main__":

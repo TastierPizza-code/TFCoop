@@ -74,7 +74,8 @@ class LiveEngineFixture(StreamEngineFixture):
 
 
 class LiveDriverTests(unittest.IsolatedAsyncioTestCase):
-    async def run_fixture(self, action_hook, *, fault="", hold_final=False, duplicate=False):
+    async def run_fixture(self, action_hook, *, fault="", hold_final=False, duplicate=False,
+                          completion_timeout=90):
         asyncio.get_running_loop().set_debug(False)
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -221,7 +222,7 @@ class LiveDriverTests(unittest.IsolatedAsyncioTestCase):
                         self.assertFalse(any(item["state"] == "completed" for item in context["progress"]))
                         self.assertFalse(any((run / "peer-report.json").exists() for run in runs.values()))
                         context["release_final"].set()
-                    codes = await asyncio.wait_for(asyncio.gather(*tasks), 90)
+                    codes = await asyncio.wait_for(asyncio.gather(*tasks), completion_timeout)
                     host_code = await asyncio.wait_for(host, 10)
             finally:
                 context["release_final"].set()
@@ -318,7 +319,12 @@ class LiveDriverTests(unittest.IsolatedAsyncioTestCase):
                 queue["b"].submit({"op": "END_TEST"})
                 state["phase"] = "sent_end"
 
-        codes, host_code, host, reports, journals, exports, context = await self.run_fixture(choose_inputs)
+        # This size-boundary scenario deliberately generates a >4 MiB report:
+        # 1,000 paused heartbeats plus over 1,800 advancing steps. Its fixture
+        # budget includes file IPC and serialization, independently of native
+        # pacing. Every production phase deadline and assertion stays intact.
+        codes, host_code, host, reports, journals, exports, context = await self.run_fixture(
+            choose_inputs, completion_timeout=300)
         self.assertEqual((codes, host_code), ([0, 0], 0), host.get("reason"))
         result = host["live"]
         self.assertTrue(result["completed"])

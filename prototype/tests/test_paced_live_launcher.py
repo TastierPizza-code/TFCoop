@@ -28,7 +28,9 @@ class PacedLiveLauncherTests(unittest.TestCase):
                 source_root=self.root, save=self.root / "base.sav", runs_root=self.root / "runs")
         self.assertEqual(prepared.test_mode, workflow.PACED_LIVE_MODE)
         self.assertEqual(staged.call_args.kwargs["preparation"], "short_scene_v1")
-        self.assertEqual(InputReader(prepared.live_input_path, prepared.epoch, "b").take(), [])
+        self.assertFalse(prepared.live_input_path.exists())
+        self.assertFalse(prepared.epoch)
+        self.assertTrue(prepared.local_run)
         self.assertEqual(json.loads((prepared.directory / "run.json").read_text())["test_mode"],
                          workflow.PACED_LIVE_MODE)
 

@@ -602,7 +602,7 @@ class EngineAdapter:
                    "action": action, **fields}
         self.native._write("lua_control.json", _json_bytes(message))
         status = self.native._wait(self._read_lua)
-        expected = {"snapshot": "ready", "plan": "planned", "apply": "applied"}[action]
+        expected = {"snapshot": "ready", "plan": "planned", "apply": "applied", "preview": "previewed"}[action]
         if status["status"] != expected:
             raise MailboxError("Lua acknowledgement is for the wrong action")
         return status

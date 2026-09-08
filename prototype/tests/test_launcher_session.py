@@ -396,7 +396,10 @@ class LauncherSessionTests(unittest.TestCase):
                                       source_root=source, save=self.root / "baseline.sav", runs_root=self.root / "runs")
         self.assertEqual(events, ["stage", "install", "stage", "install"])
         self.assertNotEqual(first.run_dir, second.run_dir)
-        self.assertEqual(len((first.directory / "session.key").read_bytes()), 64)
+        self.assertEqual(len((first.directory / "pairing.key").read_bytes()), 64)
+        self.assertFalse((first.directory / "session.key").exists())
+        self.assertFalse(first.epoch)
+        self.assertNotEqual(first.local_run, second.local_run)
         self.assertNotIn("session.key", (first.directory / "run.json").read_text())
 
     def test_prepare_refuses_installed_test_without_staging(self):

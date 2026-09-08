@@ -74,7 +74,7 @@ def _retry_io(operation):
             time.sleep(min(0.01, max(0, deadline - time.monotonic())))
 
 
-def _read(path, epoch, peer):
+def _read(path, epoch, peer, command_validator=_command):
     raw = _retry_io(lambda: _shared_read(path, MAX_BYTES))
     if len(raw) > MAX_BYTES:
         raise InputError("live input file exceeds byte limit")
@@ -96,7 +96,7 @@ def _read(path, epoch, peer):
             raise InputError("live input sequence is not contiguous")
         if ended:
             raise InputError("live input history continues after END_TEST")
-        _command(request["command"])
+        command_validator(request["command"])
         ended = request["command"]["op"] == "END_TEST"
     return document
 
@@ -166,16 +166,19 @@ def create(path, epoch, peer):
 
 
 class InputWriter:
-    def __init__(self, path, epoch, peer):
+    def __init__(self, path, epoch, peer, *, command_validator=_command):
         _identity(epoch, peer)
+        if not callable(command_validator):
+            raise InputError("input command validator must be callable")
+        self._command_validator = command_validator
         self.path, self.epoch, self.peer = Path(path), epoch, peer
-        self._history = _history(_read(self.path, epoch, peer))
+        self._history = _history(_read(self.path, epoch, peer, self._command_validator))
 
     def submit(self, command):
         """Atomically append one real request and return its local sequence."""
-        command = _command(command)
+        command = self._command_validator(command)
         with _write_guard(self.path):
-            document = _read(self.path, self.epoch, self.peer)
+            document = _read(self.path, self.epoch, self.peer, self._command_validator)
             history = _history(document)
             _unchanged(self._history, history)
             requests = document["requests"]
@@ -192,15 +195,18 @@ class InputWriter:
 
 
 class InputReader:
-    def __init__(self, path, epoch, peer):
+    def __init__(self, path, epoch, peer, *, command_validator=_command):
         _identity(epoch, peer)
+        if not callable(command_validator):
+            raise InputError("input command validator must be callable")
+        self._command_validator = command_validator
         self.path, self.epoch, self.peer = Path(path), epoch, peer
-        self._history = _history(_read(self.path, epoch, peer))
+        self._history = _history(_read(self.path, epoch, peer, self._command_validator))
         self._sealed = 0
 
     def take(self):
         """Seal at most eight oldest new requests, keeping all later requests."""
-        document = _read(self.path, self.epoch, self.peer)
+        document = _read(self.path, self.epoch, self.peer, self._command_validator)
         history = _history(document)
         _unchanged(self._history, history)
         result = copy.deepcopy(document["requests"][self._sealed:self._sealed + MAX_BATCH])

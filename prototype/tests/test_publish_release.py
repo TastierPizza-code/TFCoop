@@ -84,7 +84,8 @@ class PublishValidationTests(unittest.TestCase):
                     publisher.validate(archive, report)
 
     def test_private_save_and_secret_names_rejected_inside_valid_manifest(self):
-        for name in ("Testspielstand/initial.sav", "initial.sav.lua", "session.key", "alut_real.dll"):
+        for name in ("Testspielstand/initial.sav", "initial.sav.lua", "session.key", "pairing.key",
+                     "test-pairing.json", "alut_real.dll"):
             with self.subTest(name=name):
                 archive, report = self.package(files={name: b"private fixture"})
                 with patch.object(publisher, "source_files"), self.assertRaises(publisher.updater.UpdateError):

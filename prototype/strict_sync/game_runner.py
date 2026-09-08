@@ -38,6 +38,10 @@ from .paced_live_probe import (PacedLiveCoordinator, PacedLiveReplica,
 from .short_build_profile import (SHORT_BUILD_CONTRACT, SHORT_BUILD_ROUNDS,
                                   ShortBuildProof, short_build_inputs)
 from .live_input import InputReader
+from .manual_depot_input import validate_command as validate_depot_input
+from .manual_depot_probe import (ManualDepotCoordinator, ManualDepotReplica,
+                                MANUAL_DEPOT_CAPABILITY, MANUAL_DEPOT_WORLD_RECEIPTS)
+from .manual_depot_engine import ManualDepotEngineAdapter, ManualDepotStreamEngine
 from .coalesced_progress import CoalescedProgress
 
 
@@ -225,6 +229,7 @@ def read_setup(directory):
     semantics = validate_configuration_semantics(shared.get("config_semantics"))
     value["measurement_profile"] = semantics.get("profile", TIME_PROFILE)
     value["measurement_preparation"] = semantics.get("preparation")
+    value["measurement_input_mode"] = semantics.get("input_mode")
     return path, value
 
 
@@ -233,17 +238,21 @@ def selected_profile(args, setup):
     if profile not in (TIME_PROFILE, BUILD_PROFILE) or profile != setup.get("measurement_profile", TIME_PROFILE):
         raise ValueError("selected test profile does not match the prepared shared manifest")
     paced_live = getattr(args, "paced_live_probe", False)
-    if paced_live:
+    manual_depot = getattr(args, "manual_depot_probe", False)
+    short_live = paced_live or manual_depot
+    if setup.get("measurement_input_mode") != ("manual_depot_v1" if manual_depot else None):
+        raise ValueError("selected manual input mode does not match the prepared shared manifest")
+    if short_live:
         if (profile != BUILD_PROFILE or getattr(args, "rounds", None) != SHORT_BUILD_ROUNDS
                 or setup.get("measurement_preparation") != SHORT_BUILD_CONTRACT):
             raise ValueError("paced live probe requires the identified ten-round short_scene_v1 preparation")
     elif setup.get("measurement_preparation") is not None:
         raise ValueError("short preparation belongs only to the paced live experiment")
-    if not paced_live and profile == BUILD_PROFILE and getattr(args, "rounds", None) != BUILD_ROUNDS:
+    if not short_live and profile == BUILD_PROFILE and getattr(args, "rounds", None) != BUILD_ROUNDS:
         raise ValueError("build_v2 requires the complete fixed 240-round recipe")
-    if sum(bool(getattr(args, name, False)) for name in ("timing_probe", "stream_probe", "live_probe", "paced_live_probe")) > 1:
+    if sum(bool(getattr(args, name, False)) for name in ("timing_probe", "stream_probe", "live_probe", "paced_live_probe", "manual_depot_probe")) > 1:
         raise ValueError("choose exactly one post-build experiment")
-    if getattr(args, "live_probe", False) or paced_live:
+    if getattr(args, "live_probe", False) or short_live:
         if profile != BUILD_PROFILE or getattr(args, "delay_ms", 0) != 0:
             raise ValueError("live probe requires build_v2 without legacy message delays")
         if getattr(args, "timeout", 30) < 15:
@@ -262,6 +271,8 @@ def selected_profile(args, setup):
 
 
 def measurement_capabilities(args):
+    if getattr(args, "manual_depot_probe", False):
+        return tuple(sorted((*CAPABILITIES, MANUAL_DEPOT_CAPABILITY)))
     if getattr(args, "paced_live_probe", False):
         return tuple(sorted((*CAPABILITIES, PACED_LIVE_CAPABILITY)))
     if getattr(args, "live_probe", False):
@@ -344,10 +355,12 @@ async def game_peer(args, secret, directory, setup):
     live_input_reader = None
     facts = {}
     paced_live = getattr(args, "paced_live_probe", False)
-    preparation_rounds = SHORT_BUILD_ROUNDS if paced_live else BUILD_ROUNDS
+    manual_depot = getattr(args, "manual_depot_probe", False)
+    short_live = paced_live or manual_depot
+    preparation_rounds = SHORT_BUILD_ROUNDS if short_live else BUILD_ROUNDS
     progress = Progress(external_path(getattr(args, "progress", None), directory),
                         peer=getattr(args, "peer", None))
-    if paced_live:
+    if short_live:
         progress = CoalescedProgress(progress)
     stop_file = external_path(getattr(args, "stop_file", None), directory)
     stop_requested = lambda: bool(stop_file and stop_file.exists())
@@ -356,20 +369,21 @@ async def game_peer(args, secret, directory, setup):
             raise StopRequested("measurement stopped by local user")
     try:
         profile = selected_profile(args, setup)
-        if getattr(args, "live_probe", False) or paced_live:
+        if getattr(args, "live_probe", False) or short_live:
             input_path = external_path(getattr(args, "live_input_file", None), directory)
             if input_path is None:
                 raise ValueError("live peer requires a prepared input queue outside the session")
             # Validate the exact queue identity and structure before consuming
             # a game session or creating a launch lease. The reader validates
             # again on every collection while the live test is running.
-            live_input_reader = InputReader(input_path, args.epoch, args.peer)
+            queue_options = {"command_validator": validate_depot_input} if manual_depot else {}
+            live_input_reader = InputReader(input_path, args.epoch, args.peer, **queue_options)
         if profile == BUILD_PROFILE:
-            build_proof = ShortBuildProof() if paced_live else BuildProof()
+            build_proof = ShortBuildProof() if short_live else BuildProof()
             journal_path = external_path(getattr(args, "journal", None) or
                                          Path(args.report).with_name("peer-journal.jsonl"), directory)
             journal = SnapshotJournal(journal_path)
-            input_source = lambda number: (short_build_inputs(args.peer, number) if paced_live
+            input_source = lambda number: (short_build_inputs(args.peer, number) if short_live
                                            else build_inputs(args.peer, number))
         else:
             inputs = read_inputs(args.inputs)
@@ -402,7 +416,8 @@ async def game_peer(args, secret, directory, setup):
         check_stop()
         # Do not cancel an engine thread: it owns native/Lua mailboxes. A local
         # stop during this bounded operation is handled immediately afterward.
-        engine = await asyncio.to_thread(EngineAdapter, directory, setup["native_epoch"],
+        adapter_class = ManualDepotEngineAdapter if manual_depot else EngineAdapter
+        engine = await asyncio.to_thread(adapter_class, directory, setup["native_epoch"],
                                          probe_only=True, timeout_s=min(args.timeout, 60))
         check_stop()
         if tuple(sorted(engine.capabilities)) != CAPABILITIES:
@@ -411,13 +426,15 @@ async def game_peer(args, secret, directory, setup):
             initial = engine.snapshot()
             journal.append("initial", frame=engine.frame, number=0, snapshot=initial)
             build_proof.observe(initial, frame=engine.frame)
-        replica_class = (PacedLiveReplica if paced_live else
+        replica_class = (ManualDepotReplica if manual_depot else PacedLiveReplica if paced_live else
                          LiveReplica if getattr(args, "live_probe", False) else
                          StreamReplica if getattr(args, "stream_probe", False) else
                          TimingReplica if getattr(args, "timing_probe", False) else Replica)
-        options = {"stop_requested": stop_requested} if replica_class in (TimingReplica, StreamReplica, LiveReplica, PacedLiveReplica) else {}
-        if replica_class in (LiveReplica, PacedLiveReplica):
+        options = {"stop_requested": stop_requested} if replica_class in (TimingReplica, StreamReplica, LiveReplica, PacedLiveReplica, ManualDepotReplica) else {}
+        if replica_class in (LiveReplica, PacedLiveReplica, ManualDepotReplica):
             options["live_input_source"] = live_input_reader.take
+        if manual_depot:
+            options["stream_engine_factory"] = ManualDepotStreamEngine
         replica = replica_class(args.peer, args.epoch, setup["manifest_digest"], measurement_capabilities(args),
                                 engine, input_source, frame=engine.frame,
                                 step_us=ENGINE_STEP_US, **options)
@@ -450,7 +467,7 @@ async def game_peer(args, secret, directory, setup):
             preparation_key = ((response.get("kind"), response.get("round"), response.get("index"),
                                 response.get("plan_hash")) if response else None)
             if (build_proof and response and response.get("kind") in ("applied", "stepped")
-                    and (not paced_live or preparation_key not in preparation_journaled)):
+                    and (not short_live or preparation_key not in preparation_journaled)):
                 observed = engine.snapshot()
                 command = message.get("command") if response["kind"] == "applied" else None
                 journal.append(response["kind"], frame=replica.frame, number=message.get("round"),
@@ -458,7 +475,7 @@ async def game_peer(args, secret, directory, setup):
                 build_proof.observe(observed, frame=replica.frame, command=command,
                                     command_key=message.get("command_key"),
                                     **({"receipt": {key: response[key] for key in ("success", "result", "state_digest")}
-                                       if command is not None else None} if paced_live else {}))
+                                       if command is not None else None} if short_live else {}))
                 if response["kind"] == "stepped" and message.get("round") == preparation_rounds - 1:
                     # The coordinator cannot send completion until both local
                     # postconditions pass and this last STEP receipt is sent.
@@ -492,7 +509,8 @@ async def game_peer(args, secret, directory, setup):
                          stream=replica.stream_progress(), phase_label="Fortlaufende Fahrt und gemeinsame Kontrollpunkte")
             if response and str(response.get("kind", "")).startswith("live_"):
                 receipt_key = (response["kind"], response.get("index"), response.get("plan_hash"))
-                world_receipts = PACED_LIVE_WORLD_RECEIPTS if paced_live else LIVE_WORLD_RECEIPTS
+                world_receipts = (MANUAL_DEPOT_WORLD_RECEIPTS if manual_depot else
+                                  PACED_LIVE_WORLD_RECEIPTS if paced_live else LIVE_WORLD_RECEIPTS)
                 if journal and response["kind"] in world_receipts and receipt_key not in live_world_journaled:
                     stream_engine = replica.stream_engine
                     if not stream_engine or not stream_engine.observations_fresh:
@@ -595,10 +613,10 @@ async def game_peer(args, secret, directory, setup):
                                    "halted": not finished, "reason": reason,
                                    "peer_error_sent": peer_error_sent,
                                    "profile": getattr(args, "profile", TIME_PROFILE),
-                                   "build_proof": proof_result if finished and not paced_live else None,
+                                   "build_proof": proof_result if finished and not short_live else None,
                                    **({"short_preparation": proof_result,
                                        "preparation_contract": SHORT_BUILD_CONTRACT,
-                                       "launcher_status": progress.metrics()} if paced_live else {}),
+                                       "launcher_status": progress.metrics()} if short_live else {}),
                                    "timing": replica.timing_report() if replica and hasattr(replica, "timing_report") else None,
                                    "stream": replica.stream_report() if replica and hasattr(replica, "stream_report") else None,
                                    "live": replica.live_report() if replica and hasattr(replica, "live_report") else None,
@@ -616,7 +634,7 @@ async def game_peer(args, secret, directory, setup):
         progress("completed" if finished else "halted", reason=reason, local_completed=finished,
                  coordinated_completed=False, round=replica.round if replica else None,
                  frame=replica.frame if replica else None,
-                 phase_label=("Kurzer Aufbau und gemeinsame Eingaben abgeschlossen" if finished and paced_live else
+                 phase_label=("Kurzer Aufbau und gemeinsame Eingaben abgeschlossen" if finished and short_live else
                               phase_label(BUILD_ROUNDS) if finished and build_proof else reason),
                  timing=replica.timing_progress() if replica and hasattr(replica, "timing_progress") else None,
                  stream=replica.stream_progress() if replica and hasattr(replica, "stream_progress") else None,
@@ -654,6 +672,7 @@ def main(argv=None):
     parser.add_argument("--stream-probe", action="store_true", help="after the build, use paced small grants, ten-second world checkpoints and scheduled pause commands")
     parser.add_argument("--live-probe", action="store_true", help="after the build, accept explicit pause/resume/end requests from a bounded local input queue")
     parser.add_argument("--paced-live-probe", action="store_true", help="after ten verified preparation rounds, collect live inputs with native receipts")
+    parser.add_argument("--manual-depot-probe", action="store_true", help="after short preparation, accept bounded player depot requests with fresh joint preview")
     parser.add_argument("--live-input-file", type=Path, help="prepared live peer input queue outside the native/Lua session")
     args = parser.parse_args(argv)
     if (not 1 <= args.port <= 65535 or not 1 <= args.rounds <= 10000 or not 0 < args.timeout <= 60
@@ -661,7 +680,7 @@ def main(argv=None):
         parser.error("invalid port/rounds/timeout")
     if args.mode == "host" and not args.ready:
         parser.error("host requires --ready")
-    accepts_live = args.live_probe or args.paced_live_probe
+    accepts_live = args.live_probe or args.paced_live_probe or args.manual_depot_probe
     if args.mode == "peer" and (not args.peer or not args.inputs and not accepts_live):
         parser.error("peer requires --peer and --inputs")
     if args.live_input_file and (args.mode != "peer" or not accepts_live):
@@ -675,7 +694,7 @@ def main(argv=None):
         parser.error("key file must contain 32..128 bytes")
     if args.mode == "host":
         progress = Progress(external_path(args.progress, directory), role="host")
-        if args.paced_live_probe:
+        if args.paced_live_probe or args.manual_depot_probe:
             progress = CoalescedProgress(progress)
         stop_file = external_path(args.stop_file, directory)
         return asyncio.run(host(args, secret, expected_manifest=setup["manifest_digest"],
@@ -683,7 +702,8 @@ def main(argv=None):
                                 startup_timeout=args.startup_timeout, progress=progress,
                                 stop_requested=lambda: bool(stop_file and stop_file.exists()),
                                 step_us=ENGINE_STEP_US,
-                                coordinator_factory=(PacedLiveCoordinator if args.paced_live_probe else
+                                coordinator_factory=(ManualDepotCoordinator if args.manual_depot_probe else
+                                                     PacedLiveCoordinator if args.paced_live_probe else
                                                      LiveCoordinator if args.live_probe else
                                                      StreamCoordinator if args.stream_probe else
                                                      TimingCoordinator if args.timing_probe else None)))

@@ -139,6 +139,27 @@ class SceneAssetTests(unittest.TestCase):
             self.assertAlmostEqual(got, expected, places=9)
         self.assertAlmostEqual(actual[1]-self.assets.road_endpoints[3][2],self.assets.connect_gap,places=9)
 
+    def test_manual_depot_sites_cover_literal_rotated_stock_clearance(self):
+        manual = self.lua.execute((MOD / 'res/scripts/tf2_strict_probe/manual_depot_assets.lua').read_text(encoding='utf-8'))
+        result = self.stock(self.assets.depot_file).updateFn(self.assets.depot_params)
+        points = [vertex for _, alignment in result.terrainAlignmentLists.items()
+                  for vertex in self.alignment_vertices(alignment)]
+        for _, collider in result.colliders.items():
+            self.assertEqual(collider.type, 'POINT_CLOUD')
+            points.extend(self.vec(point) for _, point in collider.params.points.items())
+        for _, edges in result.edgeLists.items():
+            points.extend(self.vec(edge[1]) for _, edge in edges.edges.items())
+        self.assertGreater(len(points), 100)
+        self.assertEqual(set(manual.rotations.keys()), {0, 90, 180, 270})
+        for _, rotation in manual.rotations.items():
+            xx, yx, xy, yy = self.vec(rotation)
+            for x, y, *_ in points:
+                self.assertLessEqual(abs(xx*x+xy*y), manual.half_extent)
+                self.assertLessEqual(abs(yx*x+yy*y), manual.half_extent)
+        for _, offset in manual.sites.items():
+            self.assertLessEqual(abs(offset[1])+manual.half_extent, self.assets.half_extent)
+            self.assertLessEqual(abs(offset[2])+manual.half_extent, self.assets.half_extent)
+
     def test_owned_road_graph_has_three_branches_and_no_free_nodes(self):
         result = self.road()
         self.assertEqual(len(result.edgeLists), 1)

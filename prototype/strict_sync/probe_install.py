@@ -21,6 +21,7 @@ from coop import native
 from coop.launch import process_info
 from coop.session import hash_file
 from .core import decode_message, digest
+from .session_guard import lobby_active
 from .stage_probe import (CONFIG, MOD, REQUIRED_MOD_FILES, _config, StageError,
                           validate_configuration_semantics)
 
@@ -154,6 +155,8 @@ def _guard():
             existed = ctypes.get_last_error() == 183
             if not handle or existed:
                 raise ProbeInstallError("Ein Messcontroller ist noch aktiv. Test zuerst beenden.")
+        if lobby_active():
+            raise ProbeInstallError("Ein Test wartet auf den Mitspieler oder ist noch verbunden. Test zuerst beenden.")
         _require_closed()
         yield
     finally:
@@ -281,7 +284,8 @@ def _verify_stage(game: Path, output: Path, session: Path) -> tuple[dict, dict]:
         raise ProbeInstallError("Invalid prepared native epoch")
     if _path(session, "probe_epoch.txt").read_text(encoding="ascii").strip() != str(setup["native_epoch"]):
         raise ProbeInstallError("Native loader epoch does not match the prepared session")
-    expected_config = _config(session, setup["native_epoch"], {"initial_bindings": manifest["template_bindings"]}, profile)
+    expected_config = _config(session, setup["native_epoch"], {"initial_bindings": manifest["template_bindings"]},
+                              profile, semantics.get("input_mode"))
     if _path(payload_root, f"mods/{MOD}/{CONFIG}").read_bytes() != expected_config.encode("utf-8"):
         raise ProbeInstallError("The local Lua configuration is not bound to this session and epoch")
     if files["alut_real.dll"] != native.STOCK_ALUT_SHA256:

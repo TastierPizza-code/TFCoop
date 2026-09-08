@@ -35,7 +35,7 @@ SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 _LOCK = threading.Lock()
 _DOWNLOAD_HOSTS = {"github.com", "release-assets.githubusercontent.com", "objects.githubusercontent.com"}
 _PRIVATE_NAMES = {
-    "transportfever2.exe", "alut_real.dll", "session.key", "launch.cfg", "launcher.json",
+    "transportfever2.exe", "alut_real.dll", "session.key", "launch.cfg", "launcher.json", "test-pairing.json",
     "run.json", "probe_setup.json", "probe_epoch.txt", "native_status.txt", "lua_status.json",
     "loader_status.txt", "credentials", ".env", ".git", ".svn", "testspielstand",
     "userdata", "crash_dump", "runtime", "staged", "results", "reports", "logs",

@@ -44,6 +44,7 @@ def headless_app():
     app.last_live_status = {}
     app.live_buttons = [Mock(), Mock(), Mock()]
     app.live_status = Value()
+    app.test_mode = Value(launcher.workflow.MANUAL_DEPOT_MODE)
     return app
 
 

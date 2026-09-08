@@ -24,6 +24,7 @@ from prototype.strict_sync import stage_probe as stage
 from prototype.strict_sync.core import digest
 from prototype.strict_sync.live_input import InputReader
 from prototype.strict_sync.short_build_profile import SHORT_BUILD_CONTRACT
+from prototype.strict_sync.test_pairing import connection_receipt, load_profile, save_profile
 from prototype.tests.test_stage_probe import dll_bytes
 
 
@@ -114,21 +115,27 @@ class PreparationPipelineTests(unittest.TestCase):
         setup["manifest_digest"] = digest(manifest)
         setup_path.write_text(json.dumps(setup), encoding="utf-8")
 
-    def test_all_four_modes_reach_the_actual_driver_and_restore_exactly(self):
+    def test_all_five_modes_reach_the_actual_driver_and_restore_exactly(self):
         file_manifests, lobby_manifests, imported_names = {}, {}, set()
         for mode in workflow.TEST_MODES:
             for role in ("a", "b"):
                 with self.subTest(mode=mode, role=role):
+                    private_profile = save_profile(workflow.local_root(), host="127.0.0.1",
+                                                   code="1234-" * 7 + "1234", role=role)
                     prepared = self.prepare(mode, role)
                     self.assertTrue(install.installation_status(self.game)["installed"])
                     session, setup = driver.read_setup(prepared.session)
                     shared = json.loads((session / "probe_manifest.json").read_text(encoding="utf-8"))
-                    short = mode == workflow.PACED_LIVE_MODE
+                    short = mode in (workflow.PACED_LIVE_MODE, workflow.MANUAL_DEPOT_MODE)
                     expected_semantics = {"enabled": True, "native_gate_required": True, "profile": "build_v2"}
                     if short:
                         expected_semantics["preparation"] = SHORT_BUILD_CONTRACT
+                    if mode == workflow.MANUAL_DEPOT_MODE:
+                        expected_semantics["input_mode"] = "manual_depot_v1"
                     self.assertEqual(shared["config_semantics"], expected_semantics)
                     self.assertEqual(setup["measurement_preparation"], SHORT_BUILD_CONTRACT if short else None)
+                    self.assertEqual(setup["measurement_input_mode"],
+                                     "manual_depot_v1" if mode == workflow.MANUAL_DEPOT_MODE else None)
                     self.assertEqual(setup["manifest_digest"], digest(shared))
                     self.assertEqual(prepared.manifest, workflow.lobby_manifest(digest(shared), mode))
                     self.assertEqual(file_manifests.setdefault(mode, digest(shared)), digest(shared))
@@ -137,6 +144,19 @@ class PreparationPipelineTests(unittest.TestCase):
                     # Consume actual launcher worker arguments through the driver
                     # boundary without starting a controller or native process.
                     controller = workflow.SessionController(prepared)
+                    self.assertFalse(prepared.live_input_path.exists())
+                    with self.assertRaisesRegex(ValueError, "noch nicht bestätigt"):
+                        controller._game_args("peer")
+                    # The loopback lobby tests exercise the signed exchange.
+                    # Here carry its authenticated result across the actual
+                    # prepare -> installer -> queue -> driver boundary.
+                    epoch = "f" * 32
+                    connected = {"protocol": 2, "state": "connected", "role": role,
+                                 "local_run": prepared.local_run, "epoch": epoch, "manifest": prepared.manifest}
+                    connected["run_proof"] = connection_receipt(
+                        (prepared.directory / "pairing.key").read_bytes(), role=role,
+                        local_run=prepared.local_run, epoch=epoch, manifest=prepared.manifest)
+                    controller._activate_connection(connected)
                     for worker in ("host", "peer"):
                         command = controller._game_args(worker)
                         args = SimpleNamespace(
@@ -146,7 +166,8 @@ class PreparationPipelineTests(unittest.TestCase):
                             timing_probe="--timing-probe" in command,
                             stream_probe="--stream-probe" in command,
                             live_probe="--live-probe" in command,
-                            paced_live_probe="--paced-live-probe" in command)
+                            paced_live_probe="--paced-live-probe" in command,
+                            manual_depot_probe="--manual-depot-probe" in command)
                         self.assertEqual(args.rounds, 10 if short else 240)
                         self.assertEqual(driver.selected_profile(args, setup), "build_v2")
                         self.assertEqual("--live-input-file" in command,
@@ -169,11 +190,13 @@ class PreparationPipelineTests(unittest.TestCase):
                     self.assert_original_saves()
                     self.assertTrue(imported.is_file())
                     self.assertFalse(install.installation_status(self.game)["installed"])
+                    self.assertEqual(load_profile(workflow.local_root()), private_profile)
 
-        old = [file_manifests[mode] for mode in workflow.TEST_MODES if mode != workflow.PACED_LIVE_MODE]
+        old = [file_manifests[mode] for mode in (workflow.LIVE_MODE, workflow.STREAM_MODE, workflow.TIMING_MODE)]
         self.assertEqual(len(set(old)), 1)  # Old full recipes retain their shared file identity.
         self.assertNotIn(file_manifests[workflow.PACED_LIVE_MODE], old)
-        self.assertEqual(len(set(lobby_manifests.values())), 4)
+        self.assertNotIn(file_manifests[workflow.MANUAL_DEPOT_MODE], [*old, file_manifests[workflow.PACED_LIVE_MODE]])
+        self.assertEqual(len(set(lobby_manifests.values())), 5)
 
     def test_unknown_or_incompatible_semantics_fail_before_any_game_or_save_write(self):
         valid = {"enabled": True, "native_gate_required": True,
@@ -189,6 +212,11 @@ class PreparationPipelineTests(unittest.TestCase):
             "integer_gate": {**valid, "native_gate_required": 1},
             "integer_enabled": {**valid, "enabled": 1},
             "null_preparation": {**valid, "preparation": None},
+            "unknown_input_mode": {**valid, "input_mode": "manual_depot_v2"},
+            "boolean_input_mode": {**valid, "input_mode": True},
+            "null_input_mode": {**valid, "input_mode": None},
+            "missing_short_input_mode": {"enabled": True, "native_gate_required": True,
+                                          "profile": "build_v2", "input_mode": "manual_depot_v1"},
         }
         for name, semantics in invalid.items():
             with self.subTest(semantics=name):

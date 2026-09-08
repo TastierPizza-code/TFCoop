@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 from prototype.strict_sync import launcher_session as workflow
 from prototype.strict_sync.live_input import create, InputReader, InputError
+from prototype.strict_sync.test_pairing import connection_receipt
 from prototype.tests import test_launcher_session as fixtures
 
 
@@ -34,7 +35,7 @@ class LiveLauncherTests(unittest.TestCase):
         live.update(changes)
         workflow.write_json(self.run_dir / "peer-progress.json", {"state": "running", "round": 240, "live": live})
 
-    def test_reference_preparation_creates_fresh_local_queue(self):
+    def test_reference_preparation_defers_queue_until_authenticated_connection(self):
         saves = self.root / "saves"
         saves.mkdir()
         with patch.object(workflow, "installation_status", return_value={"installed": False}), \
@@ -46,6 +47,25 @@ class LiveLauncherTests(unittest.TestCase):
                 source_root=self.root, save=self.root / "base.sav", runs_root=self.root / "runs",
                 test_mode=workflow.LIVE_MODE)
         self.assertEqual(prepared.test_mode, workflow.LIVE_MODE)
+        self.assertFalse(prepared.epoch)
+        self.assertFalse(prepared.live_input_path.exists())
+        self.assertFalse((prepared.directory / "session.key").exists())
+        controller = workflow.SessionController(prepared, spawn=self.spawn)
+        controller.start()
+        self.assertEqual(set(controller.children), {"lobby"})
+        self.assertFalse(prepared.live_input_path.exists())
+        epoch = "e" * 32
+        connected = {"protocol": 2, "state": "connected", "role": "b",
+                     "local_run": prepared.local_run, "epoch": epoch, "manifest": prepared.manifest}
+        connected["run_proof"] = connection_receipt(
+            (prepared.directory / "pairing.key").read_bytes(), role="b",
+            local_run=prepared.local_run, epoch=epoch, manifest=prepared.manifest)
+        workflow.write_json(prepared.directory / "lobby-progress.json", connected)
+        status = controller.poll()
+        self.assertFalse(status["failure"])
+        self.assertTrue(status["peer_started"])
+        self.assertEqual(prepared.epoch, epoch)
+        self.assertNotEqual(prepared.epoch, prepared.pairing_epoch)
         self.assertEqual(InputReader(prepared.live_input_path, prepared.epoch, "b").take(), [])
         self.assertEqual(json.loads((prepared.directory / "run.json").read_text())["test_mode"], workflow.LIVE_MODE)
 
@@ -142,8 +162,8 @@ class LiveLauncherTests(unittest.TestCase):
             "padding": "x" * (4 * 1024 * 1024), "live": {"required_interactions_met": True}})
         self.assertTrue(controller.poll()["completed"])
 
-    def test_mode_identity_keeps_all_four_paths_distinct(self):
-        self.assertEqual(len({workflow.lobby_manifest("e" * 64, mode) for mode in workflow.TEST_MODES}), 4)
+    def test_mode_identity_keeps_all_five_paths_distinct(self):
+        self.assertEqual(len({workflow.lobby_manifest("e" * 64, mode) for mode in workflow.TEST_MODES}), 5)
 
     def test_real_headless_button_handler_sends_request_and_disables_after_end(self):
         from prototype.tests.test_update_startup import headless_app

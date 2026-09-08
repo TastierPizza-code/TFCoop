@@ -1,5 +1,51 @@
 # Prüfstand
 
+## Alpha5.16: begrenzter manueller Depotversuch, noch kein Spielnachweis
+
+Der neue getrennte Modus `manual_depot_v1` verbindet die tatsächlichen
+Launcher-Handler, sitzungsgebundene Queue, gemeinsame Vorschau/Anwendung und
+beidseitige Ergebnisbestätigung. Vier Testplätze und Vierteldrehungen sind
+begrenzt; normale TF2-Bauwerkzeuge sind nicht angeschlossen.
+
+Vorab erfolgreich geprüft:
+
+- 15 gezielte Protokollfälle und drei tatsächliche TCP-/Queue-Durchläufe mit
+  ausdrücklichen Modellwelten: Bau während Fahrt/Pause, gleiche Plätze,
+  unterschiedliche Vorschauen, fehlgeschlagene Callbacks und frischer Abschluss.
+- Zwölf Tests der produktiven Lua-/Python-Anbindung über echte Dateien mit
+  nachgebildeter Spiel-API. Sie prüfen Vorschau, native Feld-/Arraygrenzen,
+  reale Fixture-Callbacks, neue Objektbindungen, Kosten und unveränderte
+  vorherige Objekte. Hinzu kommen 32 Geometrieprüfungen der lokal gelesenen
+  Stock-Depotdefinition über vier Lua-Versionen; Stock-Dateien werden nicht
+  veröffentlicht.
+- Private Kopplung über tatsächliche Loopback-Verbindungen, neue interne
+  Sitzungen bei gleichbleibendem Zugang, veraltete/manipulierte Nachrichten,
+  kein Wiederbeitritt und keine Spielworker vor bestätigter Verbindung.
+- Tatsächliche temporäre Vorbereitung, Installation, Startvalidierung und
+  Wiederherstellung aller fünf Modi und beider Rollen. Zusätzlich wurden die
+  tatsächlichen lokalen Spiel-/Save-Dateien nur gelesen und separat gestagt;
+  Installer- und Startvalidierung bestanden ohne Spielinstallation oder Start.
+- Eigene Betriebssystem-Sperre für die bereits wartende Lobby, Schutz gegen
+  Update/Installation während dieser Wartephase und Prüfungen auf private
+  Profile/Adressen in öffentlichen Paketen beziehungsweise Diagnosekopien.
+
+`paced_live_probe.py` und `stream_engine.py` bleiben bytegleich mit der
+akzeptierten Alpha5.15-Referenz. Leere Eingaben erzeugen dieselbe Folge von
+Fortschrittsfreigaben; der neue Baupfad ist separat. Diese Quell-/Modellprüfung
+ist kein neuer Beweis für die tatsächliche Flüssigkeit auf beiden PCs.
+
+Die offizielle API beschreibt die read-only Bauvorprüfung, aber nicht alle
+von ihr gelieferten Felder vollständig. Zusätzliche lokale Upstream-Belege
+stützen die verwendeten Felder; ihr tatsächlicher neuer Rückgabewert ist erst
+im Spiel zu prüfen. Unlesbare Daten halten vor Mutation an und erzeugen
+begrenzte Diagnosefelder. [Quellen und genaue Grenze](docs/MANUAL_DEPOT_ENGINE_CONTRACT.md).
+
+**Ein echter Alpha5.16-Zwei-PC-Depotlauf steht aus.** Abschluss, beide Spieler
+mit erfolgreichem Bau, Bau in Fahrt/Pause und belegter Platz werden getrennt
+ausgewertet. Anfragen für denselben Platz in derselben Sammelrunde und ein
+tatsächlich nachgewiesener Gewinner/Ablehnungsfall sind ebenfalls getrennte
+Felder. Neue Kopfsektionen ersetzen keine historischen Laufbelege unten.
+
 ## Alpha5.15: tatsächlicher Zwei-PC-Lauf bestanden und Tempo akzeptiert
 
 Die beiden Originalberichte vom 8. September 2026 sind ausgewertet: 133

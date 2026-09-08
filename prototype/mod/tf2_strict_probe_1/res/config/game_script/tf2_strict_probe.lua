@@ -150,6 +150,14 @@ function data()
       if ok then failure_diagnostics.callback=callback
       else failure_diagnostics.callback_error=tostring(callback):gsub('%c',' '):sub(1,256) end
     end
+    if failure_diagnostics and E and E.preflight_diagnostics then
+      local ok,preflight=pcall(function()
+        local observed=E.preflight_diagnostics()
+        return observed and checked_plain(observed,16384)or nil
+      end)
+      if ok then failure_diagnostics.preflight=preflight
+      else failure_diagnostics.preflight_error=tostring(preflight):gsub('%c',' '):sub(1,256)end
+    end
     if extra then for k,v in pairs(extra) do details[k]=v end end
     publish('halted',true,details)
   end
@@ -237,7 +245,7 @@ function data()
     if not (path:match('^%a:/') or path:match('^/')) then error('absolute mailbox directory required',0) end
     if saved_active then error('saved active probe sessions cannot resume; prepare a fresh baseline save and epoch',0) end
     if not native('0') then return false end
-    E=engine_module.new(json); E.bind_initial(config.initial_bindings)
+    E=engine_module.new(json,config); E.bind_initial(config.initial_bindings)
     snapshot(); started=true
     if not publish('ready',true,{loaded_sim_time_us=last_snapshot.sim_time_us,probe_only=true}) then error('initial status write failed',0) end
     return true
@@ -249,7 +257,7 @@ function data()
     if c.action~='halt' then
       decimal(c.boundary,false); E.integer(c.expected_sim_time_us,0)
     end
-    if c.action=='plan' or c.action=='apply' then
+    if c.action=='plan' or c.action=='apply' or c.action=='preview' then
       if type(c.command_key)~='string' or not c.command_key:match('^[ab]:[1-9]%d*$') or #c.command_key>96 then error('invalid command key',0) end
       if type(c.command)~='table' then error('command object required',0) end
     end
@@ -271,6 +279,15 @@ function data()
       if pending then error('snapshot cannot replace an unapplied plan',0) end
       snapshot(c.expected_sim_time_us)
       if not publish('ready',true) then error('snapshot status write failed',0) end
+    elseif c.action=='preview' then
+      if config.input_mode~='manual_depot_v1' or type(E.preview)~='function' then error('manual preview capability not enabled',0)end
+      if pending then error('preview cannot replace an unapplied plan',0)end
+      local peer,seq=c.command_key:match('^([ab]):([1-9]%d*)$');seq=E.integer(seq,1)
+      if seq<=seen_sequence[peer] then error('preview command key was already consumed',0)end
+      local before=snapshot(c.expected_sim_time_us)
+      local preview=checked_plain(E.preview(c.command,c.command_key),32768)
+      if snapshot(c.expected_sim_time_us)~=before then error('manual preview changed tracked world',0)end
+      if not publish('previewed',true,{preview=preview})then error('preview acknowledgement write failed',0)end
     elseif c.action=='plan' then
       if pending then error('only one unapplied plan is permitted',0) end
       retained_receipt=nil -- Earlier command receipts remain in the controller journal.
@@ -280,7 +297,7 @@ function data()
       local plan=E.plan(c.command,c.command_key,c.expected_sim_time_us)
       seen_sequence[peer]=seq
       pending={plan=plan,key=c.command_key,boundary=c.boundary,time=c.expected_sim_time_us,command=json.encode(c.command),before=before}
-      if not publish('planned',true) then error('plan acknowledgement write failed',0) end
+      if not publish('planned',true,plan.preview and {preview=checked_plain(plan.preview,32768)}or nil) then error('plan acknowledgement write failed',0) end
     elseif c.action=='apply' then
       local p=pending
       if not p or p.key~=c.command_key or p.boundary~=c.boundary or p.time~=c.expected_sim_time_us

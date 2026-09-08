@@ -36,10 +36,13 @@ REQUIRED_MOD_FILES = {
 REQUIRED_PYTHON = {"core.py", "replica.py", "transport.py", "runner.py",
                    "engine_mailbox.py", "game_runner.py", "stage_probe.py", "build_profile.py",
                    "timing_probe.py", "stream_probe.py", "stream_engine.py", "live_probe.py", "live_input.py",
-                   "short_build_profile.py", "paced_live_probe.py", "coalesced_progress.py"}
+                   "short_build_profile.py", "paced_live_probe.py", "coalesced_progress.py",
+                   "manual_depot_probe.py", "manual_depot_input.py", "manual_depot_engine.py", "test_pairing.py",
+                   "session_guard.py"}
 PROFILES = {"time_v1", "build_v2"}
 REQUIRED_BUILD_FILES = {"res/scripts/tf2_strict_probe/build_engine.lua",
                         "res/scripts/tf2_strict_probe/build_assets.lua",
+                        "res/scripts/tf2_strict_probe/manual_depot_assets.lua",
                         "res/construction/tf2_strict_probe/road_test.con"}
 KEY = re.compile(r"[A-Za-z0-9_:.-]{1,96}\Z")
 KINDS = {"depot", "vehicle", "line", "station_group", "road"}
@@ -50,7 +53,7 @@ class StageError(ValueError):
     """Preparation refused before producing an activatable setup."""
 
 
-def configuration_semantics(profile=None, preparation=None):
+def configuration_semantics(profile=None, preparation=None, input_mode=None):
     """One exact configuration contract for staging, installation and startup."""
     semantics = {"enabled": True, "native_gate_required": True}
     if profile is not None:
@@ -62,13 +65,18 @@ def configuration_semantics(profile=None, preparation=None):
         if type(preparation) is not str or profile != "build_v2" or preparation != SHORT_BUILD_CONTRACT:
             raise StageError("Unknown or incompatible preparation contract.")
         semantics["preparation"] = preparation
+    if input_mode is not None:
+        if (type(input_mode) is not str or input_mode != "manual_depot_v1"
+                or profile != "build_v2" or preparation != "short_scene_v1"):
+            raise StageError("Unknown or incompatible manual input contract.")
+        semantics["input_mode"] = input_mode
     return semantics
 
 
 def validate_configuration_semantics(value):
     if type(value) is not dict:
         raise StageError("Prepared gate configuration must be an object.")
-    expected = configuration_semantics(value.get("profile"), value.get("preparation"))
+    expected = configuration_semantics(value.get("profile"), value.get("preparation"), value.get("input_mode"))
     # Canonical JSON distinguishes true from 1; equality of Python dicts does not.
     if canonical_json(value) != canonical_json(expected):
         raise StageError("Invalid or unknown prepared gate configuration fields.")
@@ -180,7 +188,8 @@ def _stock_audio(game: Path) -> Path:
     raise StageError("Verified original alut.dll audio library is missing; a proxy is not an original.")
 
 
-def _config(session: Path, epoch: int, templates: dict, profile: str | None = None) -> str:
+def _config(session: Path, epoch: int, templates: dict, profile: str | None = None,
+            input_mode: str | None = None) -> str:
     if profile is not None and (type(profile) is not str or profile not in PROFILES):
         raise StageError("Unknown measurement profile.")
     entries = []
@@ -193,6 +202,7 @@ def _config(session: Path, epoch: int, templates: dict, profile: str | None = No
             ",\n  mailbox_dir = " + _lua_string(session.as_posix()) +
             ",\n  native_gate_required = true,\n" +
             ("  profile = " + _lua_string(profile) + ",\n" if profile is not None else "") +
+            ("  input_mode = " + _lua_string(input_mode) + ",\n" if input_mode is not None else "") +
             "  initial_bindings = {\n" +
             "\n".join(entries) + "\n  },\n}\n")
 
@@ -205,7 +215,8 @@ def _write_json(path: Path, value: dict) -> None:
 def stage_probe(*, game_dir: str | Path, save: str | Path, session: str | Path,
                 output: str | Path, templates: str | Path | None = None,
                 native_epoch: int | None = None, repository_root: Path = ROOT,
-                profile: str | None = None, preparation: str | None = None) -> dict:
+                profile: str | None = None, preparation: str | None = None,
+                input_mode: str | None = None) -> dict:
     """Create new staging/session artifacts only; no game process operation occurs.
 
     ``native_epoch`` and ``repository_root`` support reproducible preparation and
@@ -213,7 +224,7 @@ def stage_probe(*, game_dir: str | Path, save: str | Path, session: str | Path,
     A failure after copying may leave an incomplete new output for inspection;
     probe_setup.json is written last and no existing directory is overwritten.
     """
-    semantics = configuration_semantics(profile, preparation)
+    semantics = configuration_semantics(profile, preparation, input_mode)
     game = Path(game_dir).resolve()
     validate_lease_path(game / "TransportFever2.exe")
     destination = _new_directory(output, "Output", game)
@@ -287,7 +298,7 @@ def stage_probe(*, game_dir: str | Path, save: str | Path, session: str | Path,
         target = mod_output / name
         target.parent.mkdir(parents=True, exist_ok=True)
         if name == CONFIG:
-            target.write_text(_config(directory, epoch, selected, profile), encoding="utf-8", newline="\n")
+            target.write_text(_config(directory, epoch, selected, profile, input_mode), encoding="utf-8", newline="\n")
         else:
             shutil.copyfile(mod_source / name, target)
             if hash_file(target) != sha:

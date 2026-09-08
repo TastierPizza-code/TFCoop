@@ -1,4 +1,4 @@
 """Version shared by the launcher, updater and release builder."""
-RELEASE_TAG = "v0.5.15"
-DISPLAY_VERSION = "Alpha5.15-Eingabetest"
+RELEASE_TAG = "v0.5.16"
+DISPLAY_VERSION = "Alpha5.16-Depotversuch"
 PACKAGE_NAME = "TF2-Coop-" + DISPLAY_VERSION

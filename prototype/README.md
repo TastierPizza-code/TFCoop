@@ -1,10 +1,14 @@
 # TF2: Prototyp für strikte Synchronisation
 
-**Korrektur in Alpha5.15:** Der Abbruch beim Vorbereiten des kurzen Tests ist behoben. Vorbereitung, Installer und Startprüfung verwenden nun denselben Konfigurationsvertrag. Beide Launcher aktualisieren und frisch vorbereiten; keine neuen Saves erforderlich.
+**Alpha5.16-Depotversuch** führt `manual_depot_v1` ein: ein eigener kurzer Launcher-Bauversuch auf Basis des akzeptierten Takts. Die vier Standorte liegen relativ zur vorbereiteten Testszene; Drehungen sind auf Vierteldrehungen begrenzt. `BUILD_DEPOT` erhält vor jeder Ausführung einen frischen Vorschlag auf beiden PCs. Beide Vorschläge, echte Callbacks, Kosten und neu beobachtete Objektbindungen müssen passen. Erwartete Belegungs-/Geländeablehnungen werden ohne Mutation bestätigt; unerwartete Anwendungsfehler halten an.
 
-**Alpha5.15-Eingabetest** mit `paced_live_v1` ist nach dem tatsächlichen Zwei-PC-Lauf vom Nutzer im Fahrgefühl akzeptiert. Der kurze Aufbau, 182 weitere Schritte, sieben echte Pause-/Fortsetzen-Wechsel und gemeinsamer Abschluss passen in beiden Berichten zusammen; die 133 Weltjournalzeilen sind identisch. Die aktive Fahrt erreicht ungefähr 0,94x, der Aufbau dauert 12,5 Sekunden. Dieser Stand ist gesichert und soll für neue Funktionen erhalten bleiben. Die bisherigen `live_input_v1`, `stream_v1` und `timing_v1` behalten ihre vollständigen Abläufe. [Akzeptierte Eingabereferenz und Grenzen](docs/ACCEPTED_INPUT_BASELINE.md).
+`manual_depot_probe.py` ordnet gemeinsame Eingaben. `manual_depot_engine.py` kapselt zusätzliche Vorschau, wiederholte Bindungen und Kostenprüfung. Die normale `StreamEngine` und `paced_live_v1` bleiben erhalten. Der zehnrundige Vorlauf ist ein kurzer Bereitschaftsnachweis, kein vollständiger BuildProof. Die tatsächliche Funktion und Flüssigkeit dieser Version sind noch nicht im Spiel bestätigt.
 
-Auf beiden PCs aktualisieren, die vorherige Installation wiederherstellen und mit demselben Modus neu vorbereiten. Die saubere Basis der sehr großen Karte bleibt unverändert. Die bisherigen Teilnehmer brauchen keinen erneuten Import. Frische Testsave-Kopien enthalten **TF2 Strict Sync - gemeinsamer Eingabetest (Alpha5.15)** und **Legacy Fahrzeuge**. Bedienfolge: [ANLEITUNG.md](ANLEITUNG.md).
+`test_pairing.py` speichert das private Verbindungsprofil getrennt von Installation und Updatecache. Der authentisierte Lobby-Austausch bindet frische Teilnehmerkennungen, Manifest und neue Host-Sitzung zusammen. Erst danach entstehen Spielschlüssel und Eingabequeues. Bereits verbrauchte Vorbereitungen und Wiederbeitritt bleiben gesperrt.
+
+Auf beiden PCs aktualisieren, die vorherige Installation wiederherstellen und denselben Modus frisch vorbereiten. Die saubere sehr große Ausgangskarte bleibt gültig. Frische Kopien enthalten **TF2 Strict Sync - gemeinsamer Depotversuch (Alpha5.16)** und **Legacy Fahrzeuge**. [Bedienfolge](ANLEITUNG.md).
+
+**Alpha5.15 bleibt als Eingabe-/Temporeferenz gesichert:** 133 identische Weltjournalzeilen, sieben Pause-/Fortsetzen-Wechsel und etwa 0,94x in der tatsächlichen Zwei-PC-Messung. Die neue Funktion ersetzt diese Evidenz nicht. [Referenz und Grenzen](docs/ACCEPTED_INPUT_BASELINE.md).
 
 ## Neuer Eingabeweg
 

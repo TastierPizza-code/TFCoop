@@ -19,11 +19,12 @@ from prototype.tests.test_engine_mailbox_lua import ActualLuaWorker, MOD, RUNTIM
 
 class BuildLuaWorker(ActualLuaWorker):
     def __init__(self, directory, runtime="lua53", *, terrain_setup="", audit_failure=False,
-                 callback_read_failures=0, callback_setup="", **options):
+                 callback_read_failures=0, callback_setup="", input_mode=None, manual_setup="", **options):
         self.terrain_setup = terrain_setup
         self.audit_failure = audit_failure
         self.callback_read_failures = callback_read_failures
         self.callback_setup = callback_setup
+        self.input_mode, self.manual_setup = input_mode, manual_setup
         super().__init__(directory, runtime=runtime, **options)
 
     def run(self):
@@ -34,6 +35,9 @@ class BuildLuaWorker(ActualLuaWorker):
             assets = lua.execute((scripts / "build_assets.lua").read_text("utf-8"))
             lua.globals().assets, lua.globals().id_offset = assets, self.offset
             lua.execute((MOD / "tests/fake_build_engine.lua").read_text("utf-8"))
+            if self.input_mode == "manual_depot_v1":
+                lua.execute((MOD / "tests/fake_manual_depot.lua").read_text("utf-8"))
+                lua.execute(self.manual_setup)
             lua.execute(self.terrain_setup)
             lua.globals().callback_read_failures = self.callback_read_failures
             lua.execute("""
@@ -54,11 +58,14 @@ class BuildLuaWorker(ActualLuaWorker):
             """)
             config = lua.execute((scripts / "config.lua").read_text("utf-8"))
             config.enabled, config.epoch, config.profile = True, EPOCH, "build_v2"
+            config.input_mode = self.input_mode
             config.mailbox_dir = self.directory.resolve().as_posix()
             config.initial_bindings = lua.table()
             modules = {"tf2_strict_probe/json": j, "tf2_strict_probe/config": config,
                        "tf2_strict_probe/build_assets": assets,
                        "tf2_strict_probe/api_audit": lua.execute((scripts / "api_audit.lua").read_text("utf-8"))}
+            if self.input_mode == "manual_depot_v1":
+                modules["tf2_strict_probe/manual_depot_assets"] = lua.execute((scripts / "manual_depot_assets.lua").read_text("utf-8"))
             if self.audit_failure:
                 modules["tf2_strict_probe/api_audit"] = lua.execute(
                     "return {collect=function() error('fixture unavailable collector',0) end}")

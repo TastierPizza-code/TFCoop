@@ -1,5 +1,24 @@
 # Nächste Etappe: frei ausgelöste Eingaben
 
+## Aktueller neuer Versuch: Alpha5.16
+
+`manual_depot_v1` ist als eigener Launcher-Depotversuch implementiert: vier
+Testplätze, Vierteldrehungen, zehnrundiger Aufbau und ein frischer gemeinsamer
+Bauvorschlag vor jedem Auftrag. Die Anwendung prüft tatsächliche Rückmeldungen,
+neue Depotbindungen und Baukosten. Belegungsablehnungen verändern die Welt nicht;
+unerwartete Anwendungsfehler halten an. Der normale Spielbau bleibt offen.
+
+Das private Verbindungsprofil wird beim Vorbereiten gespeichert. Die Lobby
+vereinbart für jeden Versuch eine frische Sitzung vor dem Start der Spielworker.
+Die nachfolgenden Abschnitte bewahren Vorgaben und Entwurfsgrenzen; die genannten
+Alpha5.13-/Alpha5.14-Planungsstände sind historische Grundlagen.
+
+Vorabprüfungen betreffen Modelle, Lua-/API-Fixtures und lokale Testverbindungen.
+Die tatsächliche Depotfunktion und Fahrt dieser neuen Version sind noch nicht
+mit zwei laufenden TF2-Spielen bestätigt. Der nächste Nutzertest folgt der
+[kurzen Anleitung](../ANLEITUNG.md). Der akzeptierte Alpha5.15-Lauf bleibt die
+Referenz und wird durch diese Implementierung nicht nachträglich umbewertet.
+
 ## Für die nächste Version: Testverbindung merken
 
 Nutzervorgabe vom 8. September 2026: Bis zur Beta sollen Host-IPv4 und ein
@@ -16,8 +35,8 @@ und Verbindungsabbruch bleiben getrennt abgesichert. Das aktuelle
 `connection_identity` leitet die Netzkennung direkt aus dem sichtbaren Code ab;
 allein das Abschalten der Code-Neuerzeugung erfüllt diese Trennung noch nicht.
 Host-Adresse und Zugangscode werden nicht ins öffentliche Repository oder
-Updatepaket geschrieben. Diese Änderung ist für die nächste Version vorgemerkt,
-in Alpha5.15 aber noch nicht enthalten. Die endgültige Verbindungsoberfläche
+Updatepaket geschrieben. Diese Änderung ist in Alpha5.16 umgesetzt,
+in Alpha5.15 noch nicht enthalten. Die endgültige Verbindungsoberfläche
 kann nach der Testphase gestaltet werden.
 
 ## Funktionsstand

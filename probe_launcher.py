@@ -152,6 +152,11 @@ def self_check(report_path: Path) -> int:
             from prototype.strict_sync.short_build_profile import SHORT_BUILD_ROUNDS, SHORT_BUILD_CONTRACT
             from prototype.strict_sync.coalesced_progress import CoalescedProgress
             from prototype.strict_sync.live_input import InputReader, InputWriter, MAX_REQUESTS, MAX_BATCH
+            from prototype.strict_sync.manual_depot_probe import (ManualDepotCoordinator, ManualDepotReplica,
+                MANUAL_DEPOT_CAPABILITY, schedule as depot_schedule)
+            from prototype.strict_sync.manual_depot_engine import ManualDepotEngineAdapter, ManualDepotStreamEngine
+            from prototype.strict_sync.manual_depot_input import validate_command as depot_command
+            from prototype.strict_sync import test_pairing
             resources, portable = resource_root(), portable_root()
             physical = resources / "prototype/strict_sync"
             required = set(stage_probe.REQUIRED_PYTHON) | {"model.py", "__init__.py"}
@@ -219,6 +224,20 @@ def self_check(report_path: Path) -> int:
                     or game_runner.validate_configuration_semantics is not stage_probe.validate_configuration_semantics
                     or probe_install.validate_configuration_semantics(short_config) != short_config):
                 raise RuntimeError("packaged preparation/installation/startup contracts differ")
+            depot_config = stage_probe.configuration_semantics("build_v2", SHORT_BUILD_CONTRACT, "manual_depot_v1")
+            if (probe_install.validate_configuration_semantics(depot_config) != depot_config
+                    or MANUAL_DEPOT_CAPABILITY not in measurement_capabilities(SimpleNamespace(manual_depot_probe=True))
+                    or launcher_session.preparation_rounds(launcher_session.MANUAL_DEPOT_MODE) != SHORT_BUILD_ROUNDS
+                    or not callable(ManualDepotCoordinator.live_report) or not callable(ManualDepotReplica.live_report)
+                    or not callable(ManualDepotEngineAdapter) or not callable(ManualDepotStreamEngine)
+                    or depot_schedule()["chunk_steps"] != CHUNK_STEPS
+                    or depot_schedule()["checkpoint_steps"] != CHECKPOINT_STEPS
+                    or depot_schedule()["separate_input_poll"] is not False
+                    or depot_command({"op": "BUILD_DEPOT", "site": 1, "rotation": 90})["rotation"] != 90
+                    or not callable(test_pairing.validate_connection) or not callable(test_pairing.load_profile)):
+                raise RuntimeError("packaged manual depot or private pairing integration is incomplete")
+            result["manual_depot_profile"] = {"resources_checked": True, "schedule": depot_schedule(),
+                                               "private_pairing": True, "game_runtime_verified": False}
             scheduled = [command for number in range(BUILD_ROUNDS) for peer in ("a", "b")
                          for command in build_inputs(peer, number)]
             from collections import Counter

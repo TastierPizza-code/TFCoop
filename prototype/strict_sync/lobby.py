@@ -17,6 +17,9 @@ import uuid
 
 from .core import MAX_INT, ProtocolError, canonical_json
 from .transport import authenticate_client, authenticate_server, receive, send
+from .test_pairing import (connection_receipt, redact_addresses, signed_message,
+                           validate_signed, validate_token)
+from .session_guard import LobbyGuard
 
 
 HEARTBEAT_INTERVAL = 1.0
@@ -35,9 +38,13 @@ class Progress:
         self.port = args.port
 
     def write(self, state, reason=""):
-        value = {"protocol": 1, "state": state, "reason": str(reason)[:512],
-                 "role": self.args.role, "epoch": self.args.epoch, "manifest": self.args.manifest,
+        fresh = bool(getattr(self.args, "local_run", ""))
+        value = {"protocol": 2 if fresh else 1, "state": state, "reason": redact_addresses(str(reason))[:512],
+                 "role": self.args.role, "epoch": getattr(self.args, "run_epoch", "") if fresh else self.args.epoch,
+                 "manifest": self.args.manifest,
                  "port": self.port, "updated_ms": int(time.time() * 1000)}
+        if fresh:
+            value.update(local_run=self.args.local_run, run_proof=getattr(self.args, "run_proof", ""))
         raw = canonical_json(value)
         temp = self.path.parent / ("." + self.path.name + "." + uuid.uuid4().hex + ".tmp")
         try:
@@ -60,14 +67,60 @@ class Progress:
 
 
 def _message(args, kind, **fields):
-    return {"kind": kind, "epoch": args.epoch, "manifest": args.manifest, **fields}
+    return {"kind": kind, "epoch": getattr(args, "run_epoch", args.epoch), "manifest": args.manifest, **fields}
 
 
 def _validate(args, message, kind, fields=()):
     if (set(message) != {"kind", "epoch", "manifest", *fields}
-            or message.get("kind") != kind or message.get("epoch") != args.epoch
+            or message.get("kind") != kind or message.get("epoch") != getattr(args, "run_epoch", args.epoch)
             or message.get("manifest") != args.manifest):
         raise ProtocolError("lobby message/epoch/manifest mismatch")
+
+
+RUN_FIELDS = ("host_run", "friend_run", "epoch", "manifest")
+
+
+def _accept_run(args, secret, fields):
+    args.run_epoch = fields["epoch"]
+    args.run_proof = connection_receipt(secret, role=args.role, local_run=args.local_run,
+                                         epoch=args.run_epoch, manifest=args.manifest)
+
+
+async def _host_negotiate(args, secret, reader, writer):
+    hello = await asyncio.wait_for(receive(reader), HEARTBEAT_TIMEOUT)
+    validate_signed(secret, hello, "pairing_hello", ("local_run", "manifest"))
+    friend_run = validate_token(hello["local_run"])
+    if hello["manifest"] != args.manifest or friend_run == args.local_run:
+        raise ProtocolError("fresh pairing manifest/run mismatch")
+    # Generated inside this one-shot authenticated connection, independent of
+    # pairing identity, native epoch, local preparation and previous runs.
+    fields = {"host_run": args.local_run, "friend_run": friend_run,
+              "epoch": uuid.uuid4().hex, "manifest": args.manifest}
+    await send(writer, signed_message(secret, "pairing_offer", **fields))
+    ack = await asyncio.wait_for(receive(reader), HEARTBEAT_TIMEOUT)
+    validate_signed(secret, ack, "pairing_accept", RUN_FIELDS)
+    if any(ack[key] != fields[key] for key in RUN_FIELDS):
+        raise ProtocolError("fresh run acceptance mismatch")
+    await send(writer, signed_message(secret, "pairing_commit", **fields))
+    _accept_run(args, secret, fields)
+
+
+async def _friend_negotiate(args, secret, reader, writer):
+    await send(writer, signed_message(secret, "pairing_hello", local_run=args.local_run, manifest=args.manifest))
+    offer = await asyncio.wait_for(receive(reader), HEARTBEAT_TIMEOUT)
+    validate_signed(secret, offer, "pairing_offer", RUN_FIELDS)
+    for key in ("host_run", "friend_run", "epoch"):
+        validate_token(offer[key])
+    if (offer["manifest"] != args.manifest or offer["friend_run"] != args.local_run
+            or offer["host_run"] == args.local_run or offer["epoch"] in (args.epoch, args.local_run)):
+        raise ProtocolError("fresh run offer manifest/identity mismatch")
+    fields = {key: offer[key] for key in RUN_FIELDS}
+    await send(writer, signed_message(secret, "pairing_accept", **fields))
+    commit = await asyncio.wait_for(receive(reader), HEARTBEAT_TIMEOUT)
+    validate_signed(secret, commit, "pairing_commit", RUN_FIELDS)
+    if any(commit[key] != fields[key] for key in RUN_FIELDS):
+        raise ProtocolError("fresh run commit mismatch")
+    _accept_run(args, secret, fields)
 
 
 async def _close(writer):
@@ -148,16 +201,19 @@ async def _host(args, secret, progress):
             if peer != "b" or accepted:
                 return
             trusted, accepted = True, True
-            hello = await asyncio.wait_for(receive(reader), HEARTBEAT_TIMEOUT)
-            _validate(args, hello, "lobby_hello", ("peer",))
-            if hello["peer"] != "b":
-                raise ProtocolError("lobby requires the friend role b")
-            await send(writer, _message(args, "lobby_ready", peer="a"))
-            ready = await asyncio.wait_for(receive(reader), HEARTBEAT_TIMEOUT)
-            _validate(args, ready, "lobby_ready", ("peer",))
-            if ready["peer"] != "b":
-                raise ProtocolError("wrong ready peer")
-            await send(writer, _message(args, "lobby_connected", peer="a"))
+            if getattr(args, "local_run", ""):
+                await _host_negotiate(args, secret, reader, writer)
+            else:
+                hello = await asyncio.wait_for(receive(reader), HEARTBEAT_TIMEOUT)
+                _validate(args, hello, "lobby_hello", ("peer",))
+                if hello["peer"] != "b":
+                    raise ProtocolError("lobby requires the friend role b")
+                await send(writer, _message(args, "lobby_ready", peer="a"))
+                ready = await asyncio.wait_for(receive(reader), HEARTBEAT_TIMEOUT)
+                _validate(args, ready, "lobby_ready", ("peer",))
+                if ready["peer"] != "b":
+                    raise ProtocolError("wrong ready peer")
+                await send(writer, _message(args, "lobby_connected", peer="a"))
             outcome = await _connected(args, reader, writer, progress)
             done.set()
         except Exception as exc:
@@ -220,16 +276,19 @@ async def _friend(args, secret, progress):
             except (ConnectionRefusedError, OSError, asyncio.TimeoutError):
                 await asyncio.sleep(min(.2, max(.01, deadline - time.monotonic())))
         await asyncio.wait_for(authenticate_client(reader, writer, secret, args.epoch, "b"), HEARTBEAT_TIMEOUT)
-        await send(writer, _message(args, "lobby_hello", peer="b"))
-        ready = await asyncio.wait_for(receive(reader), HEARTBEAT_TIMEOUT)
-        _validate(args, ready, "lobby_ready", ("peer",))
-        if ready["peer"] != "a":
-            raise ProtocolError("lobby host must be role a")
-        await send(writer, _message(args, "lobby_ready", peer="b"))
-        connected = await asyncio.wait_for(receive(reader), HEARTBEAT_TIMEOUT)
-        _validate(args, connected, "lobby_connected", ("peer",))
-        if connected["peer"] != "a":
-            raise ProtocolError("wrong connected host")
+        if getattr(args, "local_run", ""):
+            await _friend_negotiate(args, secret, reader, writer)
+        else:
+            await send(writer, _message(args, "lobby_hello", peer="b"))
+            ready = await asyncio.wait_for(receive(reader), HEARTBEAT_TIMEOUT)
+            _validate(args, ready, "lobby_ready", ("peer",))
+            if ready["peer"] != "a":
+                raise ProtocolError("lobby host must be role a")
+            await send(writer, _message(args, "lobby_ready", peer="b"))
+            connected = await asyncio.wait_for(receive(reader), HEARTBEAT_TIMEOUT)
+            _validate(args, connected, "lobby_connected", ("peer",))
+            if connected["peer"] != "a":
+                raise ProtocolError("wrong connected host")
         return await _connected(args, reader, writer, progress)
     except (OSError, asyncio.IncompleteReadError, asyncio.TimeoutError, ProtocolError) as exc:
         progress.write("halted", f"{type(exc).__name__}: {exc}")
@@ -239,16 +298,19 @@ async def _friend(args, secret, progress):
             await _close(writer)
 
 
-async def run(args):
+async def run(args, *, guard_factory=LobbyGuard):
+    if getattr(args, "local_run", ""):
+        validate_token(args.local_run)
     secret = Path(args.key_file).read_bytes().strip()
     if not 32 <= len(secret) <= 128:
         raise ValueError("lobby key must contain 32..128 bytes")
-    progress = Progress(args)
-    try:
-        return await (_host(args, secret, progress) if args.role == "a" else _friend(args, secret, progress))
-    except (OSError, asyncio.TimeoutError, ProtocolError) as exc:
-        progress.write("halted", f"{type(exc).__name__}: {exc}")
-        return 2
+    with guard_factory():
+        progress = Progress(args)
+        try:
+            return await (_host(args, secret, progress) if args.role == "a" else _friend(args, secret, progress))
+        except (OSError, asyncio.TimeoutError, ProtocolError) as exc:
+            progress.write("halted", f"{type(exc).__name__}: {exc}")
+            return 2
 
 
 def main(argv=None):
@@ -258,6 +320,7 @@ def main(argv=None):
     parser.add_argument("--bind", default="0.0.0.0")
     parser.add_argument("--port", type=int, default=34208)
     parser.add_argument("--epoch", required=True)
+    parser.add_argument("--local-run", default="", help="Fresh local preparation token; enables pairing protocol v2")
     parser.add_argument("--manifest", required=True)
     parser.add_argument("--key-file", type=Path, required=True)
     parser.add_argument("--progress", type=Path, required=True)

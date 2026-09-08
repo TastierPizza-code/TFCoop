@@ -1,74 +1,52 @@
-# TF2-Koop Alpha5.15-Eingabetest — für beide Spieler
+# TF2-Koop Alpha5.16-Depotversuch — für beide Spieler
 
-**Korrektur in Alpha5.15:** Der Abbruch beim Vorbereiten des kurzen Tests ist behoben. Vorbereitung, Installer und Startprüfung verwenden nun denselben Konfigurationsvertrag. Beide Launcher aktualisieren und frisch vorbereiten; keine neuen Saves erforderlich.
+**Neu:** Ihr löst im Launcher selbst Depotaufträge aus. Das Depot wird tatsächlich auf beiden Karten gebaut, sobald beide den Auftrag geprüft und gemeinsam freigegeben haben. Vier begrenzte Testplätze und vier Drehungen sind auswählbar. Normale Bauwerkzeuge, Cursor und Pause-Tasten im Spiel sind weiterhin nicht angeschlossen.
 
-**Der Modus „Fahrt und Eingaben · kurzer Aufbau“ ist nach dem gemeinsamen Test vom 8. September auch im Fahrgefühl akzeptiert.** Beide Berichte stimmen überein; die aktive Fahrt erreicht ungefähr 0,94x. Dieses Tempo bleibt die Referenz für weitere Eingabefunktionen. Eingaben werden mit den ohnehin nötigen Schrittbestätigungen übertragen; die zusätzliche leere Abfragerunde entfällt.
+Der kurze Aufbau bleibt bei zehn Runden. Der neue Modus übernimmt Schrittweite, Zweierserien und Kontrollabstände aus der akzeptierten Alpha5.15-Referenz. Die echte Fahrt und die neue Depotfunktion dieser Version müssen erst auf beiden PCs geprüft werden; Vorabprüfungen sind kein neuer Spielnachweis.
 
-Der Aufbau hat jetzt **10 Runden**: Straße, Depot, Haltestellen, Fahrzeug und Linie werden erstellt und ihre tatsächliche Bereitschaft geprüft. Die bisherigen vollständigen Tests bleiben separat auswählbar. Eure **sehr große Karte** bleibt dieselbe; **kein neuer privater Saveimport und keine erneute Saveweitergabe nötig**, wenn beide schon die saubere Basis seit Alpha5.9 haben.
+## 1 · Aktualisieren und Verbindung einmalig merken
 
-## 1. Beide aktualisieren
+1. Beide schließen TF2, den Test und den Launcher. Den vorhandenen Launcher neu öffnen und das Update abwarten. Auf beiden PCs muss **Alpha5.16-Depotversuch** stehen. Updates warten auf laufende Spiele und Testcontroller.
+2. Eine bisherige Test- oder Diagnoseinstallation mit **Bisherige Installation wiederherstellen** zurückbauen.
+3. Spiel- und Saveordner prüfen. Die bisherige saubere sehr große Ausgangskarte bleibt gültig. **Keinen neuen Spielstand verschicken oder übernehmen**, wenn auf beiden PCs „Gemeinsamer Testspielstand ist lokal verfügbar“ steht.
+4. Den Modus **Depot selbst beauftragen · kurzer Aufbau** wählen. Du bleibst Host, dein Freund wählt Beitreten.
+5. Einmalig auf beiden PCs dieselbe Host-IP und denselben **Testschlüssel** eintragen. Der Host teilt seinen Schlüssel mit dem Freund; der Freund ersetzt seinen eigenen. Beim Vorbereiten werden IP, Schlüssel und Rolle lokal gespeichert. Weitere Starts, Updates und Wiederherstellungen behalten diese Daten. **Neu** nur verwenden, wenn ihr den gemeinsamen Zugang bewusst wechseln wollt.
 
-1. Test beenden, **TF2 vollständig schließen** und den Launcher schließen.
-2. Den vorhandenen Launcher neu öffnen und das Update abwarten. Auf beiden PCs muss **Alpha5.15-Eingabetest** stehen. Ein Update wartet auf laufende Spiele oder Testcontroller.
-3. **Bisherige Installation wiederherstellen** verwenden. Danach auf beiden PCs **Fahrt und Eingaben · kurzer Aufbau** auswählen. Die API-Diagnose wird nicht gebraucht.
-4. Die eigenen Installations- und Steam-Saveordner prüfen. Keine Sicherungen oder alten Spielstände löschen.
+Für die erste Einrichtung ohne vorhandenen Launcher: [TFCoop-Windows.zip herunterladen](https://github.com/TastierPizza-code/TFCoop/releases/latest/download/TFCoop-Windows.zip), vollständig entpacken und `TF2-Coop.exe` öffnen. Git und Python sind nicht erforderlich. Ein erstmals fehlender gemeinsamer Ausgangsspielstand wird weiterhin privat als passendes `.sav`/`.sav.lua`-Paar übernommen; er liegt nicht im öffentlichen Update.
 
-## 2. Host und Freund verbinden
+## 2 · Frisch vorbereiten und laden
 
-1. **Host:** „Ich bin Host“ wählen, eigene Hamachi-/LAN-IPv4 eintragen, frischen Sitzungscode mit **Neu** erzeugen. IP und vollständigen Code an den Freund weitergeben.
-2. **Freund:** „Ich trete meinem Freund bei“ wählen und **dieselbe Host-IP** sowie den erhaltenen Code eintragen. Beide müssen im gleichen Hamachi-Netz oder LAN sein; für zwei PCs nicht `127.0.0.1` verwenden.
-3. **Beide:** **Test vorbereiten und installieren** klicken. Die Vorbereitung sichert die Installation und erzeugt eine frische Kopie der gemeinsamen Basis.
-4. **Beide:** **Verbinden & Test bereitstellen** klicken. Auf **Mitspieler: verbunden · gleiche Testdateien** und die Startfreigabe warten.
-5. Nach der Freigabe TF2 über Steam starten; den Launcher offen lassen. Beim Start innerhalb von zwei Minuten beginnen, für das Laden wartet die Sitzung bis zu zehn Minuten.
+1. Beide klicken **Test vorbereiten und installieren**. Das sichert die bisherige Installation und erzeugt jeweils eine frische Testsave-Kopie. Unterschiedliche zufällige Dateinamen sind normal.
+2. Beide klicken **Verbinden & Test bereitstellen**. Der Launcher vereinbart für diesen Versuch intern eine neue Sitzung. Der gemerkte Testschlüssel bleibt gleich.
+3. Erst nach der Startfreigabe **TF2 über Steam starten** klicken. Im Spiel ausdrücklich den unten im jeweiligen Launcher genannten Save laden.
+4. **TF2 Strict Sync - gemeinsamer Depotversuch (Alpha5.16)** und **Legacy Fahrzeuge** sind bereits ausgewählt. Bei alten Koop-Mods zuerst den exakten neuen Savenamen prüfen. Keine weiteren Mods aktivieren.
+5. Zehn Aufbaurunden abwarten. Danach werden die gemeinsamen Tasten freigegeben. TF2 möglichst sichtbar lassen, etwa neben dem Launcher; die frühere Ursache von Timeouts nach Minimieren ist nicht abschließend geklärt. Kamera bewegen ist möglich.
 
-Bei einer Firewallabfrage Zugriff im verwendeten LAN-/Hamachi-Netz erlauben. Der Launcher verwendet TCP 34208 und 34207. Unterschiedliche Modi oder Dateien werden vor dem gemeinsamen Test zurückgewiesen.
+## 3 · Kurzer manueller Depotversuch
 
-## 3. Jeder lädt seinen frisch angezeigten Save
+Die vier Testplätze liegen nahe der automatisch angelegten Testszene. Es sind keine frei gewählten Mauspositionen. Gelände, vorhandene Objekte oder eine andere Platzierung können einen Auftrag ablehnen. **Eine gemeinsam bestätigte Ablehnung ist ein Ergebnis; „Test angehalten“ ist ein Fehler.**
 
-1. In TF2 **Spiel laden** öffnen und genau die **neu im eigenen Launcher angezeigte `TF2-Koop-Messtest-….sav`** wählen. Nicht „Fortsetzen“ oder einen früheren Test laden.
-2. **TF2 Strict Sync - gemeinsamer Eingabetest (Alpha5.15)** und **Legacy Fahrzeuge** sind bereits ausgewählt. Stehen dort alte Koop-Mods, den exakten neuen Savenamen prüfen. Keine weiteren Mods einschalten.
-3. Laden und die **10 Aufbaurunden** abwarten. Wer zuerst geladen hat, wartet bei gehaltener Spielzeit auf den anderen. Die zufälligen Savenamen dürfen verschieden sein; die Ausgangsdaten werden geprüft.
+1. Fahrt kurz beobachten. **Host:** Testplatz **1**, Drehung **0**, **Depot gemeinsam bauen** drücken. Gemeinsame Bestätigung abwarten; auf beiden Karten und bei den Firmenwerten vergleichen.
+2. **Host:** **Gemeinsam pausieren** und die Bestätigung abwarten. **Freund:** Testplatz **2**, Drehung **90**, Depot beauftragen. Auch während Pause muss der Auftrag bedienbar sein und auf beiden PCs gleich enden.
+3. **Freund:** **Gemeinsam fortsetzen**. Jetzt beide **Testplatz 3, Drehung 0** einstellen und möglichst gleichzeitig bauen. Ein erfolgreich belegter Platz darf nicht doppelt bebaut oder doppelt bezahlt werden. Der zweite Auftrag wird nach dem ersten erneut geprüft. Falls beide wegen Gelände abgelehnt werden, ist dieser Konfliktfall noch nicht erfolgreich getestet.
+4. Optional **Testplatz 4** mit einer anderen Drehung versuchen. Eine bereits belegte Stelle erneut beauftragen, um die Ablehnung zu prüfen. Die sichtbare Rückmeldung abwarten; Mehrfachklicken beschleunigt nichts.
+5. **Messung gemeinsam abschließen** drücken und den regulären Abschluss auf beiden PCs abwarten. Danach TF2 schließen und jeweils **Testbericht als ZIP …** exportieren. Beide Berichte zur Auswertung schicken.
 
-TF2 möglichst sichtbar lassen, etwa neben dem Launcher. Ein früherer Timeout trat nach Minimieren auf; dessen Ursache ist bisher nicht sicher geklärt. Die Kamera dürft ihr bewegen. Die normalen Pause-/Tempo-Tasten und Bauwerkzeuge im Spiel sind noch nicht an diesen Eingabeweg angeschlossen.
+Eine lokale Annahme bestätigt nur, dass der Launcher den Wunsch eingereiht hat. Erst die beidseitige Bestätigung zeigt das gemeinsame Ergebnis. Der Bau kann eine kurze Unterbrechung verursachen: beide prüfen denselben gehaltenen Zustand, bauen in gemeinsamer Reihenfolge und vergleichen die tatsächlichen Rückmeldungen. Ohne Auftrag gibt es keine zusätzliche leere Bauabfrage.
 
-## 4. Fahrt und Pause testen
+Es muss für diesen neuen Bautest keine weitere lange Pause-/Fahrtmessung wiederholt werden. Ein sauberer Abschluss wird getrennt davon bewertet, ob alle Bau- und Konfliktfälle tatsächlich erfasst wurden. Fast gleichzeitige Klicks beweisen allein noch nicht, dass beide Wünsche in derselben Sammelrunde angekommen sind.
 
-Nach dem kurzen Aufbau werden die drei Tasten unter **Gemeinsame Eingaben · erst nach dem Aufbau** freigegeben. Über **TF2 Coop Test Line** könnt ihr das Fahrzeug beobachten.
+## Bei einem Fehler
 
-1. Zunächst ungefähr **eine Minute laufen lassen**, ohne etwas zu drücken. Beurteilt, ob Fahrt und kurze Zuckler angenehmer geworden sind. Diese Minute zählt zur neuen Messung; sie ist kein weiterer vorgeschalteter Automatismus.
-2. **Host pausiert** mit **Gemeinsam pausieren**. Beide warten auf den bestätigten Stillstand. **Freund setzt fort** mit **Gemeinsam fortsetzen**.
-3. Danach **Freund pausiert**, **Host setzt fort**. Jeweils auf die gemeinsame Bestätigung warten. Damit hat jeder tatsächlich beide Zustandswechsel ausgelöst.
-4. Einer pausiert erneut. Ab der gemeinsamen Bestätigung mindestens **45 Sekunden** warten und zusätzlich auf beiden PCs **Lange Pause erfasst** abwarten. Dafür werden mindestens 35 zusammenhängende Sekunden unveränderten Zustands gemessen. Dann setzt der andere fort.
-5. Optional gleiche oder gegensätzliche Wünsche ungefähr gleichzeitig ausprobieren. Wenn Gegensätze in derselben Sammelrunde liegen, hat **Pause Vorrang**. Fast gleichzeitige Klicks können auch in verschiedene Runden fallen; ein neuer Fortsetzenwunsch nach Bestätigung bleibt möglich.
-6. Noch einmal ungefähr eine Minute fahren lassen. Danach alle eigenen offenen Wünsche bestätigen lassen und einer klickt **Messung gemeinsam abschließen**. Beide warten auf ihre Abschlussmeldung.
+**Test beenden** oben ist der Abbruchknopf. Bei „Test angehalten“, Lua-Fehler oder ausbleibendem gemeinsamen Ergebnis beide Berichte sichern. Nicht mit normalen Spielwerkzeugen weiterbauen. TF2 schließen, **Bisherige Installation wiederherstellen**, danach frisch vorbereiten. Der gespeicherte gemeinsame Zugang bleibt erhalten; alte native Sitzungen werden nicht fortgesetzt.
 
-Ein Klick wird zuerst lokal angenommen. Erst **beidseitig bestätigt** bedeutet, dass beide ihn verarbeitet haben. Ein schon freigegebener kurzer Fahrtabschnitt darf noch enden; die Pause wird an derselben Grenze auf beiden PCs ausgeführt. Mehrfaches Klicken beschleunigt die Bestätigung nicht. Eine schnelle eigene Folge Pause/Fortsetzen in derselben Sammelrunde endet ebenfalls pausiert.
+Die neue Mod gehört zum vorbereiteten Messversuch. Es gibt keinen automatischen Rollback beider Welten nach einer unerwarteten fehlgeschlagenen Anwendung.
 
-**„Test beenden“ oben ist der Abbruchknopf.** Für den regulären Abschluss **Messung gemeinsam abschließen** verwenden, auch aus einer gemeinsamen Pause heraus. Später eingereihte Wünsche können danach unbestätigt bleiben. Ein sauberer Abschluss und vollständig erfasste Bedienproben werden getrennt angezeigt.
+## Gesicherte Vergleichsmodi
 
-Der Versuch erlaubt maximal **128 Wünsche pro Spieler**, **2048 Sammelrunden** und **3000 zusätzliche Fortschrittsschritte** (höchstens zehn Minuten Spielzeit). Weitere Wünsche werden am Dateilimit abgewiesen; ein erreichtes Laufzeit-/Rundenlimit hält den Test an. Bitte nach den beschriebenen Proben gemeinsam abschließen.
+- **Fahrt und Eingaben aus Alpha5.15 · kurzer Aufbau:** akzeptierter Launcher-Pauseversuch, etwa 0,94x im tatsächlichen Lauf. Für seinen vollständigen Bediennachweis pausiert und setzt jeder fort; eine Pause mindestens 45 Sekunden halten.
+- **Eingabetest aus Alpha5.13 · vollständiger Aufbau:** ursprünglicher langer Pauseversuch.
+- **Referenztest aus Alpha5.12:** akzeptierter längerer automatischer Test mit etwa 0,962x.
+- **Vergleichstest aus Alpha5.11:** älterer Fahrt-/Wartevergleich.
 
-## 5. Berichte sichern
-
-1. Auf **beiden PCs** **Testbericht als ZIP …** verwenden und beide ZIPs privat zur Auswertung schicken, auch wenn nur einer einen Fehler sieht.
-2. Dazuschreiben, wie sich die Fahrt angefühlt hat: häufige Stopps, seltene kurze Zuckler oder etwa wie Alpha5.12. Außerdem auffällig verspätete Eingaben oder unterschiedliche Ansichten erwähnen.
-3. TF2 selbst schließen und **Bisherige Installation wiederherstellen** verwenden. Die Testsave nicht über eure normale Partie speichern. Jeder neue Versuch braucht einen frischen gemeinsamen Code, eine neue Vorbereitung und die neu angezeigten Saves.
-
-## Bisherige Tests bleiben erhalten
-
-| Modus | Ablauf |
-|---|---|
-| Fahrt und Eingaben · kurzer Aufbau | Neuer Ablauf aus Alpha5.14: 10 Runden Vorbereitung, danach freie Launcher-Eingaben und Fahrt. |
-| Eingabetest aus Alpha5.13 · vollständiger Aufbau | Bisherige 240 Aufbaurunden, danach die bisherigen Eingabetasten mit eigener Abfragerunde. |
-| Referenztest aus Alpha5.12 | Unveränderte 240 Aufbaurunden, anschließend 120 Sekunden automatische Fahrt mit vorgesehenen Kontrollpunkten und Pause. Nur zuschauen. |
-| Vergleichstest aus Alpha5.11 | Unveränderte 240 Aufbaurunden und zwölf automatische Fahrt-/Warteabschnitte. Nur zuschauen. |
-
-Ein Moduswechsel benötigt auf beiden PCs eine frische Vorbereitung. [Alpha5.12](https://github.com/TastierPizza-code/TFCoop/releases/tag/v0.5.12) bleibt die längere akzeptierte Referenz bei ungefähr 0,962x mit kaum sichtbaren Zucklern. Alpha5.13 bestätigte gegenseitige Pause/Fortsetzen, lief aber nur ungefähr 0,82x. Alpha5.15 ist nach dem tatsächlichen Zwei-PC-Test als Eingabereferenz bei ungefähr 0,94x gesichert: 133 identische Weltjournalzeilen, sieben Pause-/Fortsetzen-Wechsel und regulärer gemeinsamer Abschluss. Diese Tests betreffen die beobachtete Szene und belegen keine freie gleichzeitige Bebauung oder vollständige Weltsynchronität. Die vollständige Auswertung steht in [der akzeptierten Eingabereferenz](https://github.com/TastierPizza-code/TFCoop/blob/main/prototype/docs/ACCEPTED_INPUT_BASELINE.md).
-
-## Erste Einrichtung und spätere Updates
-
-Ohne Launcher einmal **[TFCoop-Windows.zip herunterladen](https://github.com/TastierPizza-code/TFCoop/releases/latest/download/TFCoop-Windows.zip)**, vollständig in einen eigenen Ordner entpacken und `TF2-Coop.exe` öffnen. `TF2-Coop.exe`, `_internal` und `package_manifest.json` zusammenlassen. Git und Python sind nicht nötig. Später genügt ein normaler Neustart des Launchers bei geschlossenem TF2 und beendetem Test.
-
-Auf einem neu eingerichteten PC muss das private saubere Spielstandpaar `initial.sav` und `initial.sav.lua` separat vorhanden sein. Beide nebeneinander entpacken und über **Testspielstand übernehmen …** die `initial.sav` wählen. Ein passender bestehender Cache bleibt gültig. Das öffentliche Update enthält keine Spielstände; Spielstände und Berichte werden nicht auf GitHub hochgeladen.
-
-Diese Anleitung gehört zu [v0.5.15](https://github.com/TastierPizza-code/TFCoop/releases/tag/v0.5.15). Weitere technische Grenzen stehen in [VERIFICATION.md](https://github.com/TastierPizza-code/TFCoop/blob/main/prototype/VERIFICATION.md).
+Ein Moduswechsel verlangt auf beiden PCs eine frische Vorbereitung. Die unveränderten veröffentlichten Alpha5.12- und Alpha5.15-Pakete bleiben gesichert. Die beobachtete Testszene ist kein vollständiger Weltnachweis. Freies gleichzeitiges Bauen mit normalen Spielwerkzeugen, normale UI-Pause, Speichern/Fortsetzen und Steam-Einladungen bleiben weitere Arbeit.
