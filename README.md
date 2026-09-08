@@ -1,6 +1,6 @@
 # TFCoop für Transport Fever 2
 
-**Alpha5.13-Eingabetest / v0.5.13** ergänzt frei ausgelöste gemeinsame Pause- und Fortsetzen-Wünsche aus beiden Launchern. Nach dem automatischen Aufbau entscheidet ihr selbst, wann ihr pausiert, fortsetzt und die Messung gemeinsam abschließt. Der neue Eingabeweg ist ohne Spielstart vorgeprüft; sein echter Zwei-PC-Test steht noch aus.
+**Alpha5.13-Eingabetest / v0.5.13** ergänzt frei ausgelöste gemeinsame Pause- und Fortsetzen-Wünsche aus beiden Launchern. Der tatsächliche Zwei-PC-Lauf vom 8. September bestätigt sechs gegenseitige Zustandswechsel, eine 59-Sekunden-Pause und den gemeinsamen Abschluss mit 380 identischen Weltjournalzeilen. Das Fahrttempo lag bei etwa 0,82x und damit unter der akzeptierten Alpha5.12-Referenz; häufigere Zuckler wurden beobachtet. [Auswertung und Grenzen](prototype/docs/ALPHA513_EVIDENCE.md).
 
 **Alpha5.12 bleibt eingefroren** und als **Referenztest aus Alpha5.12** auswählbar. Sein tatsächlicher Zwei-PC-Lauf hatte 270 identische Journaleinträge, passende erfasste Zustände und etwa 0,962x Fahrttempo. Die Spieler akzeptierten die fast unsichtbaren Zuckler. Paket, Quelltag und private Belege sind gesichert. Weitere Tempooptimierung wird zurückgestellt. Siehe [akzeptierte Referenz](prototype/docs/ACCEPTED_BASELINE.md).
 

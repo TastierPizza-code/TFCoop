@@ -1,10 +1,30 @@
 # Prüfstand
 
-## Alpha5.13: frei ausgelöste Launcher-Eingaben, echte Spielprüfung noch offen
+## Alpha5.13: tatsächlicher Zwei-PC-Eingabetest bestanden, Tempo schlechter
+
+Am 8. September 2026 wurden beide Original-ZIPs geprüft. Ihre Weltjournale
+mit 380 Zeilen sind bytegleich, 37 Payload-Hashes passen zum Release und
+die vollständige Bauprüfung wurde aus den Daten erneut berechnet.
+Alle sechs echten gegenseitigen Pause-/Fortsetzen-Wechsel, sieben gemeinsam
+bestätigten Wünsche und der finale Weltvergleich passen zusammen. Die lange
+Pause ist mit 59,297 Sekunden gemeinsam gemessen; unabhängige native Zähler
+belegen zusätzlich über 58 Sekunden unveränderte Zustände. Abschluss:
+Frame 488, Enginezeit 105,2 s, Firmenkonto 4.651.939 und Darlehen 5.000.000.
+
+Die aktive Fahrt erreicht nur etwa 0,820x beziehungsweise 0,816x. Häufigere
+Unterbrechungen sind sowohl berichtet als auch in den ACK-Zeitabständen
+messbar. Zusätzliche Eingabeabfragen tragen plausibel dazu bei, sind aber
+nicht als alleinige Ursache isoliert. Alpha5.12 bleibt die akzeptierte
+Temporeferenz. Gleichzeitige Gegensätze wurden nicht protokolliert; normale
+UI-Pause, freies Bauen und vollständige Weltprüfung bleiben offen.
+Vollständige Nachrechnung, Messdefinitionen und Grenzen:
+[Alpha5.13-Evidenz](docs/ALPHA513_EVIDENCE.md).
+
+## Alpha5.13: ursprüngliche Vorabprüfungen vor dem Zwei-PC-Lauf
 
 Der neue Standard `live_input_v1` ergänzt echte Pause-/Fortsetzen- und
 Abschlusswünsche aus beiden Launchern. Die normale TF2-UI bleibt unangebunden.
-Es wurde für diese Version kein Spiel gestartet und kein Desktop bedient.
+Für diese Vorabprüfungen wurde kein Spiel gestartet und kein Desktop bedient.
 Die folgenden Vorabprüfungen verwenden ausdrücklich Engine- und Uhrenmodelle:
 
 - `test_live_input.py`: 15 Datei-/Prozess-/Parallelitätstests prüfen atomare
@@ -46,7 +66,7 @@ Wünsche und gemeinsam bestätigte Ausführung bleiben getrennt. Ein nach der
 letzten Sammlung angenommener Wunsch kann unbestätigt bleiben. Der finale
 Weltvergleich beweist nur die erfasste Szene. Freies Bauen, normale UI-Pause,
 vollständige Weltdeterministik und Bildflüssigkeit sind damit nicht nachgewiesen.
-Ein echter Alpha5.13-Zwei-PC-Lauf muss als neue Evidenz ergänzt werden.
+Der oben dokumentierte echte Alpha5.13-Lauf ergänzt diese Vorabprüfungen.
 
 Die akzeptierte Referenz `stream_v1`, ihr Taktgeber und der native/Lua-Adapter
 bleiben unverändert. Alpha5.12 ist im Launcher weiterhin ausführbar; seine

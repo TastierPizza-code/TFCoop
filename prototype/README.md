@@ -1,6 +1,6 @@
 # TF2: Prototyp für strikte Synchronisation
 
-**Alpha5.13-Eingabetest** führt `live_input_v1` als Standard ein: Nach dem automatischen Aufbau erzeugen echte Launcher-Klicks beider Spieler Pause-, Fortsetzen- und Abschlusswünsche. **Referenztest aus Alpha5.12** (`stream_v1`) und **Vergleichstest aus Alpha5.11** (`timing_v1`) bleiben separat auswählbar. Der neue Eingabeweg ist ohne Spielstart vorgeprüft; echte Zwei-PC-Evidenz dafür steht noch aus.
+**Alpha5.13-Eingabetest** führt `live_input_v1` als Standard ein: Nach dem automatischen Aufbau erzeugen echte Launcher-Klicks beider Spieler Pause-, Fortsetzen- und Abschlusswünsche. **Referenztest aus Alpha5.12** (`stream_v1`) und **Vergleichstest aus Alpha5.11** (`timing_v1`) bleiben separat auswählbar. Der tatsächliche Zwei-PC-Lauf vom 8. September bestätigt die gegenseitige Bedienprobe und den gemeinsamen Abschluss. Seine 380 Journalzeilen sind identisch; die aktive Fahrt fiel jedoch auf rund 0,82x zurück. [Echte Evidenz und Einschränkungen](docs/ALPHA513_EVIDENCE.md).
 
 Auf beiden PCs aktualisieren, die vorherige Installation wiederherstellen und mit demselben Modus neu vorbereiten. Die saubere Basis der sehr großen Karte bleibt unverändert. Die bisherigen Teilnehmer brauchen keinen erneuten Import. Frische Testsave-Kopien enthalten **TF2 Strict Sync - gemeinsamer Eingabetest (Alpha5.13)** und **Legacy Fahrzeuge**. Bedienfolge: [ANLEITUNG.md](ANLEITUNG.md).
 

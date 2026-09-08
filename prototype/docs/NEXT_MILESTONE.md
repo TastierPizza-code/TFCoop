@@ -1,8 +1,11 @@
 # Nächste Etappe: frei ausgelöste Eingaben
 
-Status: Der Pause-Teil ist in Alpha5.13 implementiert und ohne Spielstart
-vorgeprüft: frei ausgelöste Wünsche beider Launcher, Eingabeverarbeitung während
-Pause und gemeinsamer Abschluss. Der echte Zwei-PC-Versuch steht noch aus.
+Status: Der Pause-Teil ist in Alpha5.13 im tatsächlichen Zwei-PC-Lauf vom
+8. September 2026 bestätigt: sechs gegenseitige Pause-/Fortsetzen-Wechsel,
+eine lange gemeinsame Pause und Abschluss aller sieben protokollierten Wünsche.
+Die 380 Weltjournalzeilen sind identisch. Das Fahrttempo ist mit rund 0,82x
+schlechter als die akzeptierte Referenz und wird nicht als neue Temporeferenz
+übernommen. Evidenz und Grenzen: [Alpha5.13-Auswertung](ALPHA513_EVIDENCE.md).
 Der begrenzte manuelle Bauauftrag und die normale TF2-Eingabe bleiben offen.
 Die [akzeptierte Alpha5.12-Referenz](ACCEPTED_BASELINE.md) bleibt unverändert und
 als `stream_v1` auswählbar. Es wird kein weiteres Tempoexperiment vorgeschaltet.
@@ -15,7 +18,7 @@ freigeben. Bereits akzeptierte lange Bau-, Pause- und Fahrtabschnitte werden
 nicht vor jedem neuen Versuch vollständig wiederholt. Die vorhandenen
 auswählbaren Tests behalten ihren bisherigen vollständigen Ablauf.
 
-Der laufende Alpha5.13-Versuch wird dafür nicht geändert. Die nächste neue
+Der abgeschlossene Alpha5.13-Testmodus wird dafür nicht geändert. Die nächste neue
 Testvariante erhält einen eigenen kurzen Vorlauf und eine eindeutige
 Modus-/Protokollidentität. Beide Teilnehmer müssen denselben Ablauf verwenden.
 Die gemeinsame Ausgangswelt, tatsächlich benötigte Objekte, Verbindungen,
