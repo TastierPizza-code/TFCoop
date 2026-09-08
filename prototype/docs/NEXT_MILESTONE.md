@@ -13,11 +13,21 @@ vereinbart für jeden Versuch eine frische Sitzung vor dem Start der Spielworker
 Die nachfolgenden Abschnitte bewahren Vorgaben und Entwurfsgrenzen; die genannten
 Alpha5.13-/Alpha5.14-Planungsstände sind historische Grundlagen.
 
-Vorabprüfungen betreffen Modelle, Lua-/API-Fixtures und lokale Testverbindungen.
-Die tatsächliche Depotfunktion und Fahrt dieser neuen Version sind noch nicht
-mit zwei laufenden TF2-Spielen bestätigt. Der nächste Nutzertest folgt der
-[kurzen Anleitung](../ANLEITUNG.md). Der akzeptierte Alpha5.15-Lauf bleibt die
-Referenz und wird durch diese Implementierung nicht nachträglich umbewertet.
+Der tatsächliche Zwei-PC-Lauf vom 8. September bestätigt vier Depots mit
+passenden Objekten und Kosten während Fahrt/Pause sowie eine kostenfreie
+Belegungsablehnung. Normale Fahrt erreichte 0,947x/0,951x, der aktive Durchschnitt
+mit Bauprüfungen 0,904x/0,905x. Die 97 Weltjournalzeilen sind identisch.
+Der belegte Platz wurde in zwei aufeinanderfolgenden Sammelrunden angefragt;
+der Konflikt innerhalb einer Runde bleibt im Spiel offen.
+[Auswertung](ALPHA516_EVIDENCE.md). Der akzeptierte Alpha5.15-Lauf bleibt die
+Referenz. Kein neuer langer Vorlauf oder Tempoexperiment folgt allein aus
+dieser Auswertung.
+
+Die nächste funktionale Etappe ist ein begrenztes normales TF2-Bauwerkzeug:
+seinen Auftrag vor der lokalen Änderung erfassen, bis zur gemeinsamen Freigabe
+zurückhalten und tatsächliche Ergebnisse beidseitig prüfen. Dieser Pfad ist
+noch nicht implementiert oder im Spiel bestätigt. Die offene Konkurrenz in
+derselben Sammelrunde soll gezielt und mit kurzem Aufbau mitgeprüft werden.
 
 ## Für die nächste Version: Testverbindung merken
 
@@ -31,9 +41,9 @@ automatisch erkannte lokale Adressen dürfen die gespeicherte Host-Adresse nicht
 Der feste Zugang ist eine private Kopplungskennung. Die jeweilige Versuchssitzung
 erhält weiterhin eine eigene Identität, die beide Teilnehmer über die authentisierte
 Verbindung übernehmen. Native Epochen, verbrauchte Sitzungen, neue Eingabequeues
-und Verbindungsabbruch bleiben getrennt abgesichert. Das aktuelle
-`connection_identity` leitet die Netzkennung direkt aus dem sichtbaren Code ab;
-allein das Abschalten der Code-Neuerzeugung erfüllt diese Trennung noch nicht.
+und Verbindungsabbruch bleiben getrennt abgesichert. Bis Alpha5.15 leitete
+`connection_identity` die Netzkennung direkt aus dem sichtbaren Code ab;
+Alpha5.16 vereinbart stattdessen eine frische gemeinsame Sitzung.
 Host-Adresse und Zugangscode werden nicht ins öffentliche Repository oder
 Updatepaket geschrieben. Diese Änderung ist in Alpha5.16 umgesetzt,
 in Alpha5.15 noch nicht enthalten. Die endgültige Verbindungsoberfläche
@@ -52,9 +62,10 @@ weitere Tempoexperimente sind nicht vorgesehen. Gesicherter Stand und Grenzen:
 
 Die [akzeptierte Alpha5.12-Referenz](ACCEPTED_BASELINE.md) mit ihrem längeren
 automatischen Test bleibt ebenfalls unverändert als `stream_v1` verfügbar.
-Der begrenzte manuelle Bauauftrag und die normale TF2-Eingabe bleiben offen.
-Die nächste Version soll zusätzlich das oben beschriebene private Testprofil
-für Host-Adresse und festen Zugang enthalten. Danach folgt der begrenzte Baupfad.
+Der begrenzte manuelle Depotauftrag ist inzwischen in Alpha5.16 im Spiel
+bestätigt; das private Testprofil ist implementiert. Die normale TF2-Eingabe
+bleibt offen. Die folgenden Planungsabschnitte dokumentieren den Weg bis zu
+diesem Stand und dessen weiterhin gültige Grenzen.
 
 ## Kurzer Vorlauf für neue Tests
 

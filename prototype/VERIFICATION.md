@@ -1,6 +1,22 @@
 # Prüfstand
 
-## Alpha5.16: begrenzter manueller Depotversuch, noch kein Spielnachweis
+## Alpha5.16: begrenzter manueller Depotversuch im Zwei-PC-Spiel bestätigt
+
+Die tatsächlichen Berichte vom 8. September 2026 sind ausgewertet: 97
+bytegleiche Weltjournalzeilen, 47 passende öffentliche Payload-Hashes,
+erneut geprüfte kurze Bereitschaft und gemeinsamer Abschluss bei Frame 338.
+Vier manuell angeforderte Depots wurden während Fahrt und Pause mit passenden
+Objekten, Transformationen und tatsächlichen Abbuchungen von zusammen 45.835
+gebaut. Ein belegter Platz wurde auf beiden PCs ohne Kosten oder Änderung des
+erfassten Zustands abgelehnt. Alle neun Eingaben wurden gemeinsam bestätigt.
+Es gab keinen terminalen nativen Laufzeitfehler.
+
+328 lückenlose zusätzliche Schritte bestätigen 65,6 Sekunden Simulationszeit.
+Normale Fahrt einschließlich regelmäßiger Kontrollpunkte: 0,946689x/0,950844x.
+Aktiver Durchschnitt einschließlich Bauprüfungen: 0,904032x/0,904892x.
+Die erfolgreiche Depotanwendung erzeugte während Fahrt native Bestätigungsabstände
+von etwa 1,20–1,40 Sekunden. Bewusste Pausen sind aus beiden Raten ausgeschlossen.
+Dies misst weder FPS noch die vollständige Welt. [Auswertung und Methode](docs/ALPHA516_EVIDENCE.md).
 
 Der neue getrennte Modus `manual_depot_v1` verbindet die tatsächlichen
 Launcher-Handler, sitzungsgebundene Queue, gemeinsame Vorschau/Anwendung und
@@ -36,15 +52,16 @@ ist kein neuer Beweis für die tatsächliche Flüssigkeit auf beiden PCs.
 
 Die offizielle API beschreibt die read-only Bauvorprüfung, aber nicht alle
 von ihr gelieferten Felder vollständig. Zusätzliche lokale Upstream-Belege
-stützen die verwendeten Felder; ihr tatsächlicher neuer Rückgabewert ist erst
-im Spiel zu prüfen. Unlesbare Daten halten vor Mutation an und erzeugen
+stützen die verwendeten Felder. Die vier erfolgreichen Aufträge bestätigen nun
+auch die neue Vorschau für die dort beobachteten Rückgaben. Weitere Fehlerformen
+bleiben offen. Unlesbare Daten halten vor Mutation an und erzeugen
 begrenzte Diagnosefelder. [Quellen und genaue Grenze](docs/MANUAL_DEPOT_ENGINE_CONTRACT.md).
 
-**Ein echter Alpha5.16-Zwei-PC-Depotlauf steht aus.** Abschluss, beide Spieler
-mit erfolgreichem Bau, Bau in Fahrt/Pause und belegter Platz werden getrennt
-ausgewertet. Anfragen für denselben Platz in derselben Sammelrunde und ein
-tatsächlich nachgewiesener Gewinner/Ablehnungsfall sind ebenfalls getrennte
-Felder. Neue Kopfsektionen ersetzen keine historischen Laufbelege unten.
+**Der gemessene Launcher-Depotablauf ist bestanden.** Beide Spieler haben gebaut,
+Bau in Fahrt/Pause und belegter Platz sind erfasst. Die zwei Wünsche für Platz 4
+liegen jedoch in aufeinanderfolgenden Sammelrunden, 0,4 Simulationssekunden
+auseinander. Der Konflikt innerhalb derselben Sammelrunde bleibt im Spiel offen.
+Neue Kopfsektionen ersetzen keine historischen Laufbelege unten.
 
 ## Alpha5.15: tatsächlicher Zwei-PC-Lauf bestanden und Tempo akzeptiert
 

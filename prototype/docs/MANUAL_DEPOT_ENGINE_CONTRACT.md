@@ -33,16 +33,18 @@ begründet: Dort ist `resultProposalData.costs` ausdrücklich als gemessen
 beschrieben (Bereich 612–624); die Fehlerauswertung verwendet `critical` und
 `messages` (Bereich 2617–2627). Die lokale Rekonstruktionsdokumentation
 `docs/re/PROPOSAL_STRUCTURE.md` bestätigt `errorState.critical` als native
-Gültigkeitsprüfung. Das sind zusätzliche Integrationsbelege, keine aktuelle
-Messung des neuen Vorabaufrufs auf den beiden Benutzer-PCs.
+Gültigkeitsprüfung. Diese Integrationsbelege begründeten die Umsetzung vor
+dem ersten tatsächlichen Zwei-PC-Versuch.
 
-Der echte Alpha5.15-Bericht bestätigt das bisherige Depot mit unveränderten
-Rezeptparametern, beobachteter Konstruktionstransformation, tatsächlich gebundenem
-Depotkind und 10.000 Geldabbuchung. Er enthält noch keine eigene Beobachtung des
-neuen `makeProposalData`-Aufrufs. Die Vorabfelder und deren aktueller Datentyp
-bleiben deshalb eine ausdrücklich noch im Spiel zu prüfende Schnittstelle.
-Die Tests bilden die gelesenen API-Verträge nach und werden nicht als Nachweis
-ausgegeben, dass diese neue Engine-Methode bereits im Spiel gelaufen ist.
+Der echte Alpha5.15-Bericht bestätigt das bisherige Depot, enthält aber noch
+keine eigene Beobachtung des neuen `makeProposalData`-Aufrufs. Der ausgewertete
+Alpha5.16-Lauf bestätigt jetzt vier erfolgreiche neue Vorschauen mit passenden
+Callbacks, Konstruktionen, Depotkindern und tatsächlichen Abbuchungen von 13.143,
+12.692, 10.000 und 10.000. Die beobachteten Rückgaben wurden auf beiden PCs
+erfolgreich verarbeitet. Die zusätzliche Belegungsablehnung ist eine Prüfung
+des Platzregisters und beweist keinen nativen Kollisionsfehler. Andere
+Fehlercontainer oder unbekannte Rückgabeformen bleiben unbestätigt.
+[Tatsächlicher Nachweis und Grenzen](ALPHA516_EVIDENCE.md).
 
 ## Verhalten an einer gemeinsamen Grenze
 
