@@ -7,6 +7,32 @@ Der begrenzte manuelle Bauauftrag und die normale TF2-Eingabe bleiben offen.
 Die [akzeptierte Alpha5.12-Referenz](ACCEPTED_BASELINE.md) bleibt unverändert und
 als `stream_v1` auswählbar. Es wird kein weiteres Tempoexperiment vorgeschaltet.
 
+## Kurzer Vorlauf für neue Tests
+
+Nutzervorgabe vom 8. September 2026: Neue Testmodi sollen nur die notwendigen
+automatischen Voraussetzungen herstellen und danach zügig die neue Bedienprobe
+freigeben. Bereits akzeptierte lange Bau-, Pause- und Fahrtabschnitte werden
+nicht vor jedem neuen Versuch vollständig wiederholt. Die vorhandenen
+auswählbaren Tests behalten ihren bisherigen vollständigen Ablauf.
+
+Der laufende Alpha5.13-Versuch wird dafür nicht geändert. Die nächste neue
+Testvariante erhält einen eigenen kurzen Vorlauf und eine eindeutige
+Modus-/Protokollidentität. Beide Teilnehmer müssen denselben Ablauf verwenden.
+Die gemeinsame Ausgangswelt, tatsächlich benötigte Objekte, Verbindungen,
+Linienzuweisung und echte Befehlsbestätigungen bleiben Voraussetzungen.
+Eine Bewegungsprüfung wird nur aufgenommen, wenn die neue Probe sie benötigt,
+und endet nach ausreichender echter Beobachtung statt einer langen festen
+Wiederholung. Kann die notwendige Bereitschaft innerhalb der begrenzten
+Vorbereitung nicht bestätigt werden, hält der Versuch mit Diagnose an.
+
+Die aktuelle Zahl `BUILD_ROUNDS = 240` darf nicht einfach global verkleinert
+werden: Der vollständige `BuildProof`, die automatischen Pausebefehle bei
+80/100, die Startgrenze der Folgeprotokolle und ihre Befehlssequenzen sind daran
+gebunden. Der kurze Vorlauf benötigt eigene Abschlussbedingungen und meldet
+nur seine tatsächlich geprüfte Bereitschaft. Er wird nicht als bestandener
+vollständiger Bau-/Dauertest bezeichnet. Diese Änderung wird zusammen mit dem
+nächsten neuen Test umgesetzt; in Alpha5.13 ist sie noch nicht enthalten.
+
 ## Fehlendes Verhalten
 
 Im jetzigen `stream_v1` sind alle 600 Schritte und beide Pausebefehle bereits beim
