@@ -1,5 +1,27 @@
 # Prüfstand
 
+## Alpha5.15: tatsächlicher Zwei-PC-Lauf bestanden und Tempo akzeptiert
+
+Die beiden Originalberichte vom 8. September 2026 sind ausgewertet: 133
+bytegleiche Weltjournalzeilen, 40 passende öffentliche Payload-Hashes,
+erneut berechneter kurzer Bereitschaftsnachweis und gemeinsamer Abschluss
+bei Frame 192. Sieben echte Pause-/Fortsetzen-Wechsel beider Spieler,
+acht abgeschlossene Wünsche und 47,375 Sekunden gemeinsam gemessene Pause
+sind bestätigt. Alle 182 nativen Fortschrittsschritte der Eingabephase und
+93 unveränderten Pausenprüfungen passen zusammen. Keine terminalen Fehler.
+
+36,4 Sekunden aktive Spielzeit benötigen 38,748514 beziehungsweise 38,806138
+Sekunden: ungefähr 0,94x. Der Nutzer akzeptiert dieses Fahrgefühl ausdrücklich
+und möchte es beibehalten. Längere Bestätigungsabstände treten deutlich
+seltener auf als in Alpha5.13. Der kurze Aufbau dauert 12,500 Sekunden.
+Paket, Quellstand, Basissave und Originalbelege sind zusätzlich privat gesichert.
+[Messdefinitionen, Vergleich und Grenzen](docs/ACCEPTED_INPUT_BASELINE.md).
+
+Die Annahme gilt für die beobachtete kurze Szene. Die folgenden Aussagen über
+noch ausstehende Tests beschreiben jeweils den damaligen Stand vor diesem Lauf.
+Native Spielbuttons, freies Bauen und vollständige Weltsynchronität sind weiterhin
+offen; die ältere Alpha5.12-Ausdauerreferenz bleibt unverändert erhalten.
+
 ## Alpha5.15: Vorbereitungspfad zusammenhängend geprüft
 
 Alpha5.14 brach beim Vorbereiten des kurzen Modus vor der Installation ab:

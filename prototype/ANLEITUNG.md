@@ -2,7 +2,7 @@
 
 **Korrektur in Alpha5.15:** Der Abbruch beim Vorbereiten des kurzen Tests ist behoben. Vorbereitung, Installer und Startprüfung verwenden nun denselben Konfigurationsvertrag. Beide Launcher aktualisieren und frisch vorbereiten; keine neuen Saves erforderlich.
 
-**Der neue Modus „Fahrt und Eingaben · kurzer Aufbau“ soll die häufigeren Zuckler aus Alpha5.13 reduzieren.** Eingaben werden mit den ohnehin nötigen Schrittbestätigungen übertragen. Die zusätzliche leere Abfragerunde entfällt. Ob die Fahrt auf euren PCs wieder ausreichend ruhig läuft, muss der echte Zwei-PC-Test zeigen.
+**Der Modus „Fahrt und Eingaben · kurzer Aufbau“ ist nach dem gemeinsamen Test vom 8. September auch im Fahrgefühl akzeptiert.** Beide Berichte stimmen überein; die aktive Fahrt erreicht ungefähr 0,94x. Dieses Tempo bleibt die Referenz für weitere Eingabefunktionen. Eingaben werden mit den ohnehin nötigen Schrittbestätigungen übertragen; die zusätzliche leere Abfragerunde entfällt.
 
 Der Aufbau hat jetzt **10 Runden**: Straße, Depot, Haltestellen, Fahrzeug und Linie werden erstellt und ihre tatsächliche Bereitschaft geprüft. Die bisherigen vollständigen Tests bleiben separat auswählbar. Eure **sehr große Karte** bleibt dieselbe; **kein neuer privater Saveimport und keine erneute Saveweitergabe nötig**, wenn beide schon die saubere Basis seit Alpha5.9 haben.
 
@@ -63,7 +63,7 @@ Der Versuch erlaubt maximal **128 Wünsche pro Spieler**, **2048 Sammelrunden** 
 | Referenztest aus Alpha5.12 | Unveränderte 240 Aufbaurunden, anschließend 120 Sekunden automatische Fahrt mit vorgesehenen Kontrollpunkten und Pause. Nur zuschauen. |
 | Vergleichstest aus Alpha5.11 | Unveränderte 240 Aufbaurunden und zwölf automatische Fahrt-/Warteabschnitte. Nur zuschauen. |
 
-Ein Moduswechsel benötigt auf beiden PCs eine frische Vorbereitung. [Alpha5.12](https://github.com/TastierPizza-code/TFCoop/releases/tag/v0.5.12) bleibt die akzeptierte Referenz bei ungefähr 0,962x mit kaum sichtbaren Zucklern. Alpha5.13 bestätigte gegenseitige Pause/Fortsetzen, lief aber nur ungefähr 0,82x. Alpha5.15 ist vorab ohne Spielstart geprüft; seine tatsächliche Flüssigkeit ist noch nicht bestätigt. Diese Tests betreffen die beobachtete Szene und belegen keine freie gleichzeitige Bebauung oder vollständige Weltsynchronität.
+Ein Moduswechsel benötigt auf beiden PCs eine frische Vorbereitung. [Alpha5.12](https://github.com/TastierPizza-code/TFCoop/releases/tag/v0.5.12) bleibt die längere akzeptierte Referenz bei ungefähr 0,962x mit kaum sichtbaren Zucklern. Alpha5.13 bestätigte gegenseitige Pause/Fortsetzen, lief aber nur ungefähr 0,82x. Alpha5.15 ist nach dem tatsächlichen Zwei-PC-Test als Eingabereferenz bei ungefähr 0,94x gesichert: 133 identische Weltjournalzeilen, sieben Pause-/Fortsetzen-Wechsel und regulärer gemeinsamer Abschluss. Diese Tests betreffen die beobachtete Szene und belegen keine freie gleichzeitige Bebauung oder vollständige Weltsynchronität. Die vollständige Auswertung steht in [der akzeptierten Eingabereferenz](https://github.com/TastierPizza-code/TFCoop/blob/main/prototype/docs/ACCEPTED_INPUT_BASELINE.md).
 
 ## Erste Einrichtung und spätere Updates
 

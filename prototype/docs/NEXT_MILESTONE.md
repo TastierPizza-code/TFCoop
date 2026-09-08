@@ -1,17 +1,41 @@
 # Nächste Etappe: frei ausgelöste Eingaben
 
-Status: Der Pause-Teil ist in Alpha5.13 im tatsächlichen Zwei-PC-Lauf vom
-8. September 2026 bestätigt: sechs gegenseitige Pause-/Fortsetzen-Wechsel,
-eine lange gemeinsame Pause und Abschluss aller sieben protokollierten Wünsche.
-Die 380 Weltjournalzeilen sind identisch. Das Fahrttempo ist mit rund 0,82x
-schlechter als die akzeptierte Referenz und wird nicht als neue Temporeferenz
-übernommen. Evidenz und Grenzen: [Alpha5.13-Auswertung](ALPHA513_EVIDENCE.md).
+## Für die nächste Version: Testverbindung merken
+
+Nutzervorgabe vom 8. September 2026: Bis zur Beta sollen Host-IPv4 und ein
+fester gemeinsamer Testzugang automatisch vorausgefüllt bleiben. Nach einmaliger
+Einrichtung soll der Freund diese Daten nicht für jeden Versuch erneut kopieren
+müssen. Start, Update und Wiederherstellen behalten das lokale Testprofil;
+automatisch erkannte lokale Adressen dürfen die gespeicherte Host-Adresse nicht
+überschreiben. Eine bewusste Änderung des Profils bleibt möglich.
+
+Der feste Zugang ist eine private Kopplungskennung. Die jeweilige Versuchssitzung
+erhält weiterhin eine eigene Identität, die beide Teilnehmer über die authentisierte
+Verbindung übernehmen. Native Epochen, verbrauchte Sitzungen, neue Eingabequeues
+und Verbindungsabbruch bleiben getrennt abgesichert. Das aktuelle
+`connection_identity` leitet die Netzkennung direkt aus dem sichtbaren Code ab;
+allein das Abschalten der Code-Neuerzeugung erfüllt diese Trennung noch nicht.
+Host-Adresse und Zugangscode werden nicht ins öffentliche Repository oder
+Updatepaket geschrieben. Diese Änderung ist für die nächste Version vorgemerkt,
+in Alpha5.15 aber noch nicht enthalten. Die endgültige Verbindungsoberfläche
+kann nach der Testphase gestaltet werden.
+
+## Funktionsstand
+
+Status: Der tatsächliche Alpha5.15-Lauf vom 8. September ist ausgewertet und
+vom Nutzer auch im Fahrgefühl akzeptiert. 133 Weltjournalzeilen sind identisch;
+kurze Vorbereitung, 182 native Fortschrittsschritte, sieben gegenseitige
+Pause-/Fortsetzen-Wechsel, eine 47,375-Sekunden-Pause und gemeinsamer Abschluss
+passen zusammen. Die aktive Fahrt erreicht ungefähr 0,94x. Der Aufbau dauert
+12,500 Sekunden. Dieses Tempo soll bei den nächsten Funktionen erhalten bleiben;
+weitere Tempoexperimente sind nicht vorgesehen. Gesicherter Stand und Grenzen:
+[akzeptierte Alpha5.15-Eingabereferenz](ACCEPTED_INPUT_BASELINE.md).
+
+Die [akzeptierte Alpha5.12-Referenz](ACCEPTED_BASELINE.md) mit ihrem längeren
+automatischen Test bleibt ebenfalls unverändert als `stream_v1` verfügbar.
 Der begrenzte manuelle Bauauftrag und die normale TF2-Eingabe bleiben offen.
-Die [akzeptierte Alpha5.12-Referenz](ACCEPTED_BASELINE.md) bleibt unverändert und
-als `stream_v1` auswählbar. Auf ausdrücklichen Wunsch vom 8. September wird
-die störende Regression jetzt vor dem nächsten Baupfad gezielt optimiert.
-Alpha5.14 stellt dafür `paced_live_v1` mit kurzem Vorlauf und gemeinsam
-übertragenen Eingabelisten bereit; seine tatsächliche Flüssigkeit ist noch offen.
+Die nächste Version soll zusätzlich das oben beschriebene private Testprofil
+für Host-Adresse und festen Zugang enthalten. Danach folgt der begrenzte Baupfad.
 
 ## Kurzer Vorlauf für neue Tests
 
