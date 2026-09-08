@@ -17,8 +17,11 @@ Der tatsächliche Zwei-PC-Lauf vom 8. September bestätigt vier Depots mit
 passenden Objekten und Kosten während Fahrt/Pause sowie eine kostenfreie
 Belegungsablehnung. Normale Fahrt erreichte 0,947x/0,951x, der aktive Durchschnitt
 mit Bauprüfungen 0,904x/0,905x. Die 97 Weltjournalzeilen sind identisch.
-Der belegte Platz wurde in zwei aufeinanderfolgenden Sammelrunden angefragt;
-der Konflikt innerhalb einer Runde bleibt im Spiel offen.
+Der belegte Platz wurde im ersten Lauf in zwei aufeinanderfolgenden Sammelrunden
+angefragt. Der zweite Lauf bestätigt nun zusätzlich zwei erfolgreiche Bauten
+auf verschiedenen Plätzen und einen Bau mit kostenfreier Ablehnung am gleichen
+Platz, jeweils aus Wünschen beider Spieler in derselben Sammelrunde. Seine
+49 Weltjournalzeilen stimmen überein; normale Fahrt blieb bei etwa 0,948x.
 [Auswertung](ALPHA516_EVIDENCE.md). Der akzeptierte Alpha5.15-Lauf bleibt die
 Referenz. Kein neuer langer Vorlauf oder Tempoexperiment folgt allein aus
 dieser Auswertung.
@@ -26,8 +29,10 @@ dieser Auswertung.
 Die nächste funktionale Etappe ist ein begrenztes normales TF2-Bauwerkzeug:
 seinen Auftrag vor der lokalen Änderung erfassen, bis zur gemeinsamen Freigabe
 zurückhalten und tatsächliche Ergebnisse beidseitig prüfen. Dieser Pfad ist
-noch nicht implementiert oder im Spiel bestätigt. Die offene Konkurrenz in
-derselben Sammelrunde soll gezielt und mit kurzem Aufbau mitgeprüft werden.
+noch nicht implementiert oder im Spiel bestätigt. Die nun nachgewiesene
+Reihenfolge, frische Prüfung jedes Folgeauftrags und Ergebnisbestätigung müssen
+auch bei diesem neuen Eingabeweg erhalten bleiben. Neue Tests behalten den
+kurzen Aufbau.
 
 ## Für die nächste Version: Testverbindung merken
 

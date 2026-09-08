@@ -2,7 +2,19 @@
 
 ## Alpha5.16: begrenzter manueller Depotversuch im Zwei-PC-Spiel bestätigt
 
-Die tatsächlichen Berichte vom 8. September 2026 sind ausgewertet: 97
+Ein zweiter tatsächlicher Lauf vom 8. September bestätigt jetzt beide
+Gleichzeitigkeitsfälle: Host-Platz 1 und Mitspieler-Platz 2 kamen in derselben
+Sammelrunde bei Frame 136 an und wurden beide gebaut. Beide Wünsche für Platz 4
+kamen gemeinsam bei Frame 296 an: genau ein Bau und eine kostenfreie Ablehnung.
+Die zweite Vorschau verwendet jeweils den bestätigten Zustand nach dem ersten
+Bau, ohne Fortschrittsschritt innerhalb der Baufolge. 49 Weltjournalzeilen sind
+bytegleich, alle acht Eingaben bestätigt, 342 native Fortschrittsschritte exakt.
+Gemeinsames Ende bei Frame 352 ohne terminalen nativen Fehler. Normale Fahrt
+etwa 0,948x, aktiver Durchschnitt einschließlich Bauprüfungen etwa 0,889x.
+Dieser Lauf enthält keinen Bau während Pause; dessen Nachweis bleibt im ersten
+Lauf erhalten. [Beide Auswertungen und Messgrenzen](docs/ALPHA516_EVIDENCE.md).
+
+Die zuerst gelieferten Berichte vom 8. September 2026 sind ausgewertet: 97
 bytegleiche Weltjournalzeilen, 47 passende öffentliche Payload-Hashes,
 erneut geprüfte kurze Bereitschaft und gemeinsamer Abschluss bei Frame 338.
 Vier manuell angeforderte Depots wurden während Fahrt und Pause mit passenden
@@ -58,10 +70,11 @@ bleiben offen. Unlesbare Daten halten vor Mutation an und erzeugen
 begrenzte Diagnosefelder. [Quellen und genaue Grenze](docs/MANUAL_DEPOT_ENGINE_CONTRACT.md).
 
 **Der gemessene Launcher-Depotablauf ist bestanden.** Beide Spieler haben gebaut,
-Bau in Fahrt/Pause und belegter Platz sind erfasst. Die zwei Wünsche für Platz 4
-liegen jedoch in aufeinanderfolgenden Sammelrunden, 0,4 Simulationssekunden
-auseinander. Der Konflikt innerhalb derselben Sammelrunde bleibt im Spiel offen.
-Neue Kopfsektionen ersetzen keine historischen Laufbelege unten.
+Bau in Fahrt/Pause und belegter Platz sind erfasst. Im ersten Lauf liegen die
+zwei Wünsche für Platz 4 in aufeinanderfolgenden Sammelrunden, 0,4
+Simulationssekunden auseinander. Der zweite Lauf bestätigt zusätzlich den
+Konflikt innerhalb derselben Sammelrunde. Die Läufe bleiben als getrennte
+Belege erhalten. Neue Kopfsektionen ersetzen keine historischen Laufbelege unten.
 
 ## Alpha5.15: tatsächlicher Zwei-PC-Lauf bestanden und Tempo akzeptiert
 

@@ -1,6 +1,13 @@
 # Alpha5.16: tatsächlicher Zwei-PC-Depotversuch
 
-Die beiden vom Nutzer gelieferten Berichte vom 8. September 2026 bestätigen
+Stand nach zwei Läufen: Zusätzlich zum ersten Depotversuch hat der zweite
+Versuch vom 8. September echte Wünsche beider Spieler in derselben Sammelrunde
+erfasst: zwei verschiedene Plätze erfolgreich und ein gemeinsamer Platz mit
+genau einem Bau und kostenfreier Ablehnung. Der Nachtrag unten dokumentiert
+diesen zusätzlichen Nachweis; die folgenden ersten Abschnitte gelten für
+den ersten Lauf.
+
+Die beiden zuerst vom Nutzer gelieferten Berichte vom 8. September 2026 bestätigen
 den begrenzten Launcher-Depotversuch mit v0.5.16, Commit
 `79d666ff2b45f125d5ea18c7f1a674fb71c538b9`. Beide Teilnehmer und der Koordinator
 haben regulär abgeschlossen. Es gab keinen terminalen nativen Laufzeitfehler.
@@ -69,13 +76,14 @@ Der Nutzer meldete einen gut verlaufenen Versuch, hat diesmal aber nicht gezielt
 auf sichtbare Ruckler geachtet. Native Zeitmessungen sind keine Renderzeiten oder
 FPS-Messung. Die bisherigen Alpha5.15- und Alpha5.12-Referenzen bleiben erhalten.
 
-## Grenzen und nächste offene Fälle
+## Grenzen des ersten Laufs
 
 Der zweite Auftrag für Platz 4 kam in der nächsten Sammelrunde an, 0,4 Sekunden
 Simulationszeit nach dem ersten. Die Ablehnung eines bereits belegten Platzes
 ist damit im Spiel bestätigt. Zwei konkurrierende Aufträge in derselben
 Sammelrunde wurden in diesem Lauf nicht erfasst; die entsprechenden
-Berichtsfelder sind leer. Modellprüfungen dieses Falls bleiben davon getrennt.
+Berichtsfelder sind leer. Der unten beschriebene zweite Lauf schließt diese
+konkrete Lücke im Spiel; der erste Lauf wird dadurch nicht umbewertet.
 
 Erfolgreiche Platzierungen umfassen 0°, 90° und 180°. Der 270°-Wunsch wurde
 abgelehnt und beweist keinen erfolgreichen Bau mit dieser Drehung. Andere
@@ -99,13 +107,72 @@ Normale TF2-Bauwerkzeuge, native UI-Pause, freie konkurrierende Umbauten,
 Speichern/Fortsetzen und vollständige Weltentwicklung sind weiterhin offen.
 Als nächste funktionale Etappe bleibt ein begrenztes normales Bauwerkzeug, dessen
 lokale Ausführung vor der gemeinsamen Freigabe sicher zurückgehalten wird.
-Der noch offene Konflikt in derselben Sammelrunde muss gezielt erfasst werden,
-ohne erneut einen langen automatischen Vorlauf zu verlangen.
+Der Konflikt in derselben Sammelrunde wurde im zweiten Lauf mit demselben
+kurzen automatischen Vorlauf gezielt erfasst.
+
+## Zweiter Lauf: beide Arten gleichzeitiger Bauwünsche bestätigt
+
+Die nach dem gezielten Gleichzeitigkeitstest gelieferten Berichte bestätigen
+zwei gemeinsame Eingabelisten mit Wünschen beider Spieler. Es geht um dieselbe
+Sammelrunde des Protokolls; die genaue Gleichzeitigkeit der Mausklicks wird
+nicht gemessen.
+
+| Gemeinsame Grenze | Wünsche in derselben Sammelrunde | Ergebnis auf beiden PCs |
+|---|---|---|
+| Frame 136, Enginezeit 38,8 s | Host: Platz 1, 0°; Mitspieler: Platz 2, 90° | Beide gebaut, Kosten 13.143 und 12.692 |
+| Frame 296, Enginezeit 70,8 s | Host: Platz 4, 90°; Mitspieler: Platz 4, 270° | Host-Depot gebaut für 10.000; zweiter Wunsch ohne Kosten abgelehnt |
+
+In beiden Fällen wurde der erste Bau beidseitig bestätigt, bevor der zweite
+Wunsch seine frische Vorschau erhielt. Die zweite Vorschau bezieht sich
+nachweislich auf den beobachteten Zustand nach dem ersten Bau, einschließlich
+der Abbuchung und neuen Objektbindungen. Die Enginezeit blieb innerhalb
+der gesamten jeweiligen Baufolge gleich. Beim gemeinsamen Platz ist nach
+dem ersten Bau genau ein Depot vorhanden; die Ablehnung verändert den erfassten
+Zustand nicht. Die feste Reihenfolge innerhalb einer Sammelrunde ordnet den
+Host vor dem Mitspieler; sie ist keine Aussage über frühere Mausklicks.
+
+Insgesamt wurden erneut vier Depots gebaut und drei Wünsche für belegte Plätze
+kostenfrei abgelehnt. Platz 3 wurde vom Mitspieler an Frame 230 gebaut; der
+Host-Wunsch an Frame 236 kam später und wurde abgelehnt. Ein weiterer Wunsch
+des Mitspielers für seinen bereits bebauten Platz 2 wurde an Frame 138 ebenfalls
+abgelehnt. Diese beiden Fälle sind getrennt vom Konflikt in derselben Runde.
+Alle acht Eingaben einschließlich Abschluss wurden bestätigt.
+
+Die 49 Weltjournalzeilen sind bytegleich, 47 öffentliche Payload-Dateihashes
+passen weiterhin zur unveränderten v0.5.16. Alle tatsächlichen Objektbindungen,
+Positionen, Drehungen und Kontoabbuchungen wurden erneut geprüft. 342 zusätzliche
+native Schritte ergeben 68,4 Sekunden bei genau 200 Millisekunden je Schritt.
+Gemeinsamer Abschluss: Frame 352, Enginezeit 82,0 Sekunden, laufend,
+Kontostand 4.605.841, Kredit 5.000.000. Es gab keinen terminalen nativen Fehler.
+
+Normale Fahrt zwischen Bauaufträgen lag mit derselben Messmethode bei
+0,947705x/0,948396x. Einschließlich der sieben Bauwünsche an fünf Baugrenzen
+lag der aktive Durchschnitt bei 0,888764x/0,888968x. Das Auftragsbündel mit zwei
+erfolgreichen Bauten erzeugte etwa 2,0 Sekunden zwischen benachbarten nativen
+Bestätigungen, der gemeinsame Platz etwa 1,6 Sekunden. Der Mitspieler hatte
+außerdem einen normalen Bestätigungsabstand von etwa 611 Millisekunden.
+Die durchschnittliche Fahrt bleibt ungefähr 0,95x; sie garantiert keine
+durchgehend gleichmäßigen Renderzeiten.
+
+Dieser Versuch enthält keine manuelle Pause und keinen Bau während Pause.
+Deshalb ist `required_depot_interactions_met` für diesen einzelnen Lauf falsch,
+während der gemeinsame Abschluss und die beiden Gleichzeitigkeitsergebnisse
+bestätigt sind. Der Bau während Pause bleibt durch den ersten Lauf belegt.
+Die allgemeinen `conflict`-Felder der Eingabelisten betreffen Pausekonflikte;
+der hier geprüfte Depotkonflikt steht in `same_batch_conflicts_verified`.
+
+Der praktische Nachweis gilt für die begrenzten Launcher-Depotaufträge auf
+dieser Karte. Er umfasst keine anderen Gebäudetypen, freien Bauwerkzeuge,
+Knappheit des gemeinsamen Guthabens, Wiederherstellung nach einem Teilfehler
+oder vollständige Weltentwicklung. Die nächste funktionale Etappe bleibt
+das sichere Anschließen eines normalen Bauwerkzeugs.
 
 ## Erhaltung
 
 Originalberichte, drei unabhängige Auswertungsskripte, Ergebnisdateien und
-Prüfsummen bleiben privat unter `prototype/results/alpha516-two-pc-20260908-1946`.
+Prüfsummen bleiben privat unter `prototype/results/alpha516-two-pc-20260908-1946`
+für den ersten und `prototype/results/alpha516-two-pc-20260908-2013` für den
+zweiten Lauf. Die ursprünglichen Belege werden nicht überschrieben.
 Öffentlich wird nur diese Auswertung dokumentiert. Der Release-Tag, das Paket
 und die früheren Referenzen werden durch die Dokumentation nicht verändert.
 
@@ -115,3 +182,7 @@ und die früheren Referenzen werden durch die Dokumentation nicht verändert.
   `a5c5cd7c29341dfd2a0f0940d61570000d946a085093ef4265ff803f01b977bd`
 - Finaler Hash der erfassten Welt:
   `7fec9047dc158ec8de817e5609b94e8df0a76c26d2432c4f571fb5d8007fd900`
+- Identisches Weltjournal des zweiten Laufs:
+  `0db59f938f71ef898bbd1a62cf51cc085e434c19c23858ce1d153a5b7cf10728`
+- Finaler Hash des zweiten Laufs:
+  `77f8d80bdb4f02e71c721ff5386d1cd7c8503a6fa7be8b9122b3a0f4db38c6a0`
