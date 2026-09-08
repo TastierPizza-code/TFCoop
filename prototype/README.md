@@ -1,6 +1,6 @@
 # TFCoop-Prototyp
 
-**Alpha5.19-Testbegleiter** ergänzt den getrennten Modus `guided_suite_v1` mit fester Host-/Freund-Schrittfolge, frischer gemeinsamer Vorschau, echten Callback-/Beobachtungsbelegen und gemeinsam bestätigtem Fortschritt. [Umfang und Grenzen](docs/GUIDED_TEST.md), [Nachweischeckliste](docs/GAMEPLAY_CHECKLIST.md), [Anleitung](ANLEITUNG.md).
+**Alpha5.20-Testbegleiter** ergänzt `guided_rail_v1` als eigenen T2-Reiter. Feste Bahnhöfe, Verbindungsgleise, Signale, Wegpunkt und ein Zug-/Linienablauf erhalten eigene Vorschau-, Bindungs-, Kosten- und Ergebnisprüfungen. Der Straßenmodus `guided_suite_v1` bleibt als T1 erhalten. [T2-Umfang und Grenzen](docs/RAIL_TEST.md), [T1](docs/GUIDED_TEST.md), [Nachweischeckliste](docs/GAMEPLAY_CHECKLIST.md), [Anleitung](ANLEITUNG.md). T2 benötigt noch seinen tatsächlichen Zwei-PC-Lauf.
 
 Der tatsächliche Zwei-PC-Lauf vom 8. September bestätigt alle 26 Schritte mit 241 bytegleichen Weltjournalzeilen. Kauf, Linienbearbeitung, Fahrt, Depotankunft und Verkauf sind für die feste Szene belegt. Eine zu frühe Depotprüfung bleibt kostenfrei offen und besteht nach der tatsächlichen Ankunft. Alle 27 Eingaben sind gemeinsam bestätigt. [Alpha5.19-Auswertung](docs/ALPHA519_EVIDENCE.md). Normale Spielwerkzeuge und neue gleichzeitige Fahrzeug-/Linienkonflikte bleiben offen.
 

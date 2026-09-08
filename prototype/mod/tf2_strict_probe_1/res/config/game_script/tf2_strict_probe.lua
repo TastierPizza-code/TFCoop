@@ -232,7 +232,7 @@ function data()
       error('pause callback did not produce requested pause flag',0)
     end
     if p.plan.requested_paused~=nil then
-      if config.input_mode~='guided_suite_v1' or type(p.plan.requested_paused)~='boolean'
+      if (config.input_mode~='guided_suite_v1' and config.input_mode~='guided_rail_v1') or type(p.plan.requested_paused)~='boolean'
         or last_snapshot.paused~=p.plan.requested_paused then
         error('guided pause callback did not produce requested pause flag',0)
       end
@@ -286,7 +286,7 @@ function data()
       snapshot(c.expected_sim_time_us)
       if not publish('ready',true) then error('snapshot status write failed',0) end
     elseif c.action=='preview' then
-      if (config.input_mode~='manual_depot_v1' and config.input_mode~='guided_suite_v1')
+      if (config.input_mode~='manual_depot_v1' and config.input_mode~='guided_suite_v1' and config.input_mode~='guided_rail_v1')
         or type(E.preview)~='function' then error('manual preview capability not enabled',0)end
       if pending then error('preview cannot replace an unapplied plan',0)end
       local peer,seq=c.command_key:match('^([ab]):([1-9]%d*)$');seq=E.integer(seq,1)
@@ -302,8 +302,10 @@ function data()
       if seq<=seen_sequence[peer] then error('command key was already planned; no command replay',0) end
       local before=snapshot(c.expected_sim_time_us)
       local plan=E.plan(c.command,c.command_key,c.expected_sim_time_us)
-      if plan.read_only~=nil and (plan.read_only~=true or config.input_mode~='guided_suite_v1'
-        or c.command.op~='GUIDED_ACTION' or plan.native~=nil or type(E.finish_read_only)~='function') then
+      local observation_mode=(config.input_mode=='guided_suite_v1' and c.command.op=='GUIDED_ACTION')
+        or(config.input_mode=='guided_rail_v1' and c.command.op=='RAIL_ACTION')
+      if plan.read_only~=nil and (plan.read_only~=true or not observation_mode
+        or plan.native~=nil or type(E.finish_read_only)~='function') then
         error('invalid guided observation plan',0)
       end
       seen_sequence[peer]=seq

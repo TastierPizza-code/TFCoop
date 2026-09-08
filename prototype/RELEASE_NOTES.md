@@ -1,13 +1,34 @@
-# Alpha5.19-Testbegleiter
+# Alpha5.20-Testbegleiter · T2 Schiene
 
-Der automatische Aufbau hielt beim Fahrzeugkauf an, wenn die Spiele unterschiedliche Sprachen verwendeten. Die beiden Alpha5.18-Berichte zeigen genau einen Unterschied: den übersetzten Standardnamen des neuen Straßenfahrzeugs. Kauf-Rückmeldungen, Kosten und übrige erfasste Zustände stimmen überein.
+Ein eigener **T2 · Schiene**-Reiter bündelt den nächsten technischen Versuch:
+Bahnhöfe und Bahndepot, Gleise mit Abzweig, Signale und Wegpunkt, Lok und Wagen,
+Linie mit einzelnen Halten, Zugfahrt und Depotankunft, Umbau der Zugzusammenstellung,
+zweiter Kauf aus beobachteter Konfiguration, Verkauf und anschließender Abbau.
+**T1 · Straße** und die älteren Referenztests bleiben auswählbar.
 
-Automatische Fahrzeugnamen werden jetzt nach ihrem Ursprung verglichen. Der tatsächliche lokale Name wird beim erfolgreichen Kauf an die konkrete Fahrzeugidentität gebunden und danach auf unerwartete Änderungen geprüft. Der gemeinsame Zustand kennzeichnet ihn als automatisch vergeben. Es gibt keine Liste erlaubter Übersetzungen und kein stilles Übernehmen eines später geänderten Namens.
+Der Launcher führt Host und Freund mit einem aktuellen Auftrag durch 37 Schritte.
+Zuerst müssen beide verbunden, ihre frischen Spielstände geladen und die zehn
+gemeinsamen Vorbereitungsrunden bestätigt sein. Erst danach erscheint der erste
+Auftrag. Jeder weitere Schritt benötigt beidseitig verglichene tatsächliche
+Rückmeldungen und beobachtete Zustände. Noch nicht erfüllte Fahrt-/Ankunftsprüfungen
+bleiben offen und lassen sich nach weiterer Fahrt erneut prüfen.
 
-Eine bewusst angeforderte Umbenennung braucht weiterhin den erfolgreichen echten Callback und die exakte Rückmeldung des gewünschten Textes. Danach wird der tatsächliche Name auf beiden PCs wortgetreu verglichen. Diese Behandlung gilt sowohl für das automatisch vorbereitete Fahrzeug als auch für den späteren geführten Kauf. Linien- und Bauwerksnamen bleiben vollständig geprüft.
+T2 bekommt einen eigenen versionierten Eingabe- und Prüfvertrag. Ein vorbereiteter
+Test wird beim Reiterwechsel erst nach erfolgreicher Wiederherstellung abgelöst;
+laufende Spiele und veränderte Installationsdateien werden dabei geschützt.
+Die private Host-Hamachi-Adresse, der feste Testschlüssel und die saubere große
+Ausgangskarte bleiben lokal erhalten. Jede Vorbereitung und gemeinsame Verbindung
+erhält weiterhin frische Sitzungskennungen.
 
-Der Ablauf bleibt: **Verbinden → beide frischen Spielstände laden → kurzer automatischer Aufbau → gemeinsame Startbestätigung → 26 geführte Aufträge**. Die Alpha5.18-Startanzeige, die gespeicherte private Host-Adresse und der Schlüssel bleiben erhalten. Es ist keine gleiche Spielsprache erforderlich, um automatische Fahrzeugnamen zu vergleichen.
+Auf beiden PCs TF2 und den alten Test schließen, Launcher neu öffnen und das
+Update abwarten. **T2 · Schiene → Test vorbereiten → Verbinden → beide frischen
+Spielstände laden.** Dann den Host-/Freund-Knöpfen folgen und am Ende oder bei
+einem Fehler beide Testberichte speichern. Eine bereits passende saubere Basis
+muss nicht erneut verschickt werden.
 
-Auf beiden PCs TF2 und den alten Test schließen, Launcher zum Aktualisieren neu öffnen und frisch vorbereiten. Die vorhandene saubere Ausgangskarte bleibt gültig. Aktionen und Pause erfolgen im Launcher; am Ende oder bei einem Fehler beide Berichte speichern.
-
-Die Regression durchläuft Vorbereitung und Fahrzeug-/Linienablauf mit verschiedenen lokalen Standardnamen. Fehlgeschlagene oder falsche Umbenennungen, unerwartete Namensänderungen und falsche Objektidentitäten müssen weiterhin anhalten. Diese Prüfungen sind kein neuer tatsächlicher Zwei-PC-Durchlauf. Die akzeptierte Taktung und alle älteren Testmodi bleiben erhalten; offene Spielfunktionen bleiben in der Nachweischeckliste offen.
+Die akzeptierte Taktung und der T1-Ablauf werden übernommen. T2 ist ein neuer
+technischer Test und noch kein nachgewiesener Zwei-PC-Lauf. Feste Signalobjekte
+allein beweisen keine Blockwirkung; beliebige Zugkonfigurationen, freie
+Platzierungen und die normale Ingame-Bedienung bleiben eigene Prüfschritte.
+Die Anleitung und Checkliste trennen diesen Umfang von den tatsächlichen
+Nachweisen aus Alpha5.19 und den erhaltenen Referenzen.

@@ -262,6 +262,30 @@ def self_check(report_path: Path) -> int:
                 raise RuntimeError("packaged guided UI enables an unconfirmed action")
             result["guided_profile"] = {"resources_checked": True, "schedule": guided_schedule(),
                                         "steps": len(STEPS), "game_runtime_verified": False}
+            from prototype.strict_sync.rail_catalog import STEPS as RAIL_STEPS, catalogue as rail_catalogue
+            from prototype.strict_sync.rail_input import validate_command as rail_command
+            from prototype.strict_sync.rail_probe import (RailCoordinator, RailReplica,
+                RAIL_CAPABILITY, schedule as rail_schedule)
+            from prototype.strict_sync.rail_engine import RailEngineAdapter, RailStreamEngine
+            rail_config = stage_probe.configuration_semantics("build_v2", SHORT_BUILD_CONTRACT, "guided_rail_v1")
+            if (probe_install.validate_configuration_semantics(rail_config) != rail_config
+                    or RAIL_CAPABILITY not in measurement_capabilities(SimpleNamespace(rail_probe=True))
+                    or launcher_session.DEFAULT_TEST_MODE != launcher_session.RAIL_MODE
+                    or launcher_session.preparation_rounds(launcher_session.RAIL_MODE) != SHORT_BUILD_ROUNDS
+                    or not callable(RailCoordinator.live_report) or not callable(RailReplica.live_report)
+                    or not callable(RailEngineAdapter.apply_guided) or not callable(RailStreamEngine.preview_guided)
+                    or rail_schedule()["chunk_steps"] != CHUNK_STEPS
+                    or rail_schedule()["checkpoint_steps"] != CHECKPOINT_STEPS
+                    or rail_schedule()["separate_input_poll"] is not False
+                    or len(RAIL_STEPS) < 37 or rail_catalogue()["normal_game_tools_connected"] is not False):
+                raise RuntimeError("packaged T2 rail suite is incomplete")
+            for step in RAIL_STEPS:
+                if rail_command(step["command"]) != step["command"]:
+                    raise RuntimeError("packaged rail catalogue command differs")
+            if card({}, RAIL_STEPS, role="a").enabled:
+                raise RuntimeError("packaged T2 UI enables an unconfirmed action")
+            result["rail_profile"] = {"resources_checked": True, "schedule": rail_schedule(),
+                                      "steps": len(RAIL_STEPS), "game_runtime_verified": False}
             scheduled = [command for number in range(BUILD_ROUNDS) for peer in ("a", "b")
                          for command in build_inputs(peer, number)]
             from collections import Counter

@@ -59,6 +59,13 @@ Bereits bestandene lange Referenztests müssen dafür nicht jedes Mal wiederholt
 
 ## Weitere Befehlsfamilien: offen
 
+Alpha5.20 bündelt den festen Schienenbetrieb in einem eigenen [T2-Reiter](RAIL_TEST.md).
+Er umfasst Aufbau, Signal-/Wegpunktobjekte, Lok/Wagen, Linie, Fahrt, Depotankunft,
+Zugumbau, Kauf aus beobachteter Konfiguration und anschließenden Verkauf/Abbau.
+Die folgenden Häkchen bleiben bis zur Auswertung beider tatsächlicher T2-Berichte
+offen. Ein Signalobjekt allein weist keine Blockwirkung nach; eine feste
+Zugkonfiguration ist keine Prüfung beliebiger Lok-/Wagenkombinationen.
+
 - [ ] Gleise, Bahnweichen, Oberleitungen und feste Schienenverbindungen.
 - [ ] Signale und Wegpunkte mit tatsächlichem Einfluss auf einen Zug.
 - [ ] Zugdepot, Lok/Wagen kaufen und Zug auf einer funktionierenden Strecke einsetzen.

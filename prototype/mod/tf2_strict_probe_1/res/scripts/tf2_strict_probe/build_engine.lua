@@ -5,8 +5,9 @@ local M = {}
 function M.new(json,config)
   local E = {bindings={},reverse={},scene={stops={}},groups={},stations={}}
   local manual = config and config.input_mode=='manual_depot_v1'
-  local guided_mode = config and config.input_mode=='guided_suite_v1'
-  local guided
+  local rail_mode = config and config.input_mode=='guided_rail_v1'
+  local guided_mode = config and(config.input_mode=='guided_suite_v1'or rail_mode)
+  local guided,rail
   local manual_assets = manual and require 'tf2_strict_probe/manual_depot_assets' or nil
   local placements = {}
   local diagnostic_candidate
@@ -537,7 +538,8 @@ function M.new(json,config)
       before_balance=int(read(account,'balance','manual.company')),before_loan=int(read(account,'loan','manual.company'),0)}
   end
   function E.preview(c,key)
-    if guided and c.op=='GUIDED_ACTION'then return guided.preview(c,key)end
+    if rail and c.op=='RAIL_ACTION'then return rail.preview(c,key)end
+    if guided and not rail_mode and c.op=='GUIDED_ACTION'then return guided.preview(c,key)end
     preflight_report=nil
     local description,_,reason=manual_preview(c,key)
     if reason then description.reason=reason end
@@ -787,6 +789,7 @@ function M.new(json,config)
     if #arr(values,0)~=0 then error('build test requires empty initial bindings',0)end
     site=choose_site()
     if guided then guided.initialize()end
+    if rail then rail.initialize()end
   end
   function E.local_bindings()local out={};for k,b in pairs(E.bindings)do out[k]=b.entity end;return out end
   function E.diagnostic_bindings()
@@ -801,7 +804,8 @@ function M.new(json,config)
   function E.callback_diagnostics()return callback_report end
   function E.preflight_diagnostics()return preflight_report end
   function E.plan(c,key,time_us)
-    if guided and c.op=='GUIDED_ACTION'then return guided.plan(c,key,time_us)end
+    if rail and c.op=='RAIL_ACTION'then return rail.plan(c,key,time_us)end
+    if guided and not rail_mode and c.op=='GUIDED_ACTION'then return guided.plan(c,key,time_us)end
     if c.op=='BUILD_DEPOT'then
       local description,plan,reason=manual_preview(c,key)
       if not plan or not description.allowed then error('manual depot changed after approved preview: '..(reason or 'unavailable'),0)end
@@ -856,6 +860,7 @@ function M.new(json,config)
     return {native=need(command,'build maker returned nil'),key=key,kind=kind,index=index,command=c,connections=connections}
   end
   function E.finish(plan,result,success)
+    if plan.rail then return rail.finish(plan,result,success)end
     if plan.guided then return guided.finish(plan,result,success)end
     diagnostic_candidate=nil
     callback_report=nil
@@ -994,6 +999,7 @@ function M.new(json,config)
     for _,name in ipairs({'road','depot','connectors','vehicle','line'})do probe.scene[name]=E.scene[name]end
     for i=1,2 do probe.scene.stops[i]=E.scene.stops[i]end
     local function state(key,b)
+      if rail and rail.owns(b.kind)then return rail.state(key,b)end
       local id=existing(b.entity)
       if b.kind=='road'or b.kind=='depot'or b.kind=='stop'or b.kind=='manual_depot'then
         local p=key..'.CONSTRUCTION';local c=component(id,'CONSTRUCTION');local edges=json.array()
@@ -1079,6 +1085,7 @@ function M.new(json,config)
       coverage={complete_world=false,tracked_objects=true,missing=missing,observed_unavailable=observed_unavailable,
         excluded=json.array({'untracked_world','cargo_contents','rng','path_reservations','terrain_outside_test','station_internals','movement_before_world_placement'})}}
     if guided then guided.observe(snapshot)end
+    if rail then rail.observe(snapshot)end
     return snapshot
   end
   if guided_mode then
@@ -1090,7 +1097,20 @@ function M.new(json,config)
       entity_collection=entity_collection,capture_callback=capture_callback,
       remember_callback=function(report)callback_report=report end,
     })
-    function E.finish_read_only(plan)return guided.finish_read_only(plan)end
+    function E.finish_read_only(plan)
+      if rail and plan.rail then return rail.finish_read_only(plan)end
+      return guided.finish_read_only(plan)
+    end
+  end
+  if rail_mode then
+    rail=require('tf2_strict_probe/rail_engine').new(json,E,{
+      need=need,field=field,read=read,num=num,int=int,dec=dec,boolean=boolean,arr=arr,
+      vector=vector,clone=clone,component=component,existing=existing,bind=bind,
+      localid=localid,reference=reference,resource=resource,canonical=canonical,matrix=matrix,
+      context=context,terrain_water=terrain_water,site=function()return site end,
+      entity_collection=entity_collection,capture_callback=capture_callback,
+      remember_callback=function(report)callback_report=report end,
+    })
   end
   E.integer=int
   for _,name in ipairs({'bind_initial','plan','finish','snapshot','preview'})do

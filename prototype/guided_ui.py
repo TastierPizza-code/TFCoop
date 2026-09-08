@@ -26,6 +26,7 @@ class GuidedCard:
     total: int
     checklist: tuple[tuple[str, str, str], ...]
     phase: str
+    chapter: str = ""
 
 
 @dataclass(frozen=True)
@@ -170,6 +171,9 @@ def card(status: Mapping, steps: Sequence[Mapping], *, role: str,
     label = ("Gemeinsame Bestätigung abwarten …" if pending else
              current["action_label"] if own else f"Warte auf {actor}")
     instruction = current["instruction"]
+    verification = current.get("verification")
+    if isinstance(verification, str) and verification:
+        instruction += " Geprüft wird: " + verification
     attempt = progress.get("last_attempt") or {}
     if (attempt.get("step") == current["step"] and attempt.get("status") in ("rejected", "not_ready")
             and attempt.get("reason") == "not_ready" and not pending):
@@ -178,4 +182,4 @@ def card(status: Mapping, steps: Sequence[Mapping], *, role: str,
         instruction += f" {actor} löst diesen Schritt in seinem Launcher aus."
     return GuidedCard(f"{count + 1} / {total}  ·  {current['title']}", instruction,
                       actor, label, dict(current["command"]), enabled, count, total, checklist,
-                      "pending" if pending else phase)
+                      "pending" if pending else phase, str(current.get("chapter_title", "")))

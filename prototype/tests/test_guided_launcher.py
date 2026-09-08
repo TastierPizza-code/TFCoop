@@ -139,7 +139,7 @@ class GuidedHandlerTests(unittest.TestCase):
         self.app._buttons = Mock()
         self.stack = []
         for context in (
-            patch.dict("sys.modules", {"prototype.strict_sync.guided_catalog": SimpleNamespace(STEPS=STEPS)}),
+            patch.object(launcher.workflow, "guided_steps", return_value=STEPS),
             patch.object(launcher.workflow, "GUIDED_MODE", "guided_suite_v1", create=True),
             patch.object(launcher.workflow, "live_input_ready", return_value=True),
             patch.object(launcher.tk, "Tk", side_effect=AssertionError("No desktop windows")),

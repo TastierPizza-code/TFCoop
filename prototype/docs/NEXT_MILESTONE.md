@@ -1,18 +1,40 @@
-# Nächste Etappe: frei ausgelöste Eingaben
+# Nächste Etappe: geführte Funktionstests
 
-## Aktueller Nachweis: geführter Straßenfahrzeugbetrieb abgeschlossen
+## Aktueller Schritt: T2 als zusammenhängender Bahn- und Zugtest
 
 Der tatsächliche [Alpha5.19-Lauf](ALPHA519_EVIDENCE.md) bestätigt alle 26 festen
 Host-/Freund-Aufträge für Straßenfahrzeug und Linie. 241 bytegleiche Journalzeilen,
-passende Kosten und tatsächliche Fahrt/Depotankunft tragen die neuen Häkchen in
-der [Checkliste](GAMEPLAY_CHECKLIST.md). Die älteren Referenzen bleiben erhalten.
+passende Kosten und tatsächliche Fahrt/Depotankunft tragen die Häkchen in der
+[Checkliste](GAMEPLAY_CHECKLIST.md). Dieser Ablauf bleibt als **T1 · Straße**
+startbar. Die älteren Referenzpakete und ihre auswählbaren Abläufe bleiben erhalten.
 
-Als nächstes zusammenhängendes, noch offenes Kapitel bietet sich der feste
-Schienenbetrieb an: Gleis und Bahnhof, Depot, Signal, Lok/Wagen, Linie, Abfahrt
-und Rückkehr. Er benötigt eigene tatsächliche Geometrie-, Signal-, Zugbildungs-
-und Fahrtnachweise. Die normale freie Ingame-Bedienung bleibt ein anschließender
-Integrationsschritt. Die Auswertung selbst verändert keinen Laufzeitcode,
-startet keinen weiteren Spieltest und veröffentlicht kein neues Updatepaket.
+Alpha5.20 bereitet **T2 · Schiene** als separaten, beim Launcherstart ausgewählten
+Reiter vor. Nach beiden geladenen Spielen und der bestehenden gemeinsamen
+zehnrundigen Vorbereitung führt die Oberfläche durch festen Bahnaufbau, Signale
+und Wegpunkt, Lok/Wagen mit Linie, Zugbetrieb und Depotfahrt sowie Umbau, Verkauf
+und Abbau. Die 37 Aufträge, Kapitel und Rollen kommen aus dem versionierten
+Katalog. Die private große Basis und das gespeicherte Host-/Hamachi-Profil bleiben
+erhalten; jeder Versuch bekommt weiterhin eine neue gemeinsame Sitzungsidentität
+und frische Spielstandkopien. Ein Wechsel aus einer vorbereiteten Sitzung erfolgt
+erst nach überprüfter Wiederherstellung und verlangt danach neue Vorbereitung.
+
+**Der tatsächliche Zwei-PC-Nachweis für T2 steht aus.**
+[Der T2-Testumfang](RAIL_TEST.md) trennt geplante Prüfungen, technische
+Vorbereitung und tatsächliche Spielbelege. Signalaufstellung und Gleiszuordnung
+beweisen keine Blockwirkung. Ein dynamischer Zwei-Zug-Versuch ist nicht Teil von
+T2, weil die nötige Zuordnung und Richtung der beobachteten Blockbeziehungen noch
+nicht zuverlässig gesichert ist. Der zweite Zug wird in T2 nur im Depot aus der
+beobachteten Konfiguration gekauft und dort verkauft. T2 übernimmt die akzeptierte Taktung; das
+Bahnkapitel ist kein neues Tempoexperiment.
+
+Der Nutzer möchte den verbleibenden Funktionsumfang möglichst in **zwei bis drei
+größeren Testpaketen** bündeln: T2 für Bahn, anschließend T3 für weitere
+Verkehrsarten, Infrastruktur und Firma; T4 bei Bedarf für Sitzung, gemeinsames
+Speichern/Laden und gezielte Konflikte. Die Aufteilung hängt davon ab, welche
+Aktionen und Ergebnisse die Spiel-API tatsächlich kontrollierbar bereitstellt.
+Sie ist keine Zusage vollständiger Mechanikabdeckung in einer festen Anzahl von
+Durchläufen. Die normale freie Ingame-Bedienung folgt nach den kontrollierten
+Funktionsprüfungen; sie ist durch T1 oder die T2-Vorbereitung noch nicht verbunden.
 Die folgenden Abschnitte bewahren die bisherige Planung und ihre Prioritätswechsel.
 
 ## Neuer Auftrag: geführter gemeinsamer Funktionstest

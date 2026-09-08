@@ -39,8 +39,12 @@ LIVE_MODE = "live_input_v1"
 PACED_LIVE_MODE = "paced_live_v1"
 MANUAL_DEPOT_MODE = "manual_depot_v1"
 GUIDED_MODE = "guided_suite_v1"
-LIVE_MODES = (LIVE_MODE, PACED_LIVE_MODE, MANUAL_DEPOT_MODE, GUIDED_MODE)
+RAIL_MODE = "guided_rail_v1"
+GUIDED_MODES = (GUIDED_MODE, RAIL_MODE)
+DEFAULT_TEST_MODE = RAIL_MODE
+LIVE_MODES = (LIVE_MODE, PACED_LIVE_MODE, MANUAL_DEPOT_MODE, *GUIDED_MODES)
 TEST_MODES = {
+    RAIL_MODE: "T2 · Schienen, Signale und Züge",
     GUIDED_MODE: "Geführter gemeinsamer Test",
     MANUAL_DEPOT_MODE: "Depot selbst beauftragen · kurzer Aufbau",
     PACED_LIVE_MODE: "Fahrt und Eingaben aus Alpha5.15 · kurzer Aufbau",
@@ -57,10 +61,31 @@ VERSION = DISPLAY_VERSION
 def preparation_rounds(test_mode):
     if test_mode not in TEST_MODES:
         raise ValueError("Unbekannter Testablauf.")
-    return SHORT_BUILD_ROUNDS if test_mode in (PACED_LIVE_MODE, MANUAL_DEPOT_MODE, GUIDED_MODE) else ROUNDS
+    return SHORT_BUILD_ROUNDS if test_mode in (PACED_LIVE_MODE, MANUAL_DEPOT_MODE, *GUIDED_MODES) else ROUNDS
+
+
+def _guided_module(test_mode):
+    if test_mode == GUIDED_MODE:
+        from . import guided_catalog
+        return guided_catalog
+    if test_mode == RAIL_MODE:
+        from . import rail_catalog
+        return rail_catalog
+    raise ValueError("Dieser Test hat keinen geführten Auftragskatalog.")
+
+
+def guided_catalogue(test_mode):
+    return _guided_module(test_mode).catalogue()
+
+
+def guided_steps(test_mode):
+    return tuple(guided_catalogue(test_mode)["steps"])
 
 
 def input_queue_options(test_mode):
+    if test_mode == RAIL_MODE:
+        from .rail_input import validate_command
+        return {"command_validator": validate_command}
     if test_mode == GUIDED_MODE:
         from .guided_input import validate_command
         return {"command_validator": validate_command}
@@ -242,7 +267,7 @@ def prepare(game_dir, save_dir, role, host, code, *, source_root=None, save=None
         raise ValueError("Bitte TF2 vollständig schließen, bevor du den Test vorbereitest.")
     game = Path(game_dir).resolve()
     if installation_status(game)["installed"]:
-        if test_mode != GUIDED_MODE:
+        if test_mode not in GUIDED_MODES:
             raise ValueError("Der vorherige Test ist noch installiert. Zuerst 'Bisherige Installation wiederherstellen' verwenden.")
         # The verified installer journal, process/lobby guards and exact file
         # conflict checks remain authoritative on a one-button guided rerun.
@@ -253,8 +278,8 @@ def prepare(game_dir, save_dir, role, host, code, *, source_root=None, save=None
     run = (Path(runs_root) if runs_root else local_root() / "runs") / uuid.uuid4().hex
     run.mkdir(parents=True, exist_ok=False)
     try:
-        options = {"preparation": SHORT_BUILD_CONTRACT} if test_mode in (PACED_LIVE_MODE, MANUAL_DEPOT_MODE, GUIDED_MODE) else {}
-        if test_mode in (MANUAL_DEPOT_MODE, GUIDED_MODE):
+        options = {"preparation": SHORT_BUILD_CONTRACT} if test_mode in (PACED_LIVE_MODE, MANUAL_DEPOT_MODE, *GUIDED_MODES) else {}
+        if test_mode in (MANUAL_DEPOT_MODE, *GUIDED_MODES):
             options["input_mode"] = test_mode
         result = stage_probe(game_dir=game, save=save or baseline_save(), session=run / "session",
                              output=run / "payload", repository_root=source_root or resources(), profile=PROFILE,
@@ -306,7 +331,7 @@ class SessionController:
         if self.run.pairing_epoch and not self.run.epoch:
             raise ValueError("Die frische gemeinsame Sitzung ist noch nicht bestätigt.")
         directory = self.run.directory
-        flag = {GUIDED_MODE: "--guided-probe", MANUAL_DEPOT_MODE: "--manual-depot-probe", PACED_LIVE_MODE: "--paced-live-probe", LIVE_MODE: "--live-probe", STREAM_MODE: "--stream-probe",
+        flag = {RAIL_MODE: "--rail-probe", GUIDED_MODE: "--guided-probe", MANUAL_DEPOT_MODE: "--manual-depot-probe", PACED_LIVE_MODE: "--paced-live-probe", LIVE_MODE: "--live-probe", STREAM_MODE: "--stream-probe",
                 TIMING_MODE: "--timing-probe"}[self.run.test_mode]
         args = [mode, "--session", self.run.session, "--epoch", self.run.epoch,
                 "--key-file", directory / "session.key", "--report", directory / (mode + "-report.json"),
@@ -376,8 +401,8 @@ class SessionController:
         status = self.poll()
         if not self._input_writer or not live_input_ready(status):
             raise ValueError("Die gemeinsame Eingabephase ist noch nicht bereit oder bereits beendet.")
-        if self.run.test_mode == GUIDED_MODE:
-            from .guided_catalog import get_step
+        if self.run.test_mode in GUIDED_MODES:
+            get_step = _guided_module(self.run.test_mode).get_step
             guide = guided_status(status)
             acknowledged = (status.get("live", {}).get("acknowledged_seq") or {}).get(self.run.role, 0)
             if (guide.get("phase") != "ready" or guide.get("pending")
@@ -479,7 +504,7 @@ class SessionController:
 
 def live_input_ready(status):
     live = status.get("live") or {}
-    if status.get("test_mode") == GUIDED_MODE:
+    if status.get("test_mode") in GUIDED_MODES:
         guide = guided_status(status)
         if (type(live.get("confirmed_paused")) is not bool
                 or type(status.get("round")) is not int
@@ -492,7 +517,7 @@ def live_input_ready(status):
 
 
 def live_input_status(status):
-    if status.get("test_mode") == GUIDED_MODE:
+    if status.get("test_mode") in GUIDED_MODES:
         return guided_input_status(status)
     live = status.get("live") or {}
     if not live.get("started"):
@@ -521,7 +546,8 @@ def guided_status(status):
 
 
 def guided_input_status(status):
-    from .guided_catalog import get_step, STEPS
+    catalogue = _guided_module(status.get("test_mode", GUIDED_MODE))
+    get_step, STEPS = catalogue.get_step, catalogue.STEPS
     guide = guided_status(status)
     if status.get("failure"):
         return "Test angehalten. Bestätigte Schritte bleiben im Bericht erhalten."
@@ -568,7 +594,7 @@ def depot_input_status(status):
 def describe_status(status):
     if status["failure"]:
         return "Test angehalten: " + status["failure"]
-    if status.get("test_mode") == GUIDED_MODE and status["completed"]:
+    if status.get("test_mode") in GUIDED_MODES and status["completed"]:
         return ("Geführter Ablauf gemeinsam beendet. Beide Berichte exportieren und TF2 schließen. "
                 "Die bestätigten festen Aktionen sind im Bericht einzeln aufgeführt.")
     if status["completed"]:
@@ -609,7 +635,7 @@ def describe_status(status):
     if peer.get("state") == "running":
         live = status.get("live") or {}
         if live.get("started"):
-            if status.get("test_mode") == GUIDED_MODE:
+            if status.get("test_mode") in GUIDED_MODES:
                 return guided_input_status(status)
             if status.get("test_mode") == MANUAL_DEPOT_MODE:
                 return ("Depotaufträge sind bereit: zuerst unterschiedliche Plätze, dann denselben Platz versuchen. "

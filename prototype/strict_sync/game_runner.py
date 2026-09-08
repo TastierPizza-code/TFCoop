@@ -45,6 +45,9 @@ from .manual_depot_engine import ManualDepotEngineAdapter, ManualDepotStreamEngi
 from .guided_input import validate_command as validate_guided_input
 from .guided_probe import (GuidedCoordinator, GuidedReplica, GUIDED_CAPABILITY, GUIDED_WORLD_RECEIPTS)
 from .guided_engine import GuidedEngineAdapter, GuidedStreamEngine
+from .rail_input import validate_command as validate_rail_input
+from .rail_probe import RailCoordinator, RailReplica, RAIL_CAPABILITY, RAIL_WORLD_RECEIPTS
+from .rail_engine import RailEngineAdapter, RailStreamEngine
 from .coalesced_progress import CoalescedProgress
 
 
@@ -243,8 +246,9 @@ def selected_profile(args, setup):
     paced_live = getattr(args, "paced_live_probe", False)
     manual_depot = getattr(args, "manual_depot_probe", False)
     guided = getattr(args, "guided_probe", False)
-    short_live = paced_live or manual_depot or guided
-    if setup.get("measurement_input_mode") != ("guided_suite_v1" if guided else "manual_depot_v1" if manual_depot else None):
+    rail = getattr(args, "rail_probe", False)
+    short_live = paced_live or manual_depot or guided or rail
+    if setup.get("measurement_input_mode") != ("guided_rail_v1" if rail else "guided_suite_v1" if guided else "manual_depot_v1" if manual_depot else None):
         raise ValueError("selected manual input mode does not match the prepared shared manifest")
     if short_live:
         if (profile != BUILD_PROFILE or getattr(args, "rounds", None) != SHORT_BUILD_ROUNDS
@@ -254,7 +258,7 @@ def selected_profile(args, setup):
         raise ValueError("short preparation belongs only to the paced live experiment")
     if not short_live and profile == BUILD_PROFILE and getattr(args, "rounds", None) != BUILD_ROUNDS:
         raise ValueError("build_v2 requires the complete fixed 240-round recipe")
-    if sum(bool(getattr(args, name, False)) for name in ("timing_probe", "stream_probe", "live_probe", "paced_live_probe", "manual_depot_probe", "guided_probe")) > 1:
+    if sum(bool(getattr(args, name, False)) for name in ("timing_probe", "stream_probe", "live_probe", "paced_live_probe", "manual_depot_probe", "guided_probe", "rail_probe")) > 1:
         raise ValueError("choose exactly one post-build experiment")
     if getattr(args, "live_probe", False) or short_live:
         if profile != BUILD_PROFILE or getattr(args, "delay_ms", 0) != 0:
@@ -275,6 +279,8 @@ def selected_profile(args, setup):
 
 
 def measurement_capabilities(args):
+    if getattr(args, "rail_probe", False):
+        return tuple(sorted((*CAPABILITIES, RAIL_CAPABILITY)))
     if getattr(args, "guided_probe", False):
         return tuple(sorted((*CAPABILITIES, GUIDED_CAPABILITY)))
     if getattr(args, "manual_depot_probe", False):
@@ -363,7 +369,8 @@ async def game_peer(args, secret, directory, setup):
     paced_live = getattr(args, "paced_live_probe", False)
     manual_depot = getattr(args, "manual_depot_probe", False)
     guided = getattr(args, "guided_probe", False)
-    short_live = paced_live or manual_depot or guided
+    rail = getattr(args, "rail_probe", False)
+    short_live = paced_live or manual_depot or guided or rail
     preparation_rounds = SHORT_BUILD_ROUNDS if short_live else BUILD_ROUNDS
     progress = Progress(external_path(getattr(args, "progress", None), directory),
                         peer=getattr(args, "peer", None))
@@ -383,7 +390,8 @@ async def game_peer(args, secret, directory, setup):
             # Validate the exact queue identity and structure before consuming
             # a game session or creating a launch lease. The reader validates
             # again on every collection while the live test is running.
-            queue_options = ({"command_validator": validate_guided_input} if guided else
+            queue_options = ({"command_validator": validate_rail_input} if rail else
+                             {"command_validator": validate_guided_input} if guided else
                              {"command_validator": validate_depot_input} if manual_depot else {})
             live_input_reader = InputReader(input_path, args.epoch, args.peer, **queue_options)
         if profile == BUILD_PROFILE:
@@ -424,7 +432,7 @@ async def game_peer(args, secret, directory, setup):
         check_stop()
         # Do not cancel an engine thread: it owns native/Lua mailboxes. A local
         # stop during this bounded operation is handled immediately afterward.
-        adapter_class = GuidedEngineAdapter if guided else ManualDepotEngineAdapter if manual_depot else EngineAdapter
+        adapter_class = RailEngineAdapter if rail else GuidedEngineAdapter if guided else ManualDepotEngineAdapter if manual_depot else EngineAdapter
         engine = await asyncio.to_thread(adapter_class, directory, setup["native_epoch"],
                                          probe_only=True, timeout_s=min(args.timeout, 60))
         check_stop()
@@ -434,14 +442,16 @@ async def game_peer(args, secret, directory, setup):
             initial = engine.snapshot()
             journal.append("initial", frame=engine.frame, number=0, snapshot=initial)
             build_proof.observe(initial, frame=engine.frame)
-        replica_class = (GuidedReplica if guided else ManualDepotReplica if manual_depot else PacedLiveReplica if paced_live else
+        replica_class = (RailReplica if rail else GuidedReplica if guided else ManualDepotReplica if manual_depot else PacedLiveReplica if paced_live else
                          LiveReplica if getattr(args, "live_probe", False) else
                          StreamReplica if getattr(args, "stream_probe", False) else
                          TimingReplica if getattr(args, "timing_probe", False) else Replica)
-        options = {"stop_requested": stop_requested} if replica_class in (TimingReplica, StreamReplica, LiveReplica, PacedLiveReplica, ManualDepotReplica, GuidedReplica) else {}
-        if replica_class in (LiveReplica, PacedLiveReplica, ManualDepotReplica, GuidedReplica):
+        options = {"stop_requested": stop_requested} if replica_class in (TimingReplica, StreamReplica, LiveReplica, PacedLiveReplica, ManualDepotReplica, GuidedReplica, RailReplica) else {}
+        if replica_class in (LiveReplica, PacedLiveReplica, ManualDepotReplica, GuidedReplica, RailReplica):
             options["live_input_source"] = live_input_reader.take
-        if guided:
+        if rail:
+            options["stream_engine_factory"] = RailStreamEngine
+        elif guided:
             options["stream_engine_factory"] = GuidedStreamEngine
         elif manual_depot:
             options["stream_engine_factory"] = ManualDepotStreamEngine
@@ -519,7 +529,7 @@ async def game_peer(args, secret, directory, setup):
                          stream=replica.stream_progress(), phase_label="Fortlaufende Fahrt und gemeinsame Kontrollpunkte")
             if response and str(response.get("kind", "")).startswith("live_"):
                 receipt_key = (response["kind"], response.get("index"), response.get("plan_hash"))
-                world_receipts = (GUIDED_WORLD_RECEIPTS if guided else MANUAL_DEPOT_WORLD_RECEIPTS if manual_depot else
+                world_receipts = (RAIL_WORLD_RECEIPTS if rail else GUIDED_WORLD_RECEIPTS if guided else MANUAL_DEPOT_WORLD_RECEIPTS if manual_depot else
                                   PACED_LIVE_WORLD_RECEIPTS if paced_live else LIVE_WORLD_RECEIPTS)
                 if journal and response["kind"] in world_receipts and receipt_key not in live_world_journaled:
                     stream_engine = replica.stream_engine
@@ -684,6 +694,7 @@ def main(argv=None):
     parser.add_argument("--paced-live-probe", action="store_true", help="after ten verified preparation rounds, collect live inputs with native receipts")
     parser.add_argument("--manual-depot-probe", action="store_true", help="after short preparation, accept bounded player depot requests with fresh joint preview")
     parser.add_argument("--guided-probe", action="store_true", help="after short preparation, guide both players through fixed jointly verified actions")
+    parser.add_argument("--rail-probe", action="store_true", help="T2: after short preparation, jointly verify the fixed railway and train lifecycle")
     parser.add_argument("--live-input-file", type=Path, help="prepared live peer input queue outside the native/Lua session")
     args = parser.parse_args(argv)
     if (not 1 <= args.port <= 65535 or not 1 <= args.rounds <= 10000 or not 0 < args.timeout <= 60
@@ -691,7 +702,7 @@ def main(argv=None):
         parser.error("invalid port/rounds/timeout")
     if args.mode == "host" and not args.ready:
         parser.error("host requires --ready")
-    accepts_live = args.live_probe or args.paced_live_probe or args.manual_depot_probe or args.guided_probe
+    accepts_live = args.live_probe or args.paced_live_probe or args.manual_depot_probe or args.guided_probe or args.rail_probe
     if args.mode == "peer" and (not args.peer or not args.inputs and not accepts_live):
         parser.error("peer requires --peer and --inputs")
     if args.live_input_file and (args.mode != "peer" or not accepts_live):
@@ -705,7 +716,7 @@ def main(argv=None):
         parser.error("key file must contain 32..128 bytes")
     if args.mode == "host":
         progress = Progress(external_path(args.progress, directory), role="host")
-        if args.paced_live_probe or args.manual_depot_probe or args.guided_probe:
+        if args.paced_live_probe or args.manual_depot_probe or args.guided_probe or args.rail_probe:
             progress = CoalescedProgress(progress)
         stop_file = external_path(args.stop_file, directory)
         return asyncio.run(host(args, secret, expected_manifest=setup["manifest_digest"],
@@ -713,7 +724,8 @@ def main(argv=None):
                                 startup_timeout=args.startup_timeout, progress=progress,
                                 stop_requested=lambda: bool(stop_file and stop_file.exists()),
                                 step_us=ENGINE_STEP_US,
-                                coordinator_factory=(GuidedCoordinator if args.guided_probe else
+                                coordinator_factory=(RailCoordinator if args.rail_probe else
+                                                     GuidedCoordinator if args.guided_probe else
                                                      ManualDepotCoordinator if args.manual_depot_probe else
                                                      PacedLiveCoordinator if args.paced_live_probe else
                                                      LiveCoordinator if args.live_probe else

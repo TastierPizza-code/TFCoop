@@ -44,7 +44,9 @@ class App:
         self.game = tk.StringVar(value=settings.get("game_dir", ""))
         self.saves = tk.StringVar(value=settings.get("save_dir", ""))
         self.role = tk.StringVar(value="a")
-        self.test_mode = tk.StringVar(value=workflow.GUIDED_MODE)
+        self.test_mode = tk.StringVar(value=workflow.DEFAULT_TEST_MODE)
+        self._selected_test_mode = workflow.DEFAULT_TEST_MODE
+        self._mode_selection_guard = False
         self.host = tk.StringVar(value="")
         self.code = tk.StringVar(value=workflow.new_code())
         self.pairing_error = ""
@@ -77,6 +79,7 @@ class App:
         self.guided_actor = tk.StringVar(value="Beide")
         self.guided_instruction = tk.StringVar(value="")
         self.guided_count = tk.StringVar(value="")
+        self.guided_chapter = tk.StringVar(value="")
         self.connection_summary = tk.StringVar(value="")
         self._checklist_rows = None
         self._build()
@@ -124,6 +127,24 @@ class App:
         ttk.Label(outer, text="Gemeinsam Schritt für Schritt testen", font=("Segoe UI", 12)).pack(anchor="w", pady=(3, 5))
         ttk.Label(outer, text="Aktionen im Launcher auslösen · feste Testplätze · Kamera im Spiel frei", wraplength=790).pack(anchor="w", pady=(0, 5))
         ttk.Label(outer, textvariable=self.update_status, wraplength=790).pack(anchor="w")
+        self.main_test_tabs = ttk.Notebook(outer)
+        self.main_test_tabs.pack(fill="x", pady=(14, 2))
+        self.main_test_pages = {}
+        for mode, label, summary in (
+            (workflow.GUIDED_MODE, "T1 · Straße", "Straßenfahrzeug, Haltestellen und Linienbetrieb gemeinsam prüfen."),
+            (workflow.RAIL_MODE, "T2 · Schiene", "Schienen, Signale und Zugbetrieb gemeinsam am festen Testort prüfen."),
+        ):
+            page = ttk.Frame(self.main_test_tabs, padding=(10, 8))
+            ttk.Label(page, text=summary, wraplength=740).pack(anchor="w")
+            self.main_test_pages[mode] = page
+            self.main_test_tabs.add(page, text=label)
+        self.older_test_page = ttk.Frame(self.main_test_tabs, padding=(10, 8))
+        ttk.Label(self.older_test_page, text="Ein früherer Vergleichstest ist ausgewählt. Seine Bedienung steht unter Weitere Tests / Einstellungen.",
+                  wraplength=740).pack(anchor="w")
+        self.main_test_tabs.add(self.older_test_page, text="Früherer Test")
+        self.main_test_tabs.hide(self.older_test_page)
+        self._sync_test_tabs()
+        self.main_test_tabs.bind("<<NotebookTabChanged>>", self._tab_requested)
         roles = ttk.Frame(outer)
         roles.pack(fill="x", pady=(15, 4))
         ttk.Label(roles, text="Auf diesem PC:").pack(side="left", padx=(0, 12))
@@ -136,6 +157,7 @@ class App:
         ttk.Label(outer, textvariable=self.connection_summary, wraplength=790).pack(anchor="w", pady=(0, 12))
         step = ttk.LabelFrame(outer, text="Euer aktueller Schritt", padding=18)
         step.pack(fill="x")
+        ttk.Label(step, textvariable=self.guided_chapter, wraplength=740).pack(anchor="w", pady=(0, 5))
         ttk.Label(step, textvariable=self.guided_actor, style="Actor.TLabel").pack(anchor="w")
         ttk.Label(step, textvariable=self.guided_heading, style="Step.TLabel", wraplength=740).pack(anchor="w", pady=(4, 9))
         ttk.Label(step, textvariable=self.guided_instruction, wraplength=740,
@@ -182,7 +204,87 @@ class App:
         self.advanced_frame = ttk.Frame(outer, height=720)
         self.advanced_frame.pack_propagate(False)
         self._build_advanced(self.advanced_frame)
-        self.test_mode.trace_add("write", lambda *_: self._buttons())
+        self.test_mode.trace_add("write", self._mode_requested)
+
+    def _sync_test_tabs(self):
+        if not hasattr(self, "main_test_tabs"):
+            return
+        mode = getattr(self, "_selected_test_mode", self.test_mode.get())
+        target = self.main_test_pages.get(mode)
+        if target is None:
+            self.main_test_tabs.add(self.older_test_page)
+            target = self.older_test_page
+        else:
+            self.main_test_tabs.hide(self.older_test_page)
+        if self.main_test_tabs.select() != str(target):
+            self.main_test_tabs.select(target)
+
+    def _set_test_mode(self, mode):
+        self._selected_test_mode = mode
+        self._mode_selection_guard = True
+        try:
+            self.test_mode.set(mode)
+        finally:
+            self._mode_selection_guard = False
+        self._sync_test_tabs()
+
+    def _mode_requested(self, *_):
+        if getattr(self, "_mode_selection_guard", False):
+            return
+        requested = self.test_mode.get()
+        self._set_test_mode(self._selected_test_mode)
+        self.select_test_mode(requested)
+
+    def _tab_requested(self, _event=None):
+        selected = self.main_test_tabs.select()
+        for mode, page in self.main_test_pages.items():
+            if selected == str(page):
+                self.select_test_mode(mode)
+                return
+
+    def select_test_mode(self, mode):
+        """A tab request cannot retarget an installed or running session."""
+        current = getattr(self, "_selected_test_mode", self.test_mode.get())
+        if mode == current:
+            self._sync_test_tabs()
+            return False
+        if mode not in workflow.TEST_MODES:
+            self.status.set("Dieser Test ist in dieser Version nicht verfügbar.")
+            self._sync_test_tabs()
+            return False
+        if self.busy or (self.controller and self.controller.alive()) or self.diagnostic is not None:
+            self.status.set("Vor dem Testwechsel den laufenden Test beenden. Eine vorbereitete Diagnose zuerst unter Einstellungen wiederherstellen.")
+            self._sync_test_tabs()
+            return False
+        try:
+            if game_is_running():
+                self.status.set("Für einen Testwechsel zuerst TF2 schließen. Der bisherige Test bleibt ausgewählt.")
+                self._sync_test_tabs()
+                return False
+            if self.prepared is not None:
+                # Keep the previous mode, save and report identity until its
+                # owned installation journal has actually restored safely.
+                game = self.prepared.game_dir
+                self.status.set("Bisherige Testinstallation wird vor dem Wechsel geprüft und wiederhergestellt …")
+                self._sync_test_tabs()
+                def restored(result):
+                    self._restored(result)
+                    self._set_test_mode(mode)
+                    self.save_name.set("Wird für diesen Test frisch vorbereitet.")
+                    self.status.set("Test gewechselt. Beide wählen denselben Reiter und bereiten einen frischen Durchlauf vor.")
+                    self._buttons()
+                self._work(lambda: workflow.restore_probe(game), restored)
+                return True
+            self._set_test_mode(mode)
+            self.last_live_status = {}
+            self.guided_pending_sequence = self.guided_pending_revision = self.guided_pending_index = None
+            self.status.set("Beide wählen denselben Reiter. Anschließend den Test frisch vorbereiten.")
+            self._buttons()
+            return True
+        except Exception as exc:
+            self.status.set("Testwechsel nicht möglich: " + str(exc))
+            self._sync_test_tabs()
+            return False
 
     def toggle_advanced(self):
         if self.advanced_frame.winfo_manager():
@@ -412,7 +514,12 @@ class App:
 
     def _buttons(self):
         active = bool(self.controller and self.controller.alive())
-        guided_idle = bool(self.prepared and getattr(self.prepared, "test_mode", None) == getattr(workflow, "GUIDED_MODE", "guided_suite_v1")
+        if hasattr(self, "main_test_tabs"):
+            tab_locked = self.busy or active or self.diagnostic is not None
+            selected = self.main_test_tabs.select()
+            for page in self.main_test_pages.values():
+                self.main_test_tabs.tab(page, state="disabled" if tab_locked and str(page) != selected else "normal")
+        guided_idle = bool(self.prepared and getattr(self.prepared, "test_mode", None) in workflow.GUIDED_MODES
                            and self.controller and not active
                            and any(self.last_live_status.get(key) for key in ("completed", "failure", "stopping")))
         locked = self.busy or (self.prepared is not None and not guided_idle) or self.diagnostic is not None
@@ -424,7 +531,7 @@ class App:
         self.connect_button.configure(state="normal" if self.prepared and not self.controller and not self.busy else "disabled")
         self.restore_button.configure(state="disabled" if self.busy or active else "normal")
         self.stop_button.configure(state="normal" if active else "disabled")
-        guided_mode = self.last_live_status.get("test_mode") == getattr(workflow, "GUIDED_MODE", "guided_suite_v1")
+        guided_mode = self.last_live_status.get("test_mode") in workflow.GUIDED_MODES
         live_enabled = active and not self.busy and workflow.live_input_ready(self.last_live_status) and not guided_mode
         for widget in self.live_buttons:
             widget.configure(state="normal" if live_enabled else "disabled")
@@ -440,12 +547,15 @@ class App:
         # fields; neither they nor importing this module need a Tcl interpreter.
         if not hasattr(self, "guided_heading"):
             return
-        from prototype.strict_sync.guided_catalog import STEPS
         status = self.last_live_status
         active = bool(self.controller and self.controller.alive())
         role = self.prepared.role if self.prepared else self.role.get()
         mode = self.prepared.test_mode if self.prepared else self.test_mode.get()
-        guided = mode == workflow.GUIDED_MODE
+        guided = mode in workflow.GUIDED_MODES
+        STEPS = workflow.guided_steps(mode) if guided else ()
+        suite_label = {workflow.GUIDED_MODE: "T1 · Straße", workflow.RAIL_MODE: "T2 · Schiene"}.get(mode, "Früherer Vergleichstest")
+        if hasattr(self, "guided_chapter"):
+            self.guided_chapter.set(suite_label)
         profile_ready = bool(self.host.get().strip() and self.code.get().strip())
         self.connection_summary.set(
             "Host-IP (bei beiden gleich): " + (self.host.get().strip() or "noch nicht eingetragen") + "\n" +
@@ -472,7 +582,7 @@ class App:
         elif not self.prepared:
             self.guided_heading.set("1  ·  Gemeinsam vorbereiten")
             self.guided_instruction.set(
-                "Beide schließen TF2 und wählen ihre Rolle. Danach auf beiden PCs Test vorbereiten drücken. "
+                "Beide wählen denselben Testreiter, schließen TF2 und wählen ihre Rolle. Danach auf beiden PCs Test vorbereiten drücken. "
                 "Der Test verwendet eine eigene frische Spielstandkopie."
                 if self.baseline_ready else
                 "Den gemeinsamen Ausgangsspielstand einmal unter Einstellungen → Testspielstand übernehmen auswählen. "
@@ -490,9 +600,11 @@ class App:
             if status.get("failure") or status.get("stopping") or (guided and guided_ui.joint_started(status)):
                 self._update_guided_pending(status)
                 view = guided_ui.card(status, STEPS, role=role,
-                    available=active and not self.busy and workflow.live_input_ready(status),
+                    available=active and not self.busy and status.get("test_mode") == mode and workflow.live_input_ready(status),
                     locally_pending=self.guided_pending_sequence is not None)
                 self.guided_heading.set(view.title)
+                if hasattr(self, "guided_chapter") and view.chapter:
+                    self.guided_chapter.set(suite_label + " · " + view.chapter)
                 self.guided_actor.set(view.actor + " ist dran" if view.actor in ("Host", "Freund") else view.actor)
                 self.guided_instruction.set(view.instruction)
                 self.guided_action_button.configure(text=view.action_label)
@@ -575,11 +687,15 @@ class App:
     def submit_guided(self):
         """Submit the displayed role's catalog command, never a local Next step."""
         try:
-            from prototype.strict_sync.guided_catalog import STEPS
-            if not self.controller or not self.prepared or self.prepared.test_mode != workflow.GUIDED_MODE:
+            if not self.controller or not self.prepared or self.prepared.test_mode not in workflow.GUIDED_MODES:
                 return
             status = self.controller.poll()
             self.last_live_status = status
+            if status.get("test_mode") != self.prepared.test_mode:
+                self.status.set("Die Rückmeldung gehört zu einem anderen Test. Der Auftrag wurde nicht gesendet.")
+                self._buttons()
+                return
+            STEPS = workflow.guided_steps(self.prepared.test_mode)
             self._update_guided_pending(status)
             view = guided_ui.card(status, STEPS, role=self.prepared.role,
                 available=not self.busy and workflow.live_input_ready(status),
@@ -693,10 +809,13 @@ class App:
             return
         values = (self.game.get(), self.saves.get(), self.role.get(), self.host.get(), self.code.get())
         test_mode = self.test_mode.get()
+        if self.prepared is not None and test_mode != self.prepared.test_mode:
+            self.status.set("Vor einem anderen Test zuerst über den Testreiter die bisherige Installation wiederherstellen.")
+            return
         self.status.set("Testdateien werden geprüft, bisherige Dateien gesichert und die Testsave kopiert …")
         def prepare_build():
             if diagnostics.diagnostic_status(values[0]).get("installed"):
-                if test_mode == getattr(workflow, "GUIDED_MODE", "guided_suite_v1"):
+                if test_mode in workflow.GUIDED_MODES:
                     diagnostics.restore_diagnostic(values[0])
                 else:
                     raise ValueError("Zuerst TF2 schließen und die Diagnoseinstallation wiederherstellen.")
@@ -708,6 +827,7 @@ class App:
         self.pairing_error = ""
         self.pairing_saved = True
         self.prepared = self.last_run = prepared
+        self._set_test_mode(prepared.test_mode)
         self.controller = None
         self.last_live_status = {}
         self.diagnostic = None

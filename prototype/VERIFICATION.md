@@ -1,5 +1,40 @@
 # Prüfstand
 
+## Alpha5.20: separater T2-Schienenversuch vorbereitet
+
+T2 verwendet `guided_rail_v1` mit eigenem Katalog, Eingabevertrag, Adapter und
+Weltquittungen. Der gemeinsame kurze Aufbau und die akzeptierte Taktung bleiben
+erhalten. T1 behält seinen bisherigen Katalog und seine eigene Protokoll- und
+Adapterimplementierung. Der T2-Reiter zeigt erst nach der Bestätigung beider
+geladenen Spiele und der zehn Vorbereitungsrunden seinen ersten Auftrag.
+
+Die echten temporären Vorbereitungs-/Installationsketten prüfen alle sieben
+Modi und beide Rollen bis `read_setup`, Queue, Treiberprofil und Wiederherstellung.
+Zusätzlich wird T1 → T2 → T1 mit jeweils frischen Sitzungen/Savenamen geprüft.
+TCP-/Datei-Queue-Tests nutzen explizite Modellwelten, prüfen gemeinsame Schritte,
+abweichende Vorschauen und Wiederholungsquittungen. Die Modusoberfläche wird
+ohne Fenster geprüft; eine zwischenzeitlich gestartete Spielinstanz oder eine
+veränderte installierte Datei verhindert das Überschreiben beim Moduswechsel.
+
+Ein privater lokaler Check führt die installierten Stock-Lua-Funktionen für die
+gewählte modulare Station tatsächlich aus: Template, acht Modulbeschreibungen,
+Modulfunktionen und Abschlussfunktion ergeben eine Station mit einem Terminal
+und zwei Gleisanschlüssen. Auch der Depotgenerator wurde ausgeführt. Der
+Headless-Helfer ersetzt dabei die engineeigene Modelleinsortierung und liefert
+Stock-Gleisparameter. Das prüft Ressourcen und Rezept, keine tatsächliche
+Engine-Platzierung, Wegfindung oder Physik. Originaldateien werden nicht verteilt.
+
+Der produktive Lua-/Python-/Datei-IPC-Ablauf durchläuft alle 37 T2-Aktionen in
+zwei getrennten Lua-Welten mit unterschiedlichen lokalen Objektkennungen.
+Vorschauen, tatsächliche Fixture-Rückmeldungen, Konfigurationsteile, Kosten,
+Mitgliedschaften und der gehaltene Simulationspunkt werden je Auftrag geprüft;
+die normalisierten Beobachtungen beider Welten müssen gleich sein. Engineaufrufe
+und native Uhr bleiben in diesem Test ausdrücklich nachgebildet. Damit wird
+die Sprach-/Kommunikationsgrenze geprüft, keine echte Zugphysik behauptet.
+
+Der tatsächliche Zwei-PC-T2-Lauf steht aus. Die bisherigen Häkchen stammen
+ausschließlich aus den darunter dokumentierten Spielberichten. [T2-Prüfumfang](docs/RAIL_TEST.md).
+
 ## Alpha5.19: geführter Straßenfahrzeug-/Linienversuch auf zwei PCs bestätigt
 
 Der getrennte Modus `guided_suite_v1` führt durch 26 feste Host-/Freund-Aufträge.

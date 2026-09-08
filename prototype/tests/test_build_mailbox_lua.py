@@ -38,8 +38,11 @@ class BuildLuaWorker(ActualLuaWorker):
             if self.input_mode == "manual_depot_v1":
                 lua.execute((MOD / "tests/fake_manual_depot.lua").read_text("utf-8"))
                 lua.execute(self.manual_setup)
-            elif self.input_mode == "guided_suite_v1":
+            elif self.input_mode in ("guided_suite_v1", "guided_rail_v1"):
                 lua.execute((MOD / "tests/fake_guided_engine.lua").read_text("utf-8"))
+                if self.input_mode == "guided_rail_v1":
+                    lua.globals().rail_assets = lua.execute((scripts / "rail_assets.lua").read_text("utf-8"))
+                    lua.execute((MOD / "tests/fake_rail_engine.lua").read_text("utf-8"))
                 lua.execute(self.manual_setup)
             lua.execute(self.terrain_setup)
             lua.globals().callback_read_failures = self.callback_read_failures
@@ -73,9 +76,12 @@ class BuildLuaWorker(ActualLuaWorker):
                 modules["tf2_strict_probe/api_audit"] = lua.execute(
                     "return {collect=function() error('fixture unavailable collector',0) end}")
             lua.globals().require = lambda name: modules[name]
-            if self.input_mode == "guided_suite_v1":
+            if self.input_mode in ("guided_suite_v1", "guided_rail_v1"):
                 modules["tf2_strict_probe/guided_assets"] = lua.execute((scripts / "guided_assets.lua").read_text("utf-8"))
                 modules["tf2_strict_probe/guided_engine"] = lua.execute((scripts / "guided_engine.lua").read_text("utf-8"))
+                if self.input_mode == "guided_rail_v1":
+                    modules["tf2_strict_probe/rail_assets"] = lua.globals().rail_assets
+                    modules["tf2_strict_probe/rail_engine"] = lua.execute((scripts / "rail_engine.lua").read_text("utf-8"))
             modules["tf2_strict_probe/build_engine"] = lua.execute((scripts / "build_engine.lua").read_text("utf-8"))
             lua.execute("api.cmd.sendCommand=function(command,callback) callback(apply_command(command),true) end")
             lua.execute(self.callback_setup)

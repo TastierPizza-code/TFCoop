@@ -126,16 +126,16 @@ class PreparationPipelineTests(unittest.TestCase):
                     self.assertTrue(install.installation_status(self.game)["installed"])
                     session, setup = driver.read_setup(prepared.session)
                     shared = json.loads((session / "probe_manifest.json").read_text(encoding="utf-8"))
-                    short = mode in (workflow.PACED_LIVE_MODE, workflow.MANUAL_DEPOT_MODE, workflow.GUIDED_MODE)
+                    short = mode in (workflow.PACED_LIVE_MODE, workflow.MANUAL_DEPOT_MODE, *workflow.GUIDED_MODES)
                     expected_semantics = {"enabled": True, "native_gate_required": True, "profile": "build_v2"}
                     if short:
                         expected_semantics["preparation"] = SHORT_BUILD_CONTRACT
-                    if mode in (workflow.MANUAL_DEPOT_MODE, workflow.GUIDED_MODE):
+                    if mode in (workflow.MANUAL_DEPOT_MODE, *workflow.GUIDED_MODES):
                         expected_semantics["input_mode"] = mode
                     self.assertEqual(shared["config_semantics"], expected_semantics)
                     self.assertEqual(setup["measurement_preparation"], SHORT_BUILD_CONTRACT if short else None)
                     self.assertEqual(setup["measurement_input_mode"],
-                                     mode if mode in (workflow.MANUAL_DEPOT_MODE, workflow.GUIDED_MODE) else None)
+                                     mode if mode in (workflow.MANUAL_DEPOT_MODE, *workflow.GUIDED_MODES) else None)
                     self.assertEqual(setup["manifest_digest"], digest(shared))
                     self.assertEqual(prepared.manifest, workflow.lobby_manifest(digest(shared), mode))
                     self.assertEqual(file_manifests.setdefault(mode, digest(shared)), digest(shared))
@@ -168,7 +168,8 @@ class PreparationPipelineTests(unittest.TestCase):
                             live_probe="--live-probe" in command,
                             paced_live_probe="--paced-live-probe" in command,
                             manual_depot_probe="--manual-depot-probe" in command,
-                            guided_probe="--guided-probe" in command)
+                            guided_probe="--guided-probe" in command,
+                            rail_probe="--rail-probe" in command)
                         self.assertEqual(args.rounds, 10 if short else 240)
                         self.assertEqual(driver.selected_profile(args, setup), "build_v2")
                         self.assertEqual("--live-input-file" in command,
@@ -177,7 +178,8 @@ class PreparationPipelineTests(unittest.TestCase):
 
                     self.assertEqual(prepared.live_input_path.is_file(), mode in workflow.LIVE_MODES)
                     if mode in workflow.LIVE_MODES:
-                        self.assertEqual(InputReader(prepared.live_input_path, prepared.epoch, role).take(), [])
+                        self.assertEqual(InputReader(prepared.live_input_path, prepared.epoch, role,
+                                         **workflow.input_queue_options(mode)).take(), [])
                     imported = Path(prepared.imported_save)
                     self.assertNotIn(imported.name, imported_names)
                     imported_names.add(imported.name)
@@ -200,6 +202,42 @@ class PreparationPipelineTests(unittest.TestCase):
         self.assertEqual(len(set(lobby_manifests.values())), len(workflow.TEST_MODES))
         self.assertNotIn(file_manifests[workflow.GUIDED_MODE],
                          [value for mode, value in file_manifests.items() if mode != workflow.GUIDED_MODE])
+        self.assertNotIn(file_manifests[workflow.RAIL_MODE],
+                         [value for mode, value in file_manifests.items() if mode != workflow.RAIL_MODE])
+
+    def test_t1_t2_switch_reprepares_distinct_fresh_owned_sessions(self):
+        prepared = []
+        for mode in (workflow.GUIDED_MODE, workflow.RAIL_MODE, workflow.GUIDED_MODE):
+            run = self.prepare(mode)
+            _, setup = driver.read_setup(Path(run.session))
+            self.assertEqual(setup['measurement_input_mode'], mode)
+            self.assertEqual(setup['measurement_preparation'], SHORT_BUILD_CONTRACT)
+            prepared.append(run)
+        self.assertEqual(len({r.session for r in prepared}), 3)
+        self.assertEqual(len({r.imported_save for r in prepared}), 3)
+        self.assertEqual(len({r.local_run for r in prepared}), 3)
+        self.assertNotEqual(prepared[0].manifest, prepared[1].manifest)
+        for run in prepared:
+            self.assertEqual(Path(run.imported_save).read_bytes(), self.original.read_bytes())
+        install.restore_probe(self.game)
+        self.assertEqual(self.game_bytes(), self.original_game)
+        self.assert_original_saves()
+
+    def test_rail_driver_cannot_use_t1_preparation_or_multiple_mode_flags(self):
+        args = SimpleNamespace(profile='build_v2', rounds=10, timeout=30, delay_ms=0,
+                               rail_probe=True, guided_probe=False)
+        setup = dict(measurement_profile='build_v2', measurement_preparation=SHORT_BUILD_CONTRACT,
+                     measurement_input_mode=workflow.GUIDED_MODE)
+        with self.assertRaisesRegex(ValueError, 'input mode'):
+            driver.selected_profile(args, setup)
+        setup['measurement_input_mode'] = workflow.RAIL_MODE
+        self.assertEqual(driver.selected_profile(args, setup), 'build_v2')
+        args.guided_probe = True
+        with self.assertRaisesRegex(ValueError, 'exactly one'):
+            driver.selected_profile(args, setup)
+        args.rail_probe = False
+        with self.assertRaisesRegex(ValueError, 'input mode'):
+            driver.selected_profile(args, setup)
 
     def test_guided_rerun_restores_owned_old_test_and_imports_fresh_save(self):
         first = self.prepare(workflow.MANUAL_DEPOT_MODE)

@@ -1,15 +1,15 @@
 # TFCoop für Transport Fever 2
 
-**Alpha5.19-Testbegleiter / v0.5.19** führt Host und Freund durch einen zusammenhängenden festen Fahrzeug- und Linientest. Der vereinfachte Launcher zeigt den aktuellen Auftrag, die zuständige Rolle und genau einen Aktionsknopf. Schritte zählen erst nach verglichenen Ergebnissen beider Spiele. Die normale freie Spieloberfläche folgt später.
+**Alpha5.20-Testbegleiter / v0.5.20** ergänzt **T2 · Schiene** neben dem erhaltenen **T1 · Straße**. Host und Freund bauen eine feste Bahnstrecke, setzen Signale und Wegpunkt und prüfen den Zugbetrieb bis zum Umbau, Verkauf und Abbau. Der Launcher zeigt die aktuelle Rolle und einen Aktionsknopf. Fortschritt braucht verglichene Ergebnisse beider Spiele. T2 ist vorbereitet; sein tatsächlicher Zwei-PC-Nachweis steht noch aus. Die normale freie Spieloberfläche folgt später.
 
 ## Download und Start
 
 1. TF2 und den alten Test schließen. Den vorhandenen Launcher neu öffnen und aktualisieren lassen. Erstmalig: [TFCoop-Windows.zip](https://github.com/TastierPizza-code/TFCoop/releases/latest/download/TFCoop-Windows.zip) vollständig entpacken und `TF2-Coop.exe` starten.
-2. Host/Freund wählen, **Test vorbereiten**, anschließend **Verbinden**. Die private gemerkte Verbindung und passende saubere große Ausgangskarte werden weiterverwendet.
+2. **T2 · Schiene** und Host/Freund wählen, **Test vorbereiten**, anschließend **Verbinden**. Die private gemerkte Verbindung und passende saubere große Ausgangskarte werden weiterverwendet.
 3. TF2 über Steam starten und den jeweils genau angezeigten frischen Spielstand laden. Die kurze Vorbereitung abwarten; danach den einzelnen Host-/Freund-Aufträgen im Launcher folgen.
 4. Am Ende beide Berichte speichern. Bei Fehlern bleiben die bisherigen bestätigten Schritte im Bericht erhalten.
 
-[Kurze Anleitung](prototype/ANLEITUNG.md) · [Geführter Testumfang](prototype/docs/GUIDED_TEST.md) · [Nachweischeckliste](prototype/docs/GAMEPLAY_CHECKLIST.md) · [Alle Befehlsfamilien](prototype/docs/COMMAND_COVERAGE_PLAN.md)
+[Kurze Anleitung](prototype/ANLEITUNG.md) · [T2-Schienenversuch](prototype/docs/RAIL_TEST.md) · [T1-Straßentest](prototype/docs/GUIDED_TEST.md) · [Nachweischeckliste](prototype/docs/GAMEPLAY_CHECKLIST.md) · [Alle Befehlsfamilien](prototype/docs/COMMAND_COVERAGE_PLAN.md)
 
 Der tatsächliche [Alpha5.19-Lauf auf zwei PCs](prototype/docs/ALPHA519_EVIDENCE.md) bestätigt alle 26 festen Aufträge mit 241 bytegleichen Journalzeilen: zusätzliches Straßenfahrzeug, schrittweise bearbeitete Linie, Namen/Farbe, Wartung, Zuweisung, Fahrt, Anhalten/Starten, Wenden, Depotfahrt und Verkauf. Gleise/Signale/Züge, freie Platzierungen, native UI-Pause, Cursor/Blaupausen und Speichern/Wiederbeitritt bleiben offen. Die Nachweise gelten für die aufgezeichnete feste Szene und die Launcher-Bedienung.
 
