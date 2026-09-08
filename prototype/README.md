@@ -1,8 +1,10 @@
 # TF2: Prototyp für strikte Synchronisation
 
-**Alpha5.14-Eingabetest** führt `paced_live_v1` als Standard ein. Der eigene kurze Aufbau endet nach zehn verifizierten Befehlen und zehn Schritten. Eingabelisten werden mit Start-, Fortschritts- und HOLD-Bestätigungen versiegelt übertragen. Die separate leere Abfrage entfällt; rein informative Launcher-Statusupdates werden zusammengefasst. Das soll die im tatsächlichen Alpha5.13-Lauf beobachtete Regression auf ungefähr 0,82x reduzieren. Die tatsächliche Flüssigkeit des neuen Modus ist noch nicht geprüft. Die bisherigen `live_input_v1`, `stream_v1` und `timing_v1` behalten ihre vollständigen Abläufe. [Echte bisherige Evidenz](docs/ALPHA513_EVIDENCE.md).
+**Korrektur in Alpha5.15:** Der Abbruch beim Vorbereiten des kurzen Tests ist behoben. Vorbereitung, Installer und Startprüfung verwenden nun denselben Konfigurationsvertrag. Beide Launcher aktualisieren und frisch vorbereiten; keine neuen Saves erforderlich.
 
-Auf beiden PCs aktualisieren, die vorherige Installation wiederherstellen und mit demselben Modus neu vorbereiten. Die saubere Basis der sehr großen Karte bleibt unverändert. Die bisherigen Teilnehmer brauchen keinen erneuten Import. Frische Testsave-Kopien enthalten **TF2 Strict Sync - gemeinsamer Eingabetest (Alpha5.14)** und **Legacy Fahrzeuge**. Bedienfolge: [ANLEITUNG.md](ANLEITUNG.md).
+**Alpha5.15-Eingabetest** führt `paced_live_v1` als Standard ein. Der eigene kurze Aufbau endet nach zehn verifizierten Befehlen und zehn Schritten. Eingabelisten werden mit Start-, Fortschritts- und HOLD-Bestätigungen versiegelt übertragen. Die separate leere Abfrage entfällt; rein informative Launcher-Statusupdates werden zusammengefasst. Das soll die im tatsächlichen Alpha5.13-Lauf beobachtete Regression auf ungefähr 0,82x reduzieren. Die tatsächliche Flüssigkeit des neuen Modus ist noch nicht geprüft. Die bisherigen `live_input_v1`, `stream_v1` und `timing_v1` behalten ihre vollständigen Abläufe. [Echte bisherige Evidenz](docs/ALPHA513_EVIDENCE.md).
+
+Auf beiden PCs aktualisieren, die vorherige Installation wiederherstellen und mit demselben Modus neu vorbereiten. Die saubere Basis der sehr großen Karte bleibt unverändert. Die bisherigen Teilnehmer brauchen keinen erneuten Import. Frische Testsave-Kopien enthalten **TF2 Strict Sync - gemeinsamer Eingabetest (Alpha5.15)** und **Legacy Fahrzeuge**. Bedienfolge: [ANLEITUNG.md](ANLEITUNG.md).
 
 ## Neuer Eingabeweg
 

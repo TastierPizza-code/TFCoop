@@ -1,4 +1,6 @@
-# TF2-Koop Alpha5.14-Eingabetest — für beide Spieler
+# TF2-Koop Alpha5.15-Eingabetest — für beide Spieler
+
+**Korrektur in Alpha5.15:** Der Abbruch beim Vorbereiten des kurzen Tests ist behoben. Vorbereitung, Installer und Startprüfung verwenden nun denselben Konfigurationsvertrag. Beide Launcher aktualisieren und frisch vorbereiten; keine neuen Saves erforderlich.
 
 **Der neue Modus „Fahrt und Eingaben · kurzer Aufbau“ soll die häufigeren Zuckler aus Alpha5.13 reduzieren.** Eingaben werden mit den ohnehin nötigen Schrittbestätigungen übertragen. Die zusätzliche leere Abfragerunde entfällt. Ob die Fahrt auf euren PCs wieder ausreichend ruhig läuft, muss der echte Zwei-PC-Test zeigen.
 
@@ -7,7 +9,7 @@ Der Aufbau hat jetzt **10 Runden**: Straße, Depot, Haltestellen, Fahrzeug und L
 ## 1. Beide aktualisieren
 
 1. Test beenden, **TF2 vollständig schließen** und den Launcher schließen.
-2. Den vorhandenen Launcher neu öffnen und das Update abwarten. Auf beiden PCs muss **Alpha5.14-Eingabetest** stehen. Ein Update wartet auf laufende Spiele oder Testcontroller.
+2. Den vorhandenen Launcher neu öffnen und das Update abwarten. Auf beiden PCs muss **Alpha5.15-Eingabetest** stehen. Ein Update wartet auf laufende Spiele oder Testcontroller.
 3. **Bisherige Installation wiederherstellen** verwenden. Danach auf beiden PCs **Fahrt und Eingaben · kurzer Aufbau** auswählen. Die API-Diagnose wird nicht gebraucht.
 4. Die eigenen Installations- und Steam-Saveordner prüfen. Keine Sicherungen oder alten Spielstände löschen.
 
@@ -24,7 +26,7 @@ Bei einer Firewallabfrage Zugriff im verwendeten LAN-/Hamachi-Netz erlauben. Der
 ## 3. Jeder lädt seinen frisch angezeigten Save
 
 1. In TF2 **Spiel laden** öffnen und genau die **neu im eigenen Launcher angezeigte `TF2-Koop-Messtest-….sav`** wählen. Nicht „Fortsetzen“ oder einen früheren Test laden.
-2. **TF2 Strict Sync - gemeinsamer Eingabetest (Alpha5.14)** und **Legacy Fahrzeuge** sind bereits ausgewählt. Stehen dort alte Koop-Mods, den exakten neuen Savenamen prüfen. Keine weiteren Mods einschalten.
+2. **TF2 Strict Sync - gemeinsamer Eingabetest (Alpha5.15)** und **Legacy Fahrzeuge** sind bereits ausgewählt. Stehen dort alte Koop-Mods, den exakten neuen Savenamen prüfen. Keine weiteren Mods einschalten.
 3. Laden und die **10 Aufbaurunden** abwarten. Wer zuerst geladen hat, wartet bei gehaltener Spielzeit auf den anderen. Die zufälligen Savenamen dürfen verschieden sein; die Ausgangsdaten werden geprüft.
 
 TF2 möglichst sichtbar lassen, etwa neben dem Launcher. Ein früherer Timeout trat nach Minimieren auf; dessen Ursache ist bisher nicht sicher geklärt. Die Kamera dürft ihr bewegen. Die normalen Pause-/Tempo-Tasten und Bauwerkzeuge im Spiel sind noch nicht an diesen Eingabeweg angeschlossen.
@@ -61,7 +63,7 @@ Der Versuch erlaubt maximal **128 Wünsche pro Spieler**, **2048 Sammelrunden** 
 | Referenztest aus Alpha5.12 | Unveränderte 240 Aufbaurunden, anschließend 120 Sekunden automatische Fahrt mit vorgesehenen Kontrollpunkten und Pause. Nur zuschauen. |
 | Vergleichstest aus Alpha5.11 | Unveränderte 240 Aufbaurunden und zwölf automatische Fahrt-/Warteabschnitte. Nur zuschauen. |
 
-Ein Moduswechsel benötigt auf beiden PCs eine frische Vorbereitung. [Alpha5.12](https://github.com/TastierPizza-code/TFCoop/releases/tag/v0.5.12) bleibt die akzeptierte Referenz bei ungefähr 0,962x mit kaum sichtbaren Zucklern. Alpha5.13 bestätigte gegenseitige Pause/Fortsetzen, lief aber nur ungefähr 0,82x. Alpha5.14 ist vorab ohne Spielstart geprüft; seine tatsächliche Flüssigkeit ist noch nicht bestätigt. Diese Tests betreffen die beobachtete Szene und belegen keine freie gleichzeitige Bebauung oder vollständige Weltsynchronität.
+Ein Moduswechsel benötigt auf beiden PCs eine frische Vorbereitung. [Alpha5.12](https://github.com/TastierPizza-code/TFCoop/releases/tag/v0.5.12) bleibt die akzeptierte Referenz bei ungefähr 0,962x mit kaum sichtbaren Zucklern. Alpha5.13 bestätigte gegenseitige Pause/Fortsetzen, lief aber nur ungefähr 0,82x. Alpha5.15 ist vorab ohne Spielstart geprüft; seine tatsächliche Flüssigkeit ist noch nicht bestätigt. Diese Tests betreffen die beobachtete Szene und belegen keine freie gleichzeitige Bebauung oder vollständige Weltsynchronität.
 
 ## Erste Einrichtung und spätere Updates
 
@@ -69,4 +71,4 @@ Ohne Launcher einmal **[TFCoop-Windows.zip herunterladen](https://github.com/Tas
 
 Auf einem neu eingerichteten PC muss das private saubere Spielstandpaar `initial.sav` und `initial.sav.lua` separat vorhanden sein. Beide nebeneinander entpacken und über **Testspielstand übernehmen …** die `initial.sav` wählen. Ein passender bestehender Cache bleibt gültig. Das öffentliche Update enthält keine Spielstände; Spielstände und Berichte werden nicht auf GitHub hochgeladen.
 
-Diese Anleitung gehört zu [v0.5.14](https://github.com/TastierPizza-code/TFCoop/releases/tag/v0.5.14). Weitere technische Grenzen stehen in [VERIFICATION.md](https://github.com/TastierPizza-code/TFCoop/blob/main/prototype/VERIFICATION.md).
+Diese Anleitung gehört zu [v0.5.15](https://github.com/TastierPizza-code/TFCoop/releases/tag/v0.5.15). Weitere technische Grenzen stehen in [VERIFICATION.md](https://github.com/TastierPizza-code/TFCoop/blob/main/prototype/VERIFICATION.md).

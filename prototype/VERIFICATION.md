@@ -1,5 +1,40 @@
 # Prüfstand
 
+## Alpha5.15: Vorbereitungspfad zusammenhängend geprüft
+
+Alpha5.14 brach beim Vorbereiten des kurzen Modus vor der Installation ab:
+Die Vorbereitung schrieb `preparation=short_scene_v1`, während die getrennte
+Prüfliste im Installer das neue Feld noch ablehnte. Die unten aufgeführten
+362 Vorabprüfungen deckten diese konkrete Integration nicht ab; sie waren
+kein Nachweis, dass der neue Launcherpfad erfolgreich installiert werden konnte.
+
+Vorbereitung, Installer und Startprüfung verwenden in Alpha5.15 dieselbe
+strikte Prüfung. Der bekannte kurze Vertrag wird nur mit `build_v2` akzeptiert;
+unbekannte Felder, ungültige Kombinationen und unechte boolesche Werte bleiben
+unzulässig. Das Simulationsprotokoll und der native Pacer sind unverändert.
+
+`test_preparation_pipeline.py` führt den tatsächlichen Launcher-Vorbereitungspfad
+über Staging und Installation bis `read_setup`, Profil-/Payloadprüfung und
+Wiederherstellung in temporären Spiel- und Saveordnern aus. Alle vier Modi
+und beide Rollen sind abgedeckt; Staging und Installation sind nicht gemockt.
+Nur Binary-/Audioidentität und Prozesssuche verwenden Testdaten. Manipulierte
+Konfigurationen werden mit neu gebundenen Hashes getestet, damit tatsächlich
+die Konfigurationsprüfung greift; die Ablehnung muss vor Spiel-/Saveänderungen
+erfolgen. Originalsave, importierte Savebytes und Wiederherstellung werden verglichen.
+
+Zusätzlich wurden alle vier Staging-Pakete aus den tatsächlichen lokalen
+Spiel- und Save-Dateien neu erzeugt und durch die vollständige Installer- sowie
+Startvalidierung geprüft. Die echte Spielinstallation wurde dabei nur gelesen.
+Die konkreten Dateien des gemeldeten Fehlversuchs bestehen jetzt ebenfalls
+die korrigierte Installerprüfung. Keine Spielinstanz wurde gestartet.
+Die tatsächliche Zwei-PC-Fahrt und die früheren Laufzeit-Timeouts bleiben offen.
+
+Der veröffentlichte Alpha5.14-Installer reproduziert im neuen Integrationstest
+den exakten gemeldeten Fehler für beide Rollen; alle sechs alten Modus-/Rollen-
+Kombinationen bestehen ihn bereits. Der korrigierte Stand besteht alle acht.
+Zusammen mit den betroffenen Vorbereitungs-, Installer-, Treiber-, Launcher-
+und Updateprüfungen bestanden 204 ausgewählte Tests vor der Paketbildung.
+
 ## Alpha5.14: gezielte Optimierung, echte Flüssigkeit noch offen
 
 `paced_live_v1` ergänzt einen getrennten Modus mit zehn Runden Vorbereitung

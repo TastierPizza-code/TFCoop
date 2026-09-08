@@ -28,7 +28,7 @@ from .engine_mailbox import (ENGINE_STEP_US, EngineAdapter, _decode_json, _share
                              native_fault_detail, parse_native_status)
 from .replica import Replica
 from .runner import host, peer_error_message, write_report
-from .stage_probe import validate_lease_path
+from .stage_probe import validate_lease_path, validate_configuration_semantics
 from .transport import authenticate_client, receive, send
 from .timing_probe import TimingCoordinator, TimingReplica, TIMING_CAPABILITY
 from .stream_probe import StreamCoordinator, StreamReplica, STREAM_CAPABILITY, STREAM_WORLD_RECEIPTS
@@ -222,8 +222,9 @@ def read_setup(directory):
                 raise ValueError("invalid Python manifest path")
             if hashlib.sha256((Path(__file__).parent / relative).read_bytes()).hexdigest() != expected:
                 raise ValueError("prototype Python code changed after staging; prepare a fresh session")
-    value["measurement_profile"] = shared.get("config_semantics", {}).get("profile", TIME_PROFILE)
-    value["measurement_preparation"] = shared.get("config_semantics", {}).get("preparation")
+    semantics = validate_configuration_semantics(shared.get("config_semantics"))
+    value["measurement_profile"] = semantics.get("profile", TIME_PROFILE)
+    value["measurement_preparation"] = semantics.get("preparation")
     return path, value
 
 

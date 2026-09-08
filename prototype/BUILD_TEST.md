@@ -1,4 +1,6 @@
-# Alpha5.14: kurzer Aufbau und Eingaben mit Schrittbestätigungen
+# Alpha5.15: kurzer Aufbau und Eingaben mit Schrittbestätigungen
+
+**Korrektur in Alpha5.15:** Der Abbruch beim Vorbereiten des kurzen Tests ist behoben. Vorbereitung, Installer und Startprüfung verwenden nun denselben Konfigurationsvertrag. Beide Launcher aktualisieren und frisch vorbereiten; keine neuen Saves erforderlich.
 
 Neuer Standard ist **Fahrt und Eingaben · kurzer Aufbau** (`paced_live_v1`).
 Sein eigener Vertrag `short_scene_v1` verwendet die ersten zehn Befehle des

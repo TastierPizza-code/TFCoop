@@ -136,6 +136,7 @@ def self_check(report_path: Path) -> int:
         try:
             from coop import native
             from prototype.strict_sync import stage_probe
+            from prototype.strict_sync import probe_install, game_runner
             from prototype.strict_sync.game_runner import read_inputs
             from prototype.strict_sync import launcher_session
             from prototype import diagnostic_session
@@ -213,6 +214,11 @@ def self_check(report_path: Path) -> int:
                     or paced_schedule()["separate_input_poll"] is not False
                     or paced_schedule()["checkpoint_steps"] != CHECKPOINT_STEPS):
                 raise RuntimeError("packaged short paced-input experiment is incomplete")
+            short_config = stage_probe.configuration_semantics("build_v2", SHORT_BUILD_CONTRACT)
+            if (probe_install.validate_configuration_semantics is not stage_probe.validate_configuration_semantics
+                    or game_runner.validate_configuration_semantics is not stage_probe.validate_configuration_semantics
+                    or probe_install.validate_configuration_semantics(short_config) != short_config):
+                raise RuntimeError("packaged preparation/installation/startup contracts differ")
             scheduled = [command for number in range(BUILD_ROUNDS) for peer in ("a", "b")
                          for command in build_inputs(peer, number)]
             from collections import Counter

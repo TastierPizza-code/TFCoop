@@ -21,7 +21,8 @@ from coop import native
 from coop.launch import process_info
 from coop.session import hash_file
 from .core import decode_message, digest
-from .stage_probe import CONFIG, MOD, PROFILES, REQUIRED_MOD_FILES, _config
+from .stage_probe import (CONFIG, MOD, REQUIRED_MOD_FILES, _config, StageError,
+                          validate_configuration_semantics)
 
 
 STATE_DIR = ".tf2-strict-probe-install"
@@ -271,16 +272,13 @@ def _verify_stage(game: Path, output: Path, session: Path) -> tuple[dict, dict]:
             mod_relative = relative.removeprefix(f"mods/{MOD}/")
             if mod_relative != CONFIG and manifest.get("prototype_files", {}).get("mod/" + mod_relative) != expected:
                 raise ProbeInstallError("Lua payload is not bound to the shared manifest")
-    semantics = manifest.get("config_semantics")
-    expected_semantics = {"enabled": True, "native_gate_required": True}
-    profile = semantics.get("profile") if type(semantics) is dict else None
-    if profile is not None:
-        if type(profile) is not str or profile not in PROFILES:
-            raise ProbeInstallError("Unknown prepared measurement profile")
-        expected_semantics["profile"] = profile
-    if (type(setup.get("native_epoch")) is not int or not 0 < setup["native_epoch"] <= (1 << 53) - 1
-            or semantics != expected_semantics):
-        raise ProbeInstallError("Invalid prepared native epoch or required gate configuration")
+    try:
+        semantics = validate_configuration_semantics(manifest.get("config_semantics"))
+    except StageError as exc:
+        raise ProbeInstallError(str(exc)) from exc
+    profile = semantics.get("profile")
+    if type(setup.get("native_epoch")) is not int or not 0 < setup["native_epoch"] <= (1 << 53) - 1:
+        raise ProbeInstallError("Invalid prepared native epoch")
     if _path(session, "probe_epoch.txt").read_text(encoding="ascii").strip() != str(setup["native_epoch"]):
         raise ProbeInstallError("Native loader epoch does not match the prepared session")
     expected_config = _config(session, setup["native_epoch"], {"initial_bindings": manifest["template_bindings"]}, profile)

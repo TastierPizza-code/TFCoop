@@ -50,6 +50,31 @@ class StageError(ValueError):
     """Preparation refused before producing an activatable setup."""
 
 
+def configuration_semantics(profile=None, preparation=None):
+    """One exact configuration contract for staging, installation and startup."""
+    semantics = {"enabled": True, "native_gate_required": True}
+    if profile is not None:
+        if type(profile) is not str or profile not in PROFILES:
+            raise StageError("Unknown measurement profile.")
+        semantics["profile"] = profile
+    if preparation is not None:
+        from .short_build_profile import SHORT_BUILD_CONTRACT
+        if type(preparation) is not str or profile != "build_v2" or preparation != SHORT_BUILD_CONTRACT:
+            raise StageError("Unknown or incompatible preparation contract.")
+        semantics["preparation"] = preparation
+    return semantics
+
+
+def validate_configuration_semantics(value):
+    if type(value) is not dict:
+        raise StageError("Prepared gate configuration must be an object.")
+    expected = configuration_semantics(value.get("profile"), value.get("preparation"))
+    # Canonical JSON distinguishes true from 1; equality of Python dicts does not.
+    if canonical_json(value) != canonical_json(expected):
+        raise StageError("Invalid or unknown prepared gate configuration fields.")
+    return expected
+
+
 def read_templates(path: Path | None) -> dict:
     """Read explicit existing-save references; never invent asset/model defaults."""
     value = {"initial_bindings": []}
@@ -188,12 +213,7 @@ def stage_probe(*, game_dir: str | Path, save: str | Path, session: str | Path,
     A failure after copying may leave an incomplete new output for inspection;
     probe_setup.json is written last and no existing directory is overwritten.
     """
-    if profile is not None and (type(profile) is not str or profile not in PROFILES):
-        raise StageError("Unknown measurement profile.")
-    if preparation is not None:
-        from .short_build_profile import SHORT_BUILD_CONTRACT
-        if profile != "build_v2" or preparation != SHORT_BUILD_CONTRACT:
-            raise StageError("Unknown or incompatible preparation contract.")
+    semantics = configuration_semantics(profile, preparation)
     game = Path(game_dir).resolve()
     validate_lease_path(game / "TransportFever2.exe")
     destination = _new_directory(output, "Output", game)
@@ -248,13 +268,9 @@ def stage_probe(*, game_dir: str | Path, save: str | Path, session: str | Path,
         "save": save_hashes,
         "prototype_files": code,
         "template_bindings": selected["initial_bindings"],
-        "config_semantics": {"enabled": True, "native_gate_required": True},
+        "config_semantics": semantics,
         "complete_world_verified": False,
     }
-    if profile is not None:
-        manifest["config_semantics"]["profile"] = profile
-    if preparation is not None:
-        manifest["config_semantics"]["preparation"] = preparation
     manifest_digest = digest(manifest)
 
     # All read-only compatibility/schema checks are complete before creation.
