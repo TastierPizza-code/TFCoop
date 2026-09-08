@@ -8,7 +8,10 @@ schlechter als die akzeptierte Referenz und wird nicht als neue Temporeferenz
 übernommen. Evidenz und Grenzen: [Alpha5.13-Auswertung](ALPHA513_EVIDENCE.md).
 Der begrenzte manuelle Bauauftrag und die normale TF2-Eingabe bleiben offen.
 Die [akzeptierte Alpha5.12-Referenz](ACCEPTED_BASELINE.md) bleibt unverändert und
-als `stream_v1` auswählbar. Es wird kein weiteres Tempoexperiment vorgeschaltet.
+als `stream_v1` auswählbar. Auf ausdrücklichen Wunsch vom 8. September wird
+die störende Regression jetzt vor dem nächsten Baupfad gezielt optimiert.
+Alpha5.14 stellt dafür `paced_live_v1` mit kurzem Vorlauf und gemeinsam
+übertragenen Eingabelisten bereit; seine tatsächliche Flüssigkeit ist noch offen.
 
 ## Kurzer Vorlauf für neue Tests
 
@@ -18,9 +21,9 @@ freigeben. Bereits akzeptierte lange Bau-, Pause- und Fahrtabschnitte werden
 nicht vor jedem neuen Versuch vollständig wiederholt. Die vorhandenen
 auswählbaren Tests behalten ihren bisherigen vollständigen Ablauf.
 
-Der abgeschlossene Alpha5.13-Testmodus wird dafür nicht geändert. Die nächste neue
-Testvariante erhält einen eigenen kurzen Vorlauf und eine eindeutige
-Modus-/Protokollidentität. Beide Teilnehmer müssen denselben Ablauf verwenden.
+Der abgeschlossene Alpha5.13-Testmodus wird dafür nicht geändert. Alpha5.14
+erhält den eigenen kurzen Vorlauf `short_scene_v1` und die eindeutige
+Modus-/Protokollidentität `paced_live_v1`. Beide Teilnehmer müssen denselben Ablauf verwenden.
 Die gemeinsame Ausgangswelt, tatsächlich benötigte Objekte, Verbindungen,
 Linienzuweisung und echte Befehlsbestätigungen bleiben Voraussetzungen.
 Eine Bewegungsprüfung wird nur aufgenommen, wenn die neue Probe sie benötigt,
@@ -34,7 +37,7 @@ werden: Der vollständige `BuildProof`, die automatischen Pausebefehle bei
 gebunden. Der kurze Vorlauf benötigt eigene Abschlussbedingungen und meldet
 nur seine tatsächlich geprüfte Bereitschaft. Er wird nicht als bestandener
 vollständiger Bau-/Dauertest bezeichnet. Diese Änderung wird zusammen mit dem
-nächsten neuen Test umgesetzt; in Alpha5.13 ist sie noch nicht enthalten.
+neuen Alpha5.14-Test umgesetzt; in Alpha5.13 ist sie nicht enthalten.
 
 ## Fehlendes Verhalten
 
@@ -125,4 +128,6 @@ Siehe [native Integration](../native/DEFERRED_COMMAND_ADAPTER.md).
 Nach dem dynamischen Eingabeweg folgt daher ein begrenzter normaler Straßenbaupfad
 mit echter Vorschau und zurückgehaltener Ausführung. Weitere Werkzeuge, konkurrierende
 Umbauten sowie Cursor und Blaupausen werden auf diesem gemeinsamen Befehlsweg
-ergänzt. Tempooptimierungen haben bis dahin keine eigene Entwicklungspriorität.
+ergänzt. Nach der jetzt gewünschten gezielten Korrektur des Eingabewegs bleibt
+dies der nächste funktionale Meilenstein. Die akzeptierte Referenz wird dabei
+nicht ersetzt oder nachträglich umbewertet.

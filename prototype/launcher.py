@@ -43,7 +43,7 @@ class App:
         self.game = tk.StringVar(value=settings.get("game_dir", ""))
         self.saves = tk.StringVar(value=settings.get("save_dir", ""))
         self.role = tk.StringVar(value="a")
-        self.test_mode = tk.StringVar(value=workflow.LIVE_MODE)
+        self.test_mode = tk.StringVar(value=workflow.PACED_LIVE_MODE)
         self.host = tk.StringVar(value="")
         self.code = tk.StringVar(value=workflow.new_code())
         self.status = tk.StringVar(value="Beide: TF2 und den bisherigen Koop-Launcher schließen. Dann Pfade prüfen und Test vorbereiten.")
@@ -130,14 +130,14 @@ class App:
         self.diagnostic_export_button = ttk.Button(solo, text="Diagnosebericht als ZIP …", command=self.export_diagnostic)
         self.diagnostic_export_button.pack(anchor="w", pady=8)
         ttk.Label(solo, text="Nur diesen eigenen Bericht zur Auswertung schicken. Anschließend TF2 schließen und unten die bisherige Installation wiederherstellen.", wraplength=850).pack(anchor="w")
-        ttk.Label(build, text=f"Zuerst {workflow.ROUNDS} automatische Aufbaurunden. Danach steuert ihr Pause und Fortsetzen frei mit den gemeinsamen Tasten unten im Launcher. Nur dort umschalten; im Spiel noch nichts selbst bauen. Die Kamera dürft ihr bewegen.", wraplength=850).pack(anchor="w", pady=(0, 9))
+        ttk.Label(build, text=f"Der neue Test bereitet die Szene in {workflow.SHORT_BUILD_ROUNDS} Aufbaurunden vor. Danach könnt ihr die Fahrt beobachten und Pause/Fortsetzen mit den gemeinsamen Tasten unten steuern. Im Spiel noch nichts selbst bauen oder umschalten. Die Kamera dürft ihr bewegen.", wraplength=850).pack(anchor="w", pady=(0, 9))
         modes = ttk.LabelFrame(build, text="Auf beiden PCs denselben Test wählen", padding=8)
         modes.pack(fill="x", pady=(0, 8))
         for value, label in workflow.TEST_MODES.items():
             button = ttk.Radiobutton(modes, text=label, value=value, variable=self.test_mode)
             button.pack(anchor="w")
             self.inputs.append(button)
-        ttk.Label(modes, text="Alpha5.12 bleibt als automatischer Referenztest erhalten, Alpha5.11 als älterer Vergleich. Dort nur zuschauen. Ein Moduswechsel braucht eine neue Vorbereitung.", wraplength=850).pack(anchor="w", pady=(5, 0))
+        ttk.Label(modes, text="Die bisherigen Tests behalten ihre 240 Aufbaurunden. In Alpha5.12/5.11 nur zuschauen; Alpha5.13 hat die bisherigen Eingabetasten. Ein Moduswechsel braucht eine neue Vorbereitung.", wraplength=850).pack(anchor="w", pady=(5, 0))
         form = ttk.LabelFrame(build, text="Auf beiden PCs vorbereiten", padding=12)
         form.pack(fill="x")
         form.columnconfigure(1, weight=1)
@@ -528,17 +528,20 @@ class App:
                 live_phase = ("Eingabephase: angehalten" if status["failure"] or status["stopping"] else
                               "Eingabephase: gemeinsamer Abschluss wird bestätigt" if status.get("finish_requested") or (status.get("live") or {}).get("ending") else
                               "Eingabephase: gemeinsame Tasten sind bereit")
-                self.progress_text.set("Eingabetest abgeschlossen · Bedienproben im Ergebnis prüfen" if status["completed"] and status["test_mode"] == workflow.LIVE_MODE else
+                setup_rounds = workflow.preparation_rounds(status["test_mode"])
+                progress_total = setup_rounds + workflow.TIMING_WINDOWS
+                self.bar["maximum"] = progress_total
+                self.progress_text.set("Eingabetest abgeschlossen · Bedienproben im Ergebnis prüfen" if status["completed"] and status["test_mode"] in workflow.LIVE_MODES else
                                        "Test abgeschlossen · Tempo und Synchronität getrennt ausgewertet" if status["completed"] else
                                        live_phase if in_live else
                                        f"1x-Dauertest: {min(workflow.STREAM_STEPS, stream.get('advanced_steps', 0)) // 5} / 120 Sekunden Spielzeit" if in_stream else
                                        f"1x-/Warteversuch: Abschnitt {min(workflow.TIMING_WINDOWS, timing.get('segment_index', 0) + 1)} / {workflow.TIMING_WINDOWS}" if in_timing else
-                                       f"Aufbau: Runde {status['round']} / {workflow.ROUNDS}")
-                self.bar["value"] = (workflow.PROGRESS_TOTAL if status["completed"] else
-                                     workflow.ROUNDS if in_live else
+                                       f"Aufbau: Runde {status['round']} / {setup_rounds}")
+                self.bar["value"] = (progress_total if status["completed"] else
+                                     setup_rounds if in_live else
                                      workflow.ROUNDS + workflow.STREAM_CHECKPOINTS * min(workflow.STREAM_STEPS, stream.get("advanced_steps", 0)) / workflow.STREAM_STEPS if in_stream else
                                      workflow.ROUNDS + min(workflow.TIMING_WINDOWS, timing.get("segment_index", 0)) if in_timing else
-                                     min(workflow.ROUNDS, status["round"]))
+                                     min(setup_rounds, status["round"]))
                 self.game_button.configure(state="normal" if peer.get("state") == "waiting_game" and not status["stopping"] else "disabled")
                 self._buttons()
             except Exception as exc:

@@ -1,12 +1,39 @@
-# Alpha5.13: Aufbau und frei ausgelöste gemeinsame Pause
+# Alpha5.14: kurzer Aufbau und Eingaben mit Schrittbestätigungen
 
-Alle drei Modi beginnen mit demselben `build_v2`: zwölf automatische Befehle
-und 240 Aufbauschritte. Neuer Standard ist **Pause selbst steuern**
-(`live_input_v1`). **Referenztest aus Alpha5.12** (`stream_v1`) und
-**Vergleichstest aus Alpha5.11** (`timing_v1`) bleiben erhalten. Beide müssen
-denselben Modus wählen und frisch vorbereiten. Die Lobby bindet ihn zusammen
-mit den gemeinsamen Testdateien. Große Karte und sauberes Savepaar bleiben
-gültig. Frische Kopien enthalten Strict Sync Alpha5.13 und Legacy Fahrzeuge.
+Neuer Standard ist **Fahrt und Eingaben · kurzer Aufbau** (`paced_live_v1`).
+Sein eigener Vertrag `short_scene_v1` verwendet die ersten zehn Befehle des
+bisherigen Lua-Bauprofils. Alle zehn tatsächlichen Callback-Ergebnisse und
+zehn gemeinsame Schrittgrenzen werden geprüft. Nach genau einem Fortschrittsschritt
+müssen verbundene Objekte, beide Haltestellen, Linienzuweisung, tatsächlicher
+Kaufabzug und abgefahrener Fahrzeugzustand samt Weltposition vorliegen.
+Andernfalls hält der Versuch vor der ersten Eingabefreigabe an. Der Nachweis
+heißt `short_preparation`; er behauptet weder einen Meter Fahrzeugbewegung
+noch den vollständigen `BuildProof` oder Pause-Ausdauertest.
+
+Eingabelisten werden in den ohnehin nötigen Start-, Fortschritts- und HOLD-Antworten
+versiegelt. Erst beide passenden Antworten erlauben die nächste Fahrtfreigabe.
+Neue Wünsche nach einer Versiegelung bleiben für die nächste Runde vorgesehen.
+Wiederholte identische Antworten werden aus dem Cache beantwortet und lesen die
+Queue nicht erneut. Eine nichtleere Liste verlangt weiterhin frische gemeinsame
+Weltbeobachtungen vor Commit, dieselben Ausführungen und passende Callback-Ergebnisse.
+Auch die abschließende frische Weltprüfung bleibt erhalten. Es gibt keine
+zusätzlichen `live_poll`-Nachrichten im neuen Modus.
+
+Die native Schrittweite bleibt 200 ms, eine Freigabe umfasst zwei Schritte,
+regelmäßige Lua-Weltvergleiche folgen alle 50 Fortschrittsschritte. Der akzeptierte
+Pacer bleibt unverändert. `CoalescedProgress` fasst nur ersetzbare informative
+Launcher-Statusmeldungen im Abstand von 250 ms zusammen. Gemeinsame
+Eingabebestätigungen, Bereitschaft, Abschluss und Fehler werden sofort
+veröffentlicht. Weltjournale und Protokollantworten werden nicht zusammengefasst.
+`launcher_status` misst lokale Kosten der Statusveröffentlichung; es ist weder
+eine Netzlatenz- noch eine FPS-Messung.
+
+Die drei bisherigen Modi `live_input_v1`, `stream_v1` und `timing_v1` behalten
+ihre zwölf Befehle und 240 Aufbauschritte. Beide müssen denselben Modus wählen
+und frisch vorbereiten. Lobby und Manifest binden die neue Vorbereitung
+explizit; ein alter Modus kann den kurzen Vertrag nicht übernehmen.
+Große Karte und sauberes Savepaar bleiben gültig. Frische Kopien enthalten
+Strict Sync Alpha5.14 und Legacy Fahrzeuge.
 Bedienfolge: [ANLEITUNG.md](ANLEITUNG.md).
 
 ## Alpha5.13: dynamische Eingabephase

@@ -25,6 +25,7 @@ from .engine_mailbox import _shared_read
 from .probe_install import install_probe, installation_status, restore_probe
 from .stage_probe import stage_probe
 from .build_profile import BUILD_PROFILE, BUILD_ROUNDS
+from .short_build_profile import SHORT_BUILD_ROUNDS, SHORT_BUILD_CONTRACT
 from .core import digest
 from prototype.release_version import DISPLAY_VERSION
 
@@ -36,8 +37,11 @@ PROGRESS_TOTAL = ROUNDS + TIMING_WINDOWS
 STREAM_MODE = "stream_v1"
 TIMING_MODE = "timing_v1"
 LIVE_MODE = "live_input_v1"
+PACED_LIVE_MODE = "paced_live_v1"
+LIVE_MODES = (LIVE_MODE, PACED_LIVE_MODE)
 TEST_MODES = {
-    LIVE_MODE: "Pause selbst steuern",
+    PACED_LIVE_MODE: "Fahrt und Eingaben · kurzer Aufbau",
+    LIVE_MODE: "Eingabetest aus Alpha5.13 · vollständiger Aufbau",
     STREAM_MODE: "Referenztest aus Alpha5.12",
     TIMING_MODE: "Vergleichstest aus Alpha5.11",
 }
@@ -45,6 +49,12 @@ STREAM_STEPS = 600
 STREAM_CHECKPOINTS = 12
 PROFILE = BUILD_PROFILE
 VERSION = DISPLAY_VERSION
+
+
+def preparation_rounds(test_mode):
+    if test_mode not in TEST_MODES:
+        raise ValueError("Unbekannter Testablauf.")
+    return SHORT_BUILD_ROUNDS if test_mode == PACED_LIVE_MODE else ROUNDS
 
 
 def resources():
@@ -224,7 +234,7 @@ def lobby_manifest(file_manifest, test_mode):
 
 
 def prepare(game_dir, save_dir, role, host, code, *, source_root=None, save=None, runs_root=None,
-            test_mode=LIVE_MODE):
+            test_mode=PACED_LIVE_MODE):
     if test_mode not in TEST_MODES:
         raise ValueError("Bitte einen gültigen Testablauf auswählen.")
     if role not in ("a", "b"):
@@ -242,15 +252,17 @@ def prepare(game_dir, save_dir, role, host, code, *, source_root=None, save=None
     run = (Path(runs_root) if runs_root else local_root() / "runs") / uuid.uuid4().hex
     run.mkdir(parents=True, exist_ok=False)
     try:
+        options = {"preparation": SHORT_BUILD_CONTRACT} if test_mode == PACED_LIVE_MODE else {}
         result = stage_probe(game_dir=game, save=save or baseline_save(), session=run / "session",
-                             output=run / "payload", repository_root=source_root or resources(), profile=PROFILE)
+                             output=run / "payload", repository_root=source_root or resources(), profile=PROFILE,
+                             **options)
         installed = install_probe(game, Path(result["output"]), destination,
                                   session_dir=Path(result["session"]))
         prepared = PreparedRun(str(run), str(game), result["session"], result["output"],
                                installed["imported_save"], installed["backup_path"], role,
                                host, epoch, lobby_manifest(result["manifest_digest"], test_mode), test_mode)
         (run / "session.key").write_bytes(secret)
-        if test_mode == LIVE_MODE:
+        if test_mode in LIVE_MODES:
             from .live_input import create
             create(prepared.live_input_path, epoch, role)
         write_json(run / "run.json", asdict(prepared))
@@ -291,14 +303,14 @@ class SessionController:
 
     def _game_args(self, mode):
         directory = self.run.directory
-        flag = {LIVE_MODE: "--live-probe", STREAM_MODE: "--stream-probe",
+        flag = {PACED_LIVE_MODE: "--paced-live-probe", LIVE_MODE: "--live-probe", STREAM_MODE: "--stream-probe",
                 TIMING_MODE: "--timing-probe"}[self.run.test_mode]
         args = [mode, "--session", self.run.session, "--epoch", self.run.epoch,
                 "--key-file", directory / "session.key", "--report", directory / (mode + "-report.json"),
                 "--progress", directory / (mode + "-progress.json"), "--stop-file", self.run.stop_path,
-                "--rounds", ROUNDS, "--profile", PROFILE, "--timeout", 30,
+                "--rounds", preparation_rounds(self.run.test_mode), "--profile", PROFILE, "--timeout", 30,
                 "--startup-timeout", 600, "--port", PORT, flag]
-        if self.run.test_mode == LIVE_MODE and mode == "peer":
+        if self.run.test_mode in LIVE_MODES and mode == "peer":
             args += ["--live-input-file", self.run.live_input_path]
         return args
 
@@ -307,7 +319,7 @@ class SessionController:
             raise ValueError("Für einen weiteren Versuch bitte eine neue Testsitzung vorbereiten.")
         if game_is_running():
             raise ValueError("Bitte TF2 schließen. Erst verbinden und auf die Startmeldung warten.")
-        if self.run.test_mode == LIVE_MODE:
+        if self.run.test_mode in LIVE_MODES:
             from .live_input import InputWriter
             self._input_writer = InputWriter(self.run.live_input_path, self.run.epoch, self.run.role)
         self.started, self.started_at = True, self.clock()
@@ -348,7 +360,7 @@ class SessionController:
         host = read_json(directory / "host-progress.json") or {}
         # Two peers' 600 native measurements exceed the compact progress limit.
         # Keep progress bounded separately while accepting the fixed test report.
-        report_limit = (16 if self.run.test_mode == LIVE_MODE else 4) * 1024 * 1024
+        report_limit = (16 if self.run.test_mode in LIVE_MODES else 4) * 1024 * 1024
         peer_report = read_json(directory / "peer-report.json", limit=report_limit) or {}
         host_report = read_json(directory / "host-report.json", limit=report_limit) or {}
         completed = bool(peer_report.get("finished"))
@@ -407,7 +419,7 @@ class SessionController:
 
 def live_input_ready(status):
     live = status.get("live") or {}
-    return bool(status.get("test_mode") == LIVE_MODE and status.get("peer_started")
+    return bool(status.get("test_mode") in LIVE_MODES and status.get("peer_started")
                 and status.get("alive") and not status.get("failure") and not status.get("stopping")
                 and not status.get("completed") and not status.get("finish_requested")
                 and live.get("started") and not live.get("completed") and not live.get("ending"))
@@ -437,7 +449,7 @@ def describe_status(status):
     if status["failure"]:
         return "Test angehalten: " + status["failure"]
     if status["completed"]:
-        if status.get("test_mode") == LIVE_MODE:
+        if status.get("test_mode") in LIVE_MODES:
             live = status.get("live_result") or {}
             met = live.get("required_interactions_met")
             coverage = ("Die vorgesehenen Pause-/Fortsetzen-Proben sind erfasst" if met is True else
@@ -489,7 +501,7 @@ def describe_status(status):
                      "Warteprobe und Fahrt" if number <= 9 else "Fahrt nach den Warteproben")
             return f"1x-/Warteversuch {number}/{TIMING_WINDOWS}: {label} · {peer.get('phase_label', '')}"
         phase = peer.get("phase_label") or "Bau- und Fahrzeugwerte vergleichen"
-        return f"{phase} · Runde {peer.get('round', '?')} von {ROUNDS}. Bitte nichts bauen oder umschalten."
+        return f"{phase} · Runde {peer.get('round', '?')} von {preparation_rounds(status['test_mode'])}. Bitte nichts bauen oder umschalten."
     if peer.get("state") == "waiting_peer":
         return "Dein Testspielstand ist geladen. Warte auf den geladenen Spielstand deines Freundes."
     if peer.get("state") == "waiting_game":

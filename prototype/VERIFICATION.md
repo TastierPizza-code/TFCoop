@@ -1,5 +1,48 @@
 # Prüfstand
 
+## Alpha5.14: gezielte Optimierung, echte Flüssigkeit noch offen
+
+`paced_live_v1` ergänzt einen getrennten Modus mit zehn Runden Vorbereitung
+und versiegelten Eingaben in bereits notwendigen Bestätigungen. Die vollständigen
+bisherigen Modi und der native Pacer bleiben erhalten. Der Anlass ist die
+tatsächlich gemessene Regression von ungefähr 0,962x auf ungefähr 0,82x.
+In Alpha5.13 entfielen 4,746 Sekunden auf 118 leere Eingabeabfragen direkt vor
+Fahrtfreigaben. Allerdings traten große ACK-Abstände auch innerhalb von
+Zweierserien auf: Die leere Abfrage ist nicht als alleinige Ursache nachgewiesen.
+
+Die Vorprüfung verwendet ausdrücklich Engine- und Uhrenmodelle und startet
+weder TF2 noch eine Desktopoberfläche. Neue Tests prüfen das Versiegeln in
+Antworten, beide Freigabebedingungen, späte und doppelte Eingaben, fehlende
+oder falsche Siegel, frische Weltprüfungen, tatsächliche modellierte
+Befehlsbestätigungen, lange Pause und die finale beidseitige Grenze.
+Ein Vergleich bei gleicher Folge von 26 Fahrtblöcken entfernt genau 27
+zusätzliche Abfragerunden: 59 Phasenaktionen werden 32, alle anderen bleiben
+gleich. Das ist ein Protokollvergleich, kein gemessenes TF2-Tempo.
+
+Der neue Bereitschaftsnachweis verlangt zehn Callback-Ergebnisse, Objekte,
+Verbindungen, tatsächlichen Kaufabzug, Linienzuweisung und abgefahrenen
+Fahrzeugzustand bei Frame 10. Die letzte Aufbauantwort wird vor diesem
+Nachweis nicht versandt. Der Bericht weist ausdrücklich `full_build_proof=false`
+und `vehicle_displacement_verified=false` aus. Status-Coalescing lässt
+Bestätigungen und Fehler sofort durch und protokolliert seine lokalen Kosten.
+TCP-Tests mit echten Dateien und modellierter Engine prüfen auch den Übergang
+von Vorbereitung zu Eingaben sowie Stopps bei fehlender Bereitschaft,
+fehlender nativer Bestätigung und divergierender Weltbeobachtung.
+
+**Der tatsächliche Zwei-PC-Lauf mit Alpha5.14 steht aus.** Es gibt noch keinen
+Beleg für wieder erreichte 0,962x oder weniger sichtbare Zuckler. Die vorherigen
+Startprobleme werden ebenfalls nicht als behoben behauptet. Freie Bauwerkzeuge,
+native UI-Pause und vollständige Weltzustände sind nicht Teil dieser Freigabe.
+
+Vor Veröffentlichung bestanden 362 ausgewählte Prüfungen: 190 für Launcher,
+Dateiqueue, Vorbereitung, Installation und Updates; 108 für neue und erhaltene
+Protokolle sowie Statuszusammenfassung; 64 für kurzen Bereitschaftsnachweis,
+TCP-Treiber und erhaltene Bau-/Fahrt-/Eingabeabläufe. Die Referenzmodule
+`stream_engine`, `stream_probe`, `timing_probe`, `live_probe`, `live_input`,
+`engine_mailbox`, `build_profile`, `core` und `replica` sowie die strikte Lua-Engine
+wurden bytegleich zum vorherigen veröffentlichten Quellstand geprüft.
+Das gesicherte Alpha5.12-Archiv stimmt weiter mit seiner ursprünglichen SHA256 überein.
+
 ## Alpha5.13: tatsächlicher Zwei-PC-Eingabetest bestanden, Tempo schlechter
 
 Am 8. September 2026 wurden beide Original-ZIPs geprüft. Ihre Weltjournale

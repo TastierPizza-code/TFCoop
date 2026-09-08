@@ -127,6 +127,25 @@ class StageTests(unittest.TestCase):
         with self.assertRaisesRegex(stage.StageError, "Unknown"):
             self.prepare("unknown", profile="invented")
 
+    def test_short_preparation_is_shared_manifest_bound_and_opt_in(self):
+        for name in stage.REQUIRED_BUILD_FILES:
+            file = self.root / "prototype/mod" / stage.MOD / name
+            file.parent.mkdir(parents=True, exist_ok=True)
+            file.write_text("-- build fixture\nreturn {}\n")
+        old = self.prepare("old", profile="build_v2")
+        a = self.prepare("short-a", profile="build_v2", preparation="short_scene_v1", native_epoch=1)
+        b = self.prepare("short-b", profile="build_v2", preparation="short_scene_v1", native_epoch=2)
+        self.assertEqual(a["manifest_digest"], b["manifest_digest"])
+        self.assertNotEqual(old["manifest_digest"], a["manifest_digest"])
+        for result, expected in ((old, None), (a, "short_scene_v1")):
+            manifest = json.loads((Path(result["session"]) / "probe_manifest.json").read_text())
+            self.assertEqual(manifest["config_semantics"].get("preparation"), expected)
+        for name, kwargs in (("bad", {"profile": "build_v2", "preparation": "unknown"}),
+                             ("wrong-profile", {"profile": "time_v1", "preparation": "short_scene_v1"})):
+            with self.assertRaisesRegex(stage.StageError, "preparation contract"):
+                self.prepare(name, **kwargs)
+            self.assertFalse((self.base / (name + "-session")).exists())
+
     def test_build_profile_cannot_mix_existing_template_bindings(self):
         template = self.template([{"logical_id": "seed:depot", "kind": "depot", "entity": 5}])
         with self.assertRaisesRegex(stage.StageError, "cannot be mixed"):

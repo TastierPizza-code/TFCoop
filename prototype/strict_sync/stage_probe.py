@@ -35,7 +35,8 @@ REQUIRED_MOD_FILES = {
 }
 REQUIRED_PYTHON = {"core.py", "replica.py", "transport.py", "runner.py",
                    "engine_mailbox.py", "game_runner.py", "stage_probe.py", "build_profile.py",
-                   "timing_probe.py", "stream_probe.py", "stream_engine.py", "live_probe.py", "live_input.py"}
+                   "timing_probe.py", "stream_probe.py", "stream_engine.py", "live_probe.py", "live_input.py",
+                   "short_build_profile.py", "paced_live_probe.py", "coalesced_progress.py"}
 PROFILES = {"time_v1", "build_v2"}
 REQUIRED_BUILD_FILES = {"res/scripts/tf2_strict_probe/build_engine.lua",
                         "res/scripts/tf2_strict_probe/build_assets.lua",
@@ -179,7 +180,7 @@ def _write_json(path: Path, value: dict) -> None:
 def stage_probe(*, game_dir: str | Path, save: str | Path, session: str | Path,
                 output: str | Path, templates: str | Path | None = None,
                 native_epoch: int | None = None, repository_root: Path = ROOT,
-                profile: str | None = None) -> dict:
+                profile: str | None = None, preparation: str | None = None) -> dict:
     """Create new staging/session artifacts only; no game process operation occurs.
 
     ``native_epoch`` and ``repository_root`` support reproducible preparation and
@@ -189,6 +190,10 @@ def stage_probe(*, game_dir: str | Path, save: str | Path, session: str | Path,
     """
     if profile is not None and (type(profile) is not str or profile not in PROFILES):
         raise StageError("Unknown measurement profile.")
+    if preparation is not None:
+        from .short_build_profile import SHORT_BUILD_CONTRACT
+        if profile != "build_v2" or preparation != SHORT_BUILD_CONTRACT:
+            raise StageError("Unknown or incompatible preparation contract.")
     game = Path(game_dir).resolve()
     validate_lease_path(game / "TransportFever2.exe")
     destination = _new_directory(output, "Output", game)
@@ -248,6 +253,8 @@ def stage_probe(*, game_dir: str | Path, save: str | Path, session: str | Path,
     }
     if profile is not None:
         manifest["config_semantics"]["profile"] = profile
+    if preparation is not None:
+        manifest["config_semantics"]["preparation"] = preparation
     manifest_digest = digest(manifest)
 
     # All read-only compatibility/schema checks are complete before creation.

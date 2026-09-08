@@ -146,6 +146,10 @@ def self_check(report_path: Path) -> int:
             from prototype.strict_sync.stream_probe import STREAM_CAPABILITY, CHUNK_STEPS, CHECKPOINT_STEPS, TOTAL_STEPS
             from prototype.strict_sync.stream_engine import StreamEngine
             from prototype.strict_sync.live_probe import LIVE_CAPABILITY, LiveCoordinator, LiveReplica
+            from prototype.strict_sync.paced_live_probe import (PACED_LIVE_CAPABILITY,
+                PacedLiveCoordinator, PacedLiveReplica, schedule as paced_schedule)
+            from prototype.strict_sync.short_build_profile import SHORT_BUILD_ROUNDS, SHORT_BUILD_CONTRACT
+            from prototype.strict_sync.coalesced_progress import CoalescedProgress
             from prototype.strict_sync.live_input import InputReader, InputWriter, MAX_REQUESTS, MAX_BATCH
             resources, portable = resource_root(), portable_root()
             physical = resources / "prototype/strict_sync"
@@ -200,6 +204,15 @@ def self_check(report_path: Path) -> int:
                     or not callable(InputReader.take) or not callable(InputWriter.submit)
                     or MAX_REQUESTS != 128 or MAX_BATCH != 8):
                 raise RuntimeError("packaged live input experiment is incomplete")
+            if (PACED_LIVE_CAPABILITY not in measurement_capabilities(SimpleNamespace(paced_live_probe=True))
+                    or launcher_session.PACED_LIVE_MODE not in launcher_session.TEST_MODES
+                    or launcher_session.preparation_rounds(launcher_session.PACED_LIVE_MODE) != SHORT_BUILD_ROUNDS
+                    or SHORT_BUILD_ROUNDS != 10 or SHORT_BUILD_CONTRACT != "short_scene_v1"
+                    or not callable(PacedLiveCoordinator.live_report) or not callable(PacedLiveReplica.live_report)
+                    or not callable(CoalescedProgress.metrics)
+                    or paced_schedule()["separate_input_poll"] is not False
+                    or paced_schedule()["checkpoint_steps"] != CHECKPOINT_STEPS):
+                raise RuntimeError("packaged short paced-input experiment is incomplete")
             scheduled = [command for number in range(BUILD_ROUNDS) for peer in ("a", "b")
                          for command in build_inputs(peer, number)]
             from collections import Counter
@@ -249,6 +262,13 @@ def self_check(report_path: Path) -> int:
                                         "checkpoint_steps": CHECKPOINT_STEPS, "total_steps": TOTAL_STEPS,
                                         "comparison_mode_available": True,
                                         "actual_tf2_runtime_verified": False, "visual_smoothness_verified": False}
+            result["paced_live_profile"] = {"resources_checked": True, "capability": PACED_LIVE_CAPABILITY,
+                                            "preparation_contract": SHORT_BUILD_CONTRACT,
+                                            "preparation_rounds": SHORT_BUILD_ROUNDS,
+                                            "schedule": paced_schedule(),
+                                            "full_build_proof": False,
+                                            "actual_tf2_runtime_verified": False,
+                                            "visual_smoothness_verified": False}
             result["solo_diagnostic"] = {"resources_checked": True, "actual_tf2_runtime_verified": False,
                                           "world_commands": False, "requires_peer": False}
             result["native"] = _passive_native_check(resources / "prototype/native/out/tf2_step_probe.dll")

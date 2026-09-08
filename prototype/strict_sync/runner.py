@@ -214,7 +214,8 @@ async def host(args, secret, *, expected_manifest=None, capabilities=MODEL_CAPAB
                                    "stream": coordinator.stream_report() if hasattr(coordinator, "stream_report") else None,
                                    "live": coordinator.live_report() if hasattr(coordinator, "live_report") else None,
                                    "coordinated_completed": not coordinator.halted and done.is_set(),
-                                   "completion_scope": "both_engine_receipts" if not coordinator.halted and done.is_set() else None})
+                                   "completion_scope": "both_engine_receipts" if not coordinator.halted and done.is_set() else None,
+                                   **({"launcher_status": progress.metrics()} if hasattr(progress, "metrics") else {})})
     return 0 if not coordinator.halted else 2
 
 

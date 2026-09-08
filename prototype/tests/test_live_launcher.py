@@ -34,7 +34,7 @@ class LiveLauncherTests(unittest.TestCase):
         live.update(changes)
         workflow.write_json(self.run_dir / "peer-progress.json", {"state": "running", "round": 240, "live": live})
 
-    def test_new_preparation_defaults_to_fresh_local_queue(self):
+    def test_reference_preparation_creates_fresh_local_queue(self):
         saves = self.root / "saves"
         saves.mkdir()
         with patch.object(workflow, "installation_status", return_value={"installed": False}), \
@@ -43,7 +43,8 @@ class LiveLauncherTests(unittest.TestCase):
              patch.object(workflow, "install_probe", return_value={"imported_save": str(saves / "fresh.sav"),
                  "backup_path": str(self.root / "backup")}):
             prepared = workflow.prepare(self.root, saves, "b", "127.0.0.1", workflow.new_code(),
-                source_root=self.root, save=self.root / "base.sav", runs_root=self.root / "runs")
+                source_root=self.root, save=self.root / "base.sav", runs_root=self.root / "runs",
+                test_mode=workflow.LIVE_MODE)
         self.assertEqual(prepared.test_mode, workflow.LIVE_MODE)
         self.assertEqual(InputReader(prepared.live_input_path, prepared.epoch, "b").take(), [])
         self.assertEqual(json.loads((prepared.directory / "run.json").read_text())["test_mode"], workflow.LIVE_MODE)
@@ -141,8 +142,8 @@ class LiveLauncherTests(unittest.TestCase):
             "padding": "x" * (4 * 1024 * 1024), "live": {"required_interactions_met": True}})
         self.assertTrue(controller.poll()["completed"])
 
-    def test_mode_identity_keeps_all_three_paths_distinct(self):
-        self.assertEqual(len({workflow.lobby_manifest("e" * 64, mode) for mode in workflow.TEST_MODES}), 3)
+    def test_mode_identity_keeps_all_four_paths_distinct(self):
+        self.assertEqual(len({workflow.lobby_manifest("e" * 64, mode) for mode in workflow.TEST_MODES}), 4)
 
     def test_real_headless_button_handler_sends_request_and_disables_after_end(self):
         from prototype.tests.test_update_startup import headless_app
