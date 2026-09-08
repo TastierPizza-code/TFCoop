@@ -5,6 +5,7 @@ local assets=require 'tf2_strict_probe/guided_assets'
 local M={}
 function M.new(json,E,H)
   local G={completed=0,vehicle='',line='',removed={}}
+  local vehicle_names={}
   local need,read,field,int,arr=H.need,H.read,H.field,H.int,H.arr
   local function same(a,b)return json.encode(a)==json.encode(b)end
   local function fail(message)error('guided suite: '..message,0)end
@@ -17,8 +18,59 @@ function M.new(json,E,H)
   end
   local function observe_world()
     local snapshot=E.snapshot()
-    expect(#snapshot.coverage.missing==0,'tracked observation unavailable')
+    if #snapshot.coverage.missing>0 then
+      -- Preserve the actual guard cause for the existing halted-status path.
+      -- Only diagnostics already produced by observation are forwarded; name
+      -- guards never interpolate the actual vehicle text. Bound the result,
+      -- remove pointer addresses and keep printable ASCII for safe truncation.
+      local parts,total={},0
+      for _,reason in ipairs(snapshot.coverage.missing)do
+        if total>=768 then break end
+        local text=type(reason)=='string'and reason:sub(1,768)or 'invalid observation failure'
+        text=text:gsub('0[xX]%x+','[address]'):gsub('[%z\1-\31\127-\255]','?')
+        text=text:sub(1,768-total);parts[#parts+1]=text;total=total+#text+2
+      end
+      fail('tracked observation unavailable: '..table.concat(parts,'; '):sub(1,768))
+    end
     return snapshot
+  end
+  local function actual_vehicle_name(key,id)
+    expect(type(key)=='string'and H.localid(key)==id,'vehicle name binding changed')
+    local name=read(H.component(id,'NAME'),'name',key..'.NAME')
+    expect(type(name)=='string','vehicle NAME.name is not text')
+    return name
+  end
+  local function vehicle_name_witness(key,id)
+    local witness=vehicle_names[key]
+    expect(witness~=nil and witness.entity==id,'vehicle name witness absent or stale')
+    return witness
+  end
+  function G.register_vehicle_name(key,id)
+    -- A newly created vehicle has a localized automatic display name. Capture
+    -- it only at its successful creation callback, never on a later snapshot:
+    -- otherwise an unexpected rename could become a silently accepted default.
+    expect(vehicle_names[key]==nil,'vehicle name witness already registered')
+    vehicle_names[key]={entity=id,actual=actual_vehicle_name(key,id),mode='automatic'}
+  end
+  function G.observe_vehicle_name(key,id)
+    local witness=vehicle_name_witness(key,id)
+    expect(actual_vehicle_name(key,id)==witness.actual,'vehicle name changed outside its approved rename')
+    if witness.mode=='automatic'then return {mode='automatic'}end
+    expect(witness.mode=='explicit','invalid vehicle name witness mode')
+    return {mode='explicit',value=witness.actual}
+  end
+  local function confirm_vehicle_rename(key,id,expected)
+    local witness=vehicle_name_witness(key,id)
+    local actual=actual_vehicle_name(key,id)
+    expect(type(expected)=='string'and actual==expected,'name readback differs')
+    -- This transition is called only after the actual successful setName
+    -- callback. All future observations still check the real component text.
+    witness.actual=actual;witness.mode='explicit'
+  end
+  local function forget_vehicle_name(key,id)
+    vehicle_name_witness(key,id)
+    expect(E.bindings[key]==nil,'vehicle name witness removed before entity binding')
+    vehicle_names[key]=nil
   end
   local function request(c,key)
     expect(type(c)=='table'and c.op=='GUIDED_ACTION','invalid action')
@@ -92,7 +144,7 @@ function M.new(json,E,H)
         end
       end end
     end
-    snapshot.probe.guided_suite={contract=assets.contract,
+    snapshot.probe.guided_suite={contract=assets.contract,vehicle_name_contract='observed_vehicle_name_v1',
       vehicle=G.vehicle,line=G.line,capabilities=plain(need(G.capabilities,'guided capabilities absent'))}
   end
   local function state_for(snapshot,key)
@@ -261,7 +313,8 @@ function M.new(json,E,H)
     elseif action~='BUY_BUS'and action~='SELL_BUS'then
       result.observed=plain(object(after,target))
       local actual=result.observed
-      if action=='RENAME_LINE'or action=='RENAME_BUS'then expect(actual.name==plan.expected.name,'name readback differs')
+      if action=='RENAME_LINE'then expect(actual.name==plan.expected.name,'name readback differs')
+      elseif action=='RENAME_BUS'then expect(same(actual.name,{mode='explicit',value=plan.expected.name}),'name readback differs')
       elseif action=='COLOR_LINE'then expect(same(actual.color,plan.expected.color),'line color readback differs')
       elseif action=='MAINTENANCE'then expect(actual.config.vehicles[1].target_maintenance=='1','maintenance readback differs')
       elseif action=='ASSIGN_BUS'then
@@ -307,11 +360,12 @@ function M.new(json,E,H)
     if success~=true then return {success=false,result={error='engine_rejected',op='GUIDED_ACTION',step=plan.command.step}}end
     if plan.action=='BUY_BUS'then
       local id=actual_entity(result);H.component(id,'TRANSPORT_VEHICLE')
-      H.bind(plan.key,'vehicle',id);G.vehicle=plan.key;G.motion=nil
+      H.bind(plan.key,'vehicle',id);G.register_vehicle_name(plan.key,id);G.vehicle=plan.key;G.motion=nil
     elseif plan.action=='CREATE_LINE'then
       local id=actual_entity(result);H.component(id,'LINE')
       H.bind(plan.key,'line',id);G.line=plan.key
-    elseif plan.action=='SELL_BUS'then remove_binding(plan);G.vehicle=''
+    elseif plan.action=='RENAME_BUS'then confirm_vehicle_rename(G.vehicle,H.localid(G.vehicle),plan.expected.name)
+    elseif plan.action=='SELL_BUS'then remove_binding(plan);forget_vehicle_name(plan.removed_key,plan.removed_id);G.vehicle=''
     elseif plan.action=='DELETE_LINE'then remove_binding(plan);G.line=''end
     return finish(plan,'callback')
   end

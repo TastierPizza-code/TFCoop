@@ -1,6 +1,6 @@
 # Prüfstand
 
-## Alpha5.18: geführter Straßenfahrzeug-/Linienversuch vorbereitet
+## Alpha5.19: geführter Straßenfahrzeug-/Linienversuch vorbereitet
 
 Der getrennte Modus `guided_suite_v1` führt durch 26 feste Host-/Freund-Aufträge.
 Die Testspezifikation, Rolle und aktueller Schritt werden gemeinsam geprüft.

@@ -16,6 +16,9 @@ from .guided_input import validate_command, validate_preview, validate_action_re
 from .stream_engine import StreamEngine
 
 
+VEHICLE_NAME_CONTRACT = "observed_vehicle_name_v1"
+
+
 def _need(condition, detail):
     if not condition:
         raise MailboxError("guided engine: " + detail)
@@ -43,10 +46,27 @@ class GuidedEngineAdapter(EngineAdapter):
         _need(type(value) is dict and value.get("contract") == CONTRACT
               and type(value.get("vehicle")) is str and type(value.get("line")) is str,
               "loaded Lua lacks the guided suite identity contract")
+        _need(value.get("vehicle_name_contract") == VEHICLE_NAME_CONTRACT,
+              "loaded Lua lacks guarded semantic vehicle names")
         caps = value.get("capabilities")
         _need(type(caps) is dict and caps.get("ready") is True and caps.get("missing") == [],
               "guided capability preflight did not finish successfully")
+        for item in snapshot.get("objects", []):
+            if item.get("kind") != "vehicle":
+                continue
+            name = item.get("state", {}).get("name")
+            _need(type(name) is dict and
+                  ((set(name) == {"mode"} and name["mode"] == "automatic")
+                   or (set(name) == {"mode", "value"} and name["mode"] == "explicit"
+                       and type(name["value"]) is str)),
+                  "tracked vehicle lacks a typed semantic name: " + item["logical_id"])
         return value
+
+    def _accept_snapshot(self, status):
+        super()._accept_snapshot(status)
+        # The preparation vehicle is created before the guided input phase.
+        # Validate its contract on every observed boundary as well.
+        self._registry(self._snapshot)
 
     def _key(self, command, key):
         validate_command(command)
@@ -120,7 +140,7 @@ class GuidedEngineAdapter(EngineAdapter):
             result = {"success": True, "result": copy.deepcopy(receipt.get("result")),
                       "state_digest": self.state_digest}
             validate_action_receipt(result, command, command_key, preview, before, _world(self))
-            self._check_observation(command, result["result"]["effect"], before_snapshot, self.snapshot())
+            self._check_observation(command, result["result"]["effect"], before_snapshot, self.snapshot(), preview)
             self._last_seq[origin] = number
             self._last_apply[command_key] = (command_raw, copy.deepcopy(result))
             self._guided_applied[command_key] = (command_raw, preview_raw, copy.deepcopy(result))
@@ -131,7 +151,7 @@ class GuidedEngineAdapter(EngineAdapter):
         finally:
             self._mutex.release()
 
-    def _check_observation(self, command, effect, before, after):
+    def _check_observation(self, command, effect, before, after, preview):
         step = get_step(command["step"])
         old_registry, registry = self._registry(before), self._registry(after)
         _need(before["company"] == {"balance": effect["balance_before"], "loan": effect["loan_before"]}
@@ -156,6 +176,7 @@ class GuidedEngineAdapter(EngineAdapter):
             _need(before == after, "read-only readiness completion changed tracked world")
         if action == "BUY_BUS":
             _need(effect["created"] == [registry["vehicle"]] and new[target]["kind"] == "vehicle"
+                  and observed["name"] == {"mode": "automatic"}
                   and after["company"]["balance"] < before["company"]["balance"],
                   "purchase lacks a new actual vehicle and debit")
         elif action == "CREATE_LINE":
@@ -163,6 +184,12 @@ class GuidedEngineAdapter(EngineAdapter):
                   and observed["stops"] == [] and observed["vehicles"] == [], "new empty line differs")
         elif action not in ("SELL_BUS",):
             _need(before["company"] == after["company"], "no-cost action changed company")
+        if action == "RENAME_BUS":
+            expected = preview.get("observation", {}).get("expected", {}).get("name")
+            _need(type(expected) is str and target == old_registry["vehicle"] == registry["vehicle"]
+                  and old[target]["state"]["name"] == {"mode": "automatic"}
+                  and observed["name"] == {"mode": "explicit", "value": expected},
+                  "explicit vehicle rename differs from the approved name or generation")
 
     @staticmethod
     def _check_changed_fields(action, old_registry, registry, old, new):

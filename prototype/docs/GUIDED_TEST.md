@@ -1,4 +1,4 @@
-# Alpha5.18: gemeinsamer Testbegleiter
+# Alpha5.19: gemeinsamer Testbegleiter
 
 `guided_suite_v1` ist ein eigener Test mit festen Aufträgen über den Launcher.
 Die Spieler entscheiden durch ihre Aktionstasten, wann der aktuelle Auftrag
@@ -57,6 +57,28 @@ Ausgangssave, ältere frische Kopien und Berichte bleiben erhalten. IP und priva
 Verbindungsschlüssel werden weiterhin lokal gespeichert; jede Sitzung ist frisch.
 
 ## Grenzen des Nachweises
+
+Der tatsächliche Alpha5.18-Versuch erreichte den automatischen Fahrzeugkauf.
+Die ersten 13 Journalzeilen und die Kauf-Rückmeldungen stimmten überein; danach
+war ausschließlich der automatisch übersetzte Fahrzeugname verschieden.
+Diese Stelle war keine Abweichung der erfassten Fahrzeugsimulation oder Kosten.
+Der geführte manuelle Durchlauf hatte noch nicht begonnen.
+
+Der Beobachtungsvertrag `observed_vehicle_name_v1` erfasst automatische
+Fahrzeugnamen deshalb als `{mode: automatic}`. Der tatsächliche lokale Text wird
+nur beim erfolgreichen Erzeugungs-Callback an die konkrete Objektidentität
+gebunden und bei jedem weiteren Lesen unverändert verlangt. Snapshot und
+Vorschau übernehmen keine neuen Namen als stillschweigenden Ausgangswert.
+Nach einem freigegebenen Umbenennungsauftrag muss der tatsächliche Name exakt
+dem angeforderten Text entsprechen. Erst dann wird er als
+`{mode: explicit, value: tatsächlicher Text}` gemeinsam verglichen. Beide
+Fahrzeuge des Tests verwenden diesen Vertrag; Namen von Linien und Bauwerken
+werden weiterhin als ausdrücklich vorgegebener Text verglichen.
+
+Automatisch übersetzte Anzeigetexte gehören damit nicht zur sprachübergreifenden
+Textgleichheit. Ungeplante lokale Namensänderungen werden weiterhin erkannt.
+Das ist keine pauschale Freigabe abweichender Benennungen oder zusätzlicher
+Spielwerkzeuge. Die gesamte Schrittfolge muss weiterhin auf zwei PCs bestehen.
 
 Diese Version bereitet den tatsächlichen Zwei-PC-Versuch vor. Headless-Prüfungen
 testen Protokoll, Integrationsgrenzen und Adapter mit ausdrücklich künstlicher

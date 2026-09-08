@@ -1,4 +1,4 @@
-# TFCoop · Alpha5.18-Testbegleiter
+# TFCoop · Alpha5.19-Testbegleiter
 
 Ein geführter gemeinsamer Fahrzeug- und Linientest. Der Launcher zeigt immer nur den aktuellen Auftrag für Host oder Freund.
 
@@ -8,7 +8,7 @@ Ein geführter gemeinsamer Fahrzeug- und Linientest. Der Launcher zeigt immer nu
 2. Die eigene Rolle wählen: **Host** oder **Freund**. Bei Hamachi tragen beide dieselbe **Hamachi-IPv4 des Hosts** als Host-Adresse ein, auch der Freund. Die Host-Adresse wird im Hauptfenster angezeigt und lässt sich unter den Einstellungen ändern. Verbindung und saubere große Ausgangskarte bleiben gespeichert.
 3. **Test vorbereiten** drücken. Eine frühere eigene Testinstallation wird geprüft zurückgesetzt. Jeder erhält eine frische Testsave-Kopie.
 4. **Verbinden** drücken. Sobald beide bereit sind, über den angezeigten Knopf TF2 starten.
-5. Im Spiel genau den frischen Spielstand laden, dessen Name im Launcher steht. Die Namen dürfen auf beiden PCs verschieden sein; die zugrunde liegenden Dateien werden verglichen. Strict Sync Alpha5.18 und Legacy Fahrzeuge gehören zur sauberen Basis.
+5. Im Spiel genau den frischen Spielstand laden, dessen Name im Launcher steht. Die Namen dürfen auf beiden PCs verschieden sein; die zugrunde liegenden Dateien werden verglichen. Strict Sync Alpha5.19 und Legacy Fahrzeuge gehören zur sauberen Basis.
 
 ## Der geführte Test
 

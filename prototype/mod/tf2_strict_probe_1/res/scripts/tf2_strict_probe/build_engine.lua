@@ -908,6 +908,7 @@ function M.new(json,config)
         return {success=true,result=outcome,result_entity=id}
       end
       bind(plan.key,plan.kind,id)
+      if guided and plan.kind=='vehicle'then guided.register_vehicle_name(plan.key,id)end
       if plan.kind=='depot'then
         local children=arr(component(id,'CONSTRUCTION').depots,1);if #children~=1 then error('depot child count',0)end
         component(children[1],'VEHICLE_DEPOT');bind(plan.key..':depot','depot_child',children[1],children[1]==id and plan.key or nil);E.scene.depot=plan.key
@@ -1034,8 +1035,7 @@ function M.new(json,config)
           user_stopped=boolean(read(v,'userStopped',p),p..'.userStopped'),no_path=boolean(read(v,'noPath',p),p..'.noPath'),
           stop_index=optional_numeric(v,'stopIndex',p,true,line_ref~=''),carrier=int(read(v,'carrier',p),nil,nil,p..'.carrier')}
         if guided_mode then
-          out.name=need(read(component(id,'NAME'),'name',key..'.NAME'),'guided vehicle NAME.name absent')
-          if type(out.name)~='string'then error('guided vehicle NAME.name is not text',0)end
+          out.name=guided.observe_vehicle_name(key,id)
         end
         local vehicle_probe={logical_id=key,line=out.line,in_depot=parked,state=out.state,no_path=out.no_path}
         if not guided_mode or key==E.scene.vehicle then probe.vehicle=vehicle_probe end

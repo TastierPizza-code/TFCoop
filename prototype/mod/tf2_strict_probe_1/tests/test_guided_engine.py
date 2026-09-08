@@ -49,10 +49,13 @@ class Harness:
         return json.loads(self.j.encode(self.e.snapshot()))
 
     def prelude(self):
+        observed = []
         for key, command in PRELUDE:
             p = self.e.plan(self.table(command), key, round(self.lua.globals().now * 1e6))
             self.e.finish(p, self.lua.globals().apply_command(p.native), True)
+            observed.append(self.snapshot())
         self.lua.globals().advance()
+        return observed
 
     def apply(self, step):
         actor = step['actor']
@@ -126,8 +129,12 @@ class GuidedLuaTests(unittest.TestCase):
         self.assertEqual(list(asset.roles.values()), [s['actor'] for s in STEPS])
 
     def test_full_lifecycle_two_different_native_id_ranges(self):
-        a, b = Harness(), Harness(10000)
-        a.prelude(); b.prelude()
+        a = Harness(setup="guided_fixture_vehicle_name_prefix='Strassenfahrzeug'")
+        b = Harness(10000, setup="guided_fixture_vehicle_name_prefix='Road vehicle'")
+        self.assertEqual(a.prelude(), b.prelude())
+        self.assertEqual(a.lua.globals().world[a.e.bindings['b:3'].entity].NAME.name, 'Strassenfahrzeug 1')
+        self.assertEqual(b.lua.globals().world[b.e.bindings['b:3'].entity].NAME.name, 'Road vehicle 1')
+        self.assertEqual(a.snapshot()['probe']['guided_suite']['vehicle_name_contract'], 'observed_vehicle_name_v1')
         initial_keys = {obj['logical_id'] for obj in a.snapshot()['objects']}
         self.assertEqual(a.snapshot(), b.snapshot())
         for step in STEPS:
@@ -140,6 +147,19 @@ class GuidedLuaTests(unittest.TestCase):
             self.assertIsNotNone(result_a, step['action'])
             self.assertEqual(result_a, result_b)
             self.assertEqual(a.snapshot(), b.snapshot())
+            if step['action'] == 'BUY_BUS':
+                for h, raw in ((a, 'Strassenfahrzeug 2'), (b, 'Road vehicle 2')):
+                    key = h.snapshot()['probe']['guided_suite']['vehicle']
+                    self.assertEqual(h.lua.globals().world[h.e.bindings[key].entity].NAME.name, raw)
+                    state = next(x['state'] for x in h.snapshot()['objects'] if x['logical_id'] == key)
+                    self.assertEqual(state['name'], {'mode': 'automatic'})
+            elif step['action'] == 'RENAME_BUS':
+                for h in (a, b):
+                    key = h.snapshot()['probe']['guided_suite']['vehicle']
+                    actual = h.lua.globals().world[h.e.bindings[key].entity].NAME.name
+                    self.assertEqual(actual, 'Host und Freund - Bus')
+                    state = next(x['state'] for x in h.snapshot()['objects'] if x['logical_id'] == key)
+                    self.assertEqual(state['name'], {'mode': 'explicit', 'value': actual})
             if step['read_only']:
                 self.assertEqual(before, a.snapshot())
                 self.assertEqual(result_a['result']['effect']['kind'], 'observation')
@@ -149,6 +169,95 @@ class GuidedLuaTests(unittest.TestCase):
         self.assertEqual(final['probe']['guided_suite']['vehicle'], '')
         self.assertEqual(final['probe']['guided_suite']['line'], '')
         self.assertEqual({obj['logical_id'] for obj in final['objects']}, initial_keys)
+
+    def test_automatic_vehicle_names_are_locally_guarded_without_lazy_reenrollment(self):
+        for guided_bus in (False, True):
+            with self.subTest(guided_bus=guided_bus):
+                h = Harness(); h.prelude()
+                if guided_bus:
+                    for step in STEPS[:2]: h.apply(step)
+                    key = h.snapshot()['probe']['guided_suite']['vehicle']
+                else:
+                    key = 'b:3'
+                h.lua.globals().world[h.e.bindings[key].entity].NAME.name = 'Unexpected edit'
+                sends = h.lua.globals().sent
+                for _ in range(2):
+                    snap = h.snapshot()
+                    self.assertTrue(any('vehicle name changed outside its approved rename' in error
+                                        for error in snap['coverage']['missing']))
+                with self.assertRaisesRegex(Exception, 'tracked observation unavailable: .*vehicle name changed outside its approved rename'):
+                    h.apply(STEPS[2] if guided_bus else STEPS[0])
+                self.assertEqual(h.lua.globals().sent, sends)
+
+    def test_explicit_vehicle_name_is_still_guarded(self):
+        h = Harness(); h.prelude()
+        rename = next(s for s in STEPS if s['action'] == 'RENAME_BUS')
+        for step in STEPS[:rename['step']]: h.apply(step)
+        key = h.snapshot()['probe']['guided_suite']['vehicle']
+        h.lua.globals().world[h.e.bindings[key].entity].NAME.name = 'Unexpected edit'
+        self.assertTrue(any('vehicle name changed outside its approved rename' in error
+                            for error in h.snapshot()['coverage']['missing']))
+        with self.assertRaisesRegex(Exception, 'tracked observation unavailable: .*vehicle name changed outside its approved rename'):
+            h.apply(STEPS[rename['step']])
+
+    def test_missing_observation_reason_is_bounded_and_sanitized(self):
+        h = Harness(); h.prelude()
+        h.lua.globals().fixture_engine = h.e
+        h.lua.execute('''
+          fixture_engine.snapshot=function()
+            return {coverage={missing={'guard at 0xDEADBEEF'..string.char(0,10,195,164)..string.rep('x',2000)}}}
+          end
+        ''')
+        with self.assertRaises(Exception) as raised:
+            h.e.preview(h.table(STEPS[0]['command']), 'a:7')
+        message = str(raised.exception).split('\nstack traceback:', 1)[0]
+        self.assertIn('guard at [address]????', message)
+        self.assertNotIn('0xDEADBEEF', message)
+        self.assertNotIn('\x00', message)
+        self.assertLessEqual(len(message), len('guided suite: tracked observation unavailable: ') + 768)
+
+    def test_vehicle_name_witness_cannot_follow_a_rebound_native_identity(self):
+        h = Harness(); h.prelude()
+        prior = h.e.bindings['b:3'].entity
+        substitute = prior + 10000
+        h.lua.globals().world[substitute] = h.lua.globals().world[prior]
+        h.e.bindings['b:3'].entity = substitute
+        self.assertTrue(any('vehicle name witness absent or stale' in error
+                            for error in h.snapshot()['coverage']['missing']))
+
+    def test_unknown_tracked_vehicle_does_not_enroll_during_observation(self):
+        h = Harness(); h.prelude()
+        h.e.bindings['a:99'] = h.table({'kind': 'vehicle', 'entity': h.e.bindings['b:3'].entity})
+        for _ in range(2):
+            self.assertTrue(any('vehicle name witness absent or stale' in error
+                                for error in h.snapshot()['coverage']['missing']))
+
+    def test_failed_rename_callback_cannot_confirm_explicit_name(self):
+        h = Harness(); h.prelude()
+        step = next(s for s in STEPS if s['action'] == 'RENAME_BUS')
+        for prior in STEPS[:step['step'] - 1]: h.apply(prior)
+        command = h.table(step['command'])
+        key = f"{step['actor']}:{h.sequence[step['actor']] + 1}"
+        plan = h.e.plan(command, key, round(h.lua.globals().now * 1e6))
+        result = h.lua.globals().apply_command(plan.native)
+        receipt = json.loads(h.j.encode(h.e.finish(plan, result, False)))
+        self.assertFalse(receipt['success'])
+        self.assertTrue(any('vehicle name changed outside its approved rename' in error
+                            for error in h.snapshot()['coverage']['missing']))
+
+    def test_missing_or_nontext_vehicle_name_cannot_become_an_automatic_default(self):
+        for value in ('nil', '17'):
+            with self.subTest(value=value):
+                h = Harness(setup='''
+                  local apply=apply_command
+                  apply_command=function(c)
+                    local result=apply(c)
+                    if c.op=='buy'then world[vehicle_id].NAME.name=''' + value + ''' end
+                    return result
+                  end
+                ''')
+                with self.assertRaisesRegex(Exception, 'NAME.name|missing build field'):
+                    h.prelude()
 
     def test_not_ready_observation_sends_nothing_and_can_retry(self):
         h = Harness(); h.prelude()
@@ -201,13 +310,19 @@ class GuidedLuaTests(unittest.TestCase):
         self.assertEqual(sends, h.lua.globals().sent)
 
     def test_successful_callback_cannot_hide_failed_actual_name_change(self):
-        h = Harness(); h.prelude()
-        step = next(s for s in STEPS if s['action'] == 'RENAME_LINE')
-        for previous in STEPS[:step['step'] - 1]:
-            h.apply(previous)
-        h.lua.execute("local apply=apply_command; apply_command=function(c) if c.op=='guided_name' then sent=sent+1; return native_record({}) end; return apply(c) end")
-        with self.assertRaisesRegex(Exception, 'name readback differs'):
-            h.apply(step)
+        for action in ('RENAME_LINE', 'RENAME_BUS'):
+            with self.subTest(action=action):
+                h = Harness(); h.prelude()
+                step = next(s for s in STEPS if s['action'] == action)
+                for previous in STEPS[:step['step'] - 1]:
+                    h.apply(previous)
+                h.lua.execute("local apply=apply_command; apply_command=function(c) if c.op=='guided_name' then sent=sent+1; return native_record({}) end; return apply(c) end")
+                with self.assertRaisesRegex(Exception, 'name readback differs'):
+                    h.apply(step)
+                if action == 'RENAME_BUS':
+                    key = h.snapshot()['probe']['guided_suite']['vehicle']
+                    state = next(x['state'] for x in h.snapshot()['objects'] if x['logical_id'] == key)
+                    self.assertEqual(state['name'], {'mode': 'automatic'})
 
     def test_sale_requires_actual_entity_disappearance(self):
         h = Harness(); h.prelude()

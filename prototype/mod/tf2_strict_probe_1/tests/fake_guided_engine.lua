@@ -28,11 +28,16 @@ for name,fn in pairs(api.cmd.make)do
   end})
 end
 local original_apply=apply_command
+local vehicle_name_number=0
 function apply_command(command,no_result)
   local op=command.op
   if not op:match('^guided_')then
     local result=original_apply(command,no_result)
-    if op=='buy'then world[vehicle_id].NAME={name='Bus'}end
+    if op=='buy'then
+      vehicle_name_number=vehicle_name_number+1
+      local prefix=guided_fixture_vehicle_name_prefix
+      world[vehicle_id].NAME={name=prefix and prefix..' '..vehicle_name_number or 'Bus'}
+    end
     return result
   end
   sent=sent+1

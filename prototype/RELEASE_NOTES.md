@@ -1,30 +1,13 @@
-# Alpha5.18-Testbegleiter
+# Alpha5.19-Testbegleiter
 
-Der geführte Versuch konnte direkt beim Laden an einer falschen API-Vorprüfung
-anhalten: TF2 stellt seine Befehls-Maker als aufrufbare Lua-Objekte bereit, die
-Prüfung akzeptierte bislang nur gewöhnliche Funktionen. Sie erkennt jetzt beide
-Formen, ohne zur Erkennung Befehle auszuführen. Tatsächlich fehlende oder nicht
-aufrufbare Maker werden weiterhin gesammelt gemeldet und halten den Test an.
+Der automatische Aufbau hielt beim Fahrzeugkauf an, wenn die Spiele unterschiedliche Sprachen verwendeten. Die beiden Alpha5.18-Berichte zeigen genau einen Unterschied: den übersetzten Standardnamen des neuen Straßenfahrzeugs. Kauf-Rückmeldungen, Kosten und übrige erfasste Zustände stimmen überein.
 
-Der erste Host-/Freund-Auftrag erscheint erst nach dem vollständigen kurzen
-Aufbau und der Startbestätigung beider Spiele. Der Launcher zeigt zuvor das
-Warten auf die Spiele und den tatsächlichen Fortschritt des zehnrundigen
-Automatikaufbaus: Straße, Depot, Haltestellen, Fahrzeug und Linie. Auch die letzte
-Prüfung vor dem Schreiben eines Auftrags verlangt die gemeinsame Freigabe.
+Automatische Fahrzeugnamen werden jetzt nach ihrem Ursprung verglichen. Der tatsächliche lokale Name wird beim erfolgreichen Kauf an die konkrete Fahrzeugidentität gebunden und danach auf unerwartete Änderungen geprüft. Der gemeinsame Zustand kennzeichnet ihn als automatisch vergeben. Es gibt keine Liste erlaubter Übersetzungen und kein stilles Übernehmen eines später geänderten Namens.
 
-Die Host-Adresse steht sichtbar in der Verbindungsübersicht. Für Hamachi müssen
-Host und Freund dieselbe Hamachi-IPv4 des Hosts verwenden. Gespeicherte Adressen
-werden nicht heimlich durch lokale Vorschläge ersetzt; Änderungen erfolgen im
-privaten Profil. Private Adressen und Schlüssel sind kein Teil des Updates.
+Eine bewusst angeforderte Umbenennung braucht weiterhin den erfolgreichen echten Callback und die exakte Rückmeldung des gewünschten Textes. Danach wird der tatsächliche Name auf beiden PCs wortgetreu verglichen. Diese Behandlung gilt sowohl für das automatisch vorbereitete Fahrzeug als auch für den späteren geführten Kauf. Linien- und Bauwerksnamen bleiben vollständig geprüft.
 
-Auf beiden PCs TF2 und den alten Test schließen, Launcher neu öffnen und das
-Update abwarten. Verbindung kontrollieren, **Test vorbereiten → Verbinden → den
-angezeigten frischen Spielstand laden**. Den gemeinsamen Automatikaufbau
-abwarten, dann den einzelnen Aufträgen folgen. Aktionen und Pause weiterhin im
-Launcher auslösen. Die vorhandene saubere Ausgangskarte bleibt verwendbar.
+Der Ablauf bleibt: **Verbinden → beide frischen Spielstände laden → kurzer automatischer Aufbau → gemeinsame Startbestätigung → 26 geführte Aufträge**. Die Alpha5.18-Startanzeige, die gespeicherte private Host-Adresse und der Schlüssel bleiben erhalten. Es ist keine gleiche Spielsprache erforderlich, um automatische Fahrzeugnamen zu vergleichen.
 
-Die 26 festen Fahrzeug-/Linienaufträge, die akzeptierte Simulations-Taktung und
-alle fünf älteren Testmodi bleiben erhalten. Die Regression verwendet zusätzlich
-die tatsächliche Form der aufrufbaren API-Maker und verzögerte beidseitige
-Startbestätigungen. Dies ist kein neuer TF2-Zwei-PC-Nachweis; die noch offenen
-Funktionen und Nachweisgrenzen bleiben in der Checkliste sichtbar.
+Auf beiden PCs TF2 und den alten Test schließen, Launcher zum Aktualisieren neu öffnen und frisch vorbereiten. Die vorhandene saubere Ausgangskarte bleibt gültig. Aktionen und Pause erfolgen im Launcher; am Ende oder bei einem Fehler beide Berichte speichern.
+
+Die Regression durchläuft Vorbereitung und Fahrzeug-/Linienablauf mit verschiedenen lokalen Standardnamen. Fehlgeschlagene oder falsche Umbenennungen, unerwartete Namensänderungen und falsche Objektidentitäten müssen weiterhin anhalten. Diese Prüfungen sind kein neuer tatsächlicher Zwei-PC-Durchlauf. Die akzeptierte Taktung und alle älteren Testmodi bleiben erhalten; offene Spielfunktionen bleiben in der Nachweischeckliste offen.

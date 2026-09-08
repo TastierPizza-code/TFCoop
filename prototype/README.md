@@ -1,6 +1,6 @@
 # TFCoop-Prototyp
 
-**Alpha5.18-Testbegleiter** ergänzt den getrennten Modus `guided_suite_v1` mit fester Host-/Freund-Schrittfolge, frischer gemeinsamer Vorschau, echten Callback-/Beobachtungsbelegen und gemeinsam bestätigtem Fortschritt. [Umfang und Grenzen](docs/GUIDED_TEST.md), [Nachweischeckliste](docs/GAMEPLAY_CHECKLIST.md), [Anleitung](ANLEITUNG.md).
+**Alpha5.19-Testbegleiter** ergänzt den getrennten Modus `guided_suite_v1` mit fester Host-/Freund-Schrittfolge, frischer gemeinsamer Vorschau, echten Callback-/Beobachtungsbelegen und gemeinsam bestätigtem Fortschritt. [Umfang und Grenzen](docs/GUIDED_TEST.md), [Nachweischeckliste](docs/GAMEPLAY_CHECKLIST.md), [Anleitung](ANLEITUNG.md).
 
 ## Vorheriger Depotversuch und erhaltene Grundlagen
 
